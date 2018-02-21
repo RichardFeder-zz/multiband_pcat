@@ -1,3 +1,3 @@
 # pcat-lion
-Embarrassingly fast probabilistic cataloging of light sources in the SDSS exposures.
+Probabilistic cataloging of light sources in the SDSS exposures. Modifying Stephen Portillo's code for use with multiband photometric data.
 
