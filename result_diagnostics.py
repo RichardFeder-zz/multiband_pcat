@@ -1,10 +1,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
 
 sizefac = 10.*136
 color_bins = np.linspace(-3, 3, 40)
 dpi_val = 300
-burn_in_frac = 0.2
+burn_in_frac = 0.3
 
 # color_bins = np.linspace(-2, 2, 30)
 mag_bins = np.linspace(15, 23, 15)
@@ -61,6 +62,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
     plt.title('Chi-Squared Distribution over Samples')
     for b in xrange(nbands):
         plt.plot(sample_number, chi2[burn_in:,b], label=bands[b])
+        plt.axhline(np.min(chi2[burn_in:,b]), linestyle='dashed', alpha=0.5, label=str(np.min(chi2[burn_in:,b]))+' (' + str(bands[b]) + ')')
     plt.xlabel('Sample')
     plt.ylabel('Chi2')
     plt.yscale('log')
@@ -200,15 +202,19 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
             d_medians = np.median(np.array(post_2dhist), axis=0)
             d_bright_medians = np.median(np.array(bright_2dhist), axis=0)
 
+
+
             plt.subplot(1,3,1)
             plt.title('All Sources')
-            plt.imshow(d_medians, interpolation='none', origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
+            norm = ImageNormalize(d_medians, interval=MinMaxInterval(),stretch=SqrtStretch())
+            plt.imshow(d_medians, interpolation='none',norm=norm, origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
             plt.colorbar()
             plt.xlabel('g-r')
             plt.ylabel('r-i')
             plt.subplot(1,3,2)
             plt.title('Brightest Third')
-            plt.imshow(d_bright_medians, interpolation='none', origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
+            norm = ImageNormalize(d_bright_medians, interval=MinMaxInterval(),stretch=SqrtStretch())
+            plt.imshow(d_bright_medians, interpolation='none', norm=norm, origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
             plt.colorbar()
             plt.xlabel('g-r')
             plt.ylabel('r-i')
@@ -217,77 +223,178 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
             plt.subplot(1,3,3)
             plt.title(label)
             true_colorcolor = np.histogram2d(g_r_color, r_i_color, bins=(color_post_bins, color_post_bins))
-            plt.imshow(true_colorcolor[0], interpolation='none', origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
-            # plt.scatter(g_r_color, r_i_color, s=2, alpha=0.5)
-            # plt.xlim(-1.5, 1.5)
-            # plt.ylim(-1.5, 1.5)
+            
+            norm = ImageNormalize(true_colorcolor[0], interval=MinMaxInterval(),stretch=SqrtStretch())
+            plt.imshow(true_colorcolor[0], interpolation='none', origin='low', norm=norm, extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
             plt.xlabel('g-r')
             plt.ylabel('r-i')
             plt.colorbar()
             plt.savefig(directory_path+'/'+timestr+'/posterior_color_color_histogram.png') 
 
 
-def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, resids, weights, bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual=0, savefig=0, labldata='Mock'):
+def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, h_coords, hf, resids, weights, bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual=0, savefig=0, labldata='Mock'):
     # plt.rc('text', usetex=True) #use for latex quality characters and such
+    sizefac = 10.*136
+
+    if len(bands)==1:
+        plt.gcf().clear()
+        plt.figure(figsize=(15,5))
+        plt.clf()
+        plt.subplot(1,3,1)
+        plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 95))
+        plt.colorbar()
+        sizefac = 10.*136
+
+        mask = ref_f[:,0] > 250 # will have to change this for other data sets
+        plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[mask] / sizefac, color='lime')
+        mask = np.logical_not(mask)
+        plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[mask] / sizefac, color='g')
+        plt.scatter(x, y, marker='x', s=(10000/len(data_array[0])**2)*f[0]/(2*sizefac), color='r')
+        plt.xlim(-0.5, len(data_array[0])-0.5)
+        plt.ylim(-0.5, len(data_array[0])-0.5)
+
+        plt.subplot(1,3,2)
+        plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='bwr', vmin=-5, vmax=5)
+        plt.xlim(-0.5, len(data_array[0])-0.5)
+        plt.ylim(-0.5, len(data_array[0])-0.5)
+        plt.colorbar()
+        plt.subplot(1,3,3)
+        if labldata == 'mock':
+            (n, bins, patches) = plt.hist(adu_to_magnitude(f[0], nmgy_per_count[0]), bins=mag_bins, alpha=0.5, color='r', label='Chain - ' + bands[0], histtype='step')
+            plt.hist(adu_to_magnitude(ref_f[:,0], nmgy_per_count[0]), bins=bins,alpha=0.5, label=labldata, color='g', histtype='step')
+        else:
+            (n, bins, patches) = plt.hist(adu_to_magnitude(f[0], nmgy_per_count[0]), bins=mag_bins, alpha=0.5, color='r', label='Chain - ' + bands[0], histtype='step')
+        plt.legend()
+        plt.xlabel(str(bands[0]))
+        plt.yscale('log')
+
+        plt.ylim((0.5, int(nstar/2)))
+        plt.draw()
+        if savefig:
+            plt.savefig(frame_dir + '/frame_' + str(c) + '.pdf')
+        plt.pause(1e-5)
+        return 
+
+
+    print len(h_coords[0]), len(hf)
+    print np.max(h_coords[0]), np.min(h_coords[0])
+    print np.max(h_coords[1]), np.min(h_coords[1])
+
+    posmask = np.logical_and(h_coords[0]<99.5, h_coords[1]<99.5)
+    print posmask
 
     plt.gcf().clear()
     plt.figure(1)
     plt.subplot(2,3,1)
     plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 95))
     plt.scatter(x, y, marker='x', s=(10000/len(data_array[0])**2)*f[0]/(2*sizefac), color='r')
+    
     mask = ref_f[:,0] > 25
-    plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=2*ref_f[mask,0] / sizefac, color='lime')
+    hf = hf[posmask]
+    print 'len hf', len(hf)
+    hmask = hf < 22
+    plt.scatter(h_coords[0][posmask][hmask], h_coords[1][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime') #hubble
+
+    # plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=2*ref_f[mask,0] / sizefac, color='lime') #daophot
     mask = np.logical_not(mask)
     plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=2*ref_f[mask,0] / sizefac, color='g')
     plt.xlim(-0.5, len(data_array[0])-0.5)
     plt.ylim(-0.5, len(data_array[0][0])-0.5)
 
-    plt.subplot(2, 3, 2)
-    plt.title('Residual in ' + str(bands[1]) + ' band')
-    plt.imshow(resids[1]*np.sqrt(weights[1]), origin='lower', interpolation='none', cmap='bwr', vmax=5, vmin=-5)
-    plt.colorbar()
+    # plt.xlim(0,30)
+    # plt.ylim(30,60)
 
-    plt.subplot(2,3,3)
-    plt.title('Residual in ' + str(bands[2]) + ' band')
-    plt.imshow(resids[2]*np.sqrt(weights[2]), origin='lower', interpolation='none', cmap='bwr', vmax=5, vmin=-5)
-    plt.colorbar()
+    # plt.subplot(2, 3, 2)
+    # plt.title('Residual in ' + str(bands[1]) + ' band')
+    # plt.imshow(resids[1]*np.sqrt(weights[1]), origin='lower', interpolation='none', cmap='bwr', vmax=5, vmin=-5)
+    # plt.colorbar()
+
+    # plt.subplot(2,3,2)
+    # plt.title('Residual in ' + str(bands[2]) + ' band (Frame ' + str(c)+')')
+    # plt.imshow(resids[2]*np.sqrt(weights[2]), origin='lower', interpolation='none', cmap='bwr', vmax=5, vmin=-5)
+    # plt.colorbar()
 
     # plt.subplot(2,3,3)
-    # plt.title('Residual in ' + str(bands[0]) + ' band')
+    # plt.title('Residual in ' + str(bands[0]) + ' band (Frame ' + str(c)+')')
     # plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='bwr', vmax=5, vmin=-5)
     # plt.colorbar()
 
 
-    # plt.subplot(2,3,2)
-    # x1, y1 = transform_q(x, y, pixel_transfer_mats[0])
-    # x1 -= mean_dpos[0, 0]
-    # y1 -= mean_dpos[0, 1]
-    # refx1, refy1 = transform_q(ref_x, ref_y, pixel_transfer_mats[0])
-    # plt.imshow(data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[1]), vmax=np.percentile(data_array[1], 95))
-    # mask = ref_f[:,1] > 25
-    # plt.scatter(refx1[mask], refy1[mask]-offset, marker='+', s=2*ref_f[mask,1] / sizefac, color='lime')
-    # mask = np.logical_not(mask)
-    # plt.scatter(refx1[mask], refy1[mask]-offset, marker='+', s=2*ref_f[mask,1] / sizefac, color='g')
-    # plt.scatter(x1, y1, marker='x', s=(10000/len(data_array[0])**2)*f[1]/(2*sizefac), color='r')
-    # plt.xlim(-0.5, len(data_array[1])-0.5)
-    # plt.ylim(-0.5, len(data_array[1][0])-0.5)
+    plt.subplot(2,3,2)
+    x1, y1 = transform_q(x, y, pixel_transfer_mats[0])
+    x1 -= mean_dpos[0, 0]
+    y1 -= mean_dpos[0, 1]
 
-    # plt.subplot(2,3,3)
-    # x1, y1 = transform_q(x, y, pixel_transfer_mats[1])
-    # print(np.array(mean_dpos)[1,0])
-    # x1 -= np.array(mean_dpos)[1, 0]
-    # y1 -= np.array(mean_dpos)[1, 1]
-    # refx1, refy1 = transform_q(ref_x, ref_y, pixel_transfer_mats[1])
-    # refx1 -= np.array(mean_dpos[1,0])
-    # refy1 -= np.array(mean_dpos[1,1])
-    # plt.imshow(data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[2]), vmax=np.percentile(data_array[2], 95))
-    # mask = ref_f[:,1] > 25
-    # plt.scatter(refx1[mask], refy1[mask], marker='+', s=2*ref_f[mask,1] / sizefac, color='lime')
-    # mask = np.logical_not(mask)
+
+    # refx1 = ref_x - np.array(mean_dpos[0,0])
+    # refy1 = ref_y - np.array(mean_dpos[0,1])
+    # refx1, refy1 = transform_q(refx1, refy1, pixel_transfer_mats[0])
+    
+    refx1, refy1 = transform_q(ref_x, ref_y, pixel_transfer_mats[0])
+    refx1 -= mean_dpos[0,0]
+    refy1 -= mean_dpos[0,1]
+
+    hxi, hyi = transform_q(h_coords[0][posmask], h_coords[1][posmask], pixel_transfer_mats[0])
+
+
+    print 'mean dx (i): ', np.mean(hxi-h_coords[2][posmask]), np.max(hxi-h_coords[2][posmask])
+    print 'mean dy (i): ', np.mean(hyi-h_coords[3][posmask]), np.max(hyi-h_coords[3][posmask])
+
+
+    
+
+    plt.imshow(data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[1]), vmax=np.percentile(data_array[1], 95))
+    mask = ref_f[:,1] > 25
+    # plt.scatter(refx1[mask], refy1[mask], marker='+', s=2*ref_f[mask,1] / sizefac, color='k') #daophot
+    # plt.scatter(h_coords[2][hmask]-mean_dpos[0,0], h_coords[3][hmask]-mean_dpos[0,1], marker='+', s=2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime')
+    plt.scatter(hxi[hmask]-mean_dpos[0,0], hyi[hmask]-mean_dpos[0,1], marker='+', s=2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime')
+
+    mask = np.logical_not(mask)
+    # plt.scatter(refx1[mask], refy1[mask], marker='+', s=2*ref_f[mask,1] / sizefac, color='k')
+    plt.scatter(x1, y1, marker='x', s=(10000/len(data_array[0])**2)*f[1]/(2*sizefac), color='r')
+    plt.xlim(-0.5, len(data_array[1])-0.5)
+    plt.ylim(-0.5, len(data_array[1][0])-0.5)
+    # plt.xlim(0,30)
+    # plt.ylim(30,60)
+
+    plt.subplot(2,3,3)
+    x2, y2 = transform_q(x, y, pixel_transfer_mats[1])
+    print(np.array(mean_dpos))
+
+
+
+
+    x2 -= np.array(mean_dpos)[1, 0]
+    y2 -= np.array(mean_dpos)[1, 1]
+
+
+
+    # refx1 = ref_x - np.array(mean_dpos[1,0])
+    # refy1 = ref_y - np.array(mean_dpos[1,1])
+    # refx1, refy1 = transform_q(refx1, refy1, pixel_transfer_mats[1])
+
+    hxg, hyg = transform_q(h_coords[0][posmask], h_coords[1][posmask], pixel_transfer_mats[1])
+
+    print 'mean dx (g): ', np.mean(hxg-h_coords[4][posmask]), np.max(hxg-h_coords[4][posmask])
+    print 'mean dy (g): ', np.mean(hyg-h_coords[5][posmask]), np.max(hyg-h_coords[5][posmask])
+
+
+    refx1, refy1 = transform_q(ref_x, ref_y, pixel_transfer_mats[1])
+    refx1 -= np.array(mean_dpos[1,0])
+    refy1 -= np.array(mean_dpos[1,1])
+
+    plt.imshow(data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[2]), vmax=np.percentile(data_array[2], 95))
+    mask = ref_f[:,1] > 25
+    # plt.scatter(refx1[mask], refy1[mask], marker='+', s=2*ref_f[mask,1] / sizefac, color='k') #daophot
+    # plt.scatter(h_coords[4][hmask]-mean_dpos[1,0], h_coords[5][hmask]-mean_dpos[1,1], marker='+', s=2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime')
+    plt.scatter(hxg[hmask]-mean_dpos[1,0], hyg[hmask]-mean_dpos[1,1], marker='+', s=2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime')
+    mask = np.logical_not(mask)
     # plt.scatter(refx1[mask], refy1[mask], marker='+', s=2*ref_f[mask,1] / sizefac, color='g')
-    # plt.scatter(x1, y1, marker='x', s=(10000/len(data_array[2])**2)*f[1]/(2*sizefac), color='r')
-    # plt.xlim(-0.5, len(data_array[2])-0.5)
-    # plt.ylim(-0.5, len(data_array[2][0])-0.5)
+    plt.scatter(x2, y2, marker='x', s=(10000/len(data_array[2])**2)*f[1]/(2*sizefac), color='r')
+    plt.xlim(-0.5, len(data_array[2])-0.5)
+    plt.ylim(-0.5, len(data_array[2][0])-0.5)
+    # plt.xlim(0,30)
+    # plt.ylim(30,60)
 
     bolo_flux = np.sum(np.array(f), axis=0) 
     n_bright = int(len(bolo_flux)/3)
@@ -340,10 +447,20 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
     if savefig:
         plt.savefig(frame_dir + '/frame_' + str(c) + '.pdf')
         plt.gcf().clear()
+
+        # plt.figure()
+        # plt.scatter(x, y, color='r', )
+        # plt.scatter(x1, y1, color='k', marker = '+')
+        # plt.scatter(x2, y2, color='g', marker = 'x')
+        # plt.xlim(50, 70)
+        # plt.ylim(50, 70)
+        # plt.savefig(frame_dir + '/position_samples.pdf')
+
+
         if len(bands) == 2:
             r_i_color = adus_to_color(f[0], f[1], nmgy_per_count)
             plt.figure()
-            plt.title('Posterior Color Histogram')
+            plt.title('Posterior Color Histogram (Frame ' + str(c)+')')
             plt.hist(r_i_color, label='Chain', alpha=0.5, bins=color_bins, histtype='step', color='r')
             plt.hist(truecolor[0], label=labldata, bins=color_bins, color='g', histtype='step')
             plt.hist(r_i_color[brightest_idx], alpha=0.5, bins=color_bins, label='Brightest Third', histtype='step', color='k')
@@ -355,8 +472,8 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
             r_i_color = adus_to_color(f[0], f[1], nmgy_per_count)
             g_r_color = adu_to_magnitude(f[2], nmgy_per_count[2]) - adu_to_magnitude(f[0], nmgy_per_count[0])
             plt.figure(2)
-            plt.title('Posterior Color-Color Histogram')
-            plt.scatter(g_r_color[brightest_idx], r_i_color[brightest_idx], label='Brightest Half', s=2, color='k', alpha=0.5)
+            plt.title('Posterior Color-Color Histogram (Frame ' + str(c)+')')
+            plt.scatter(g_r_color[brightest_idx], r_i_color[brightest_idx], label='Brightest Third', s=2, color='k', alpha=0.5)
             plt.xlabel('g-r', fontsize=14)
             plt.ylabel('r-i', fontsize=14)
             plt.scatter(g_r_color, r_i_color, label='Chain', s=1, alpha=0.2)
@@ -364,14 +481,14 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
 
             plt.xlim(-4, 4)
             plt.ylim(-4, 4)
-            plt.legend()
+            plt.legend(loc=2)
             plt.savefig(frame_dir + '/r_i_g_r_sample_'+str(c)+'.pdf')
             plt.gcf().clear()
 
             #color histograms
             plt.figure(3, figsize=(10,5))
             plt.subplot(1,2,1)
-            plt.title('Posterior Color Histogram')
+            plt.title('Posterior Color Histogram (Frame ' + str(c)+')')
             plt.hist(r_i_color, label='Chain', alpha=0.5, bins=color_bins, histtype='step', color='r')
             plt.hist(truecolor[0], label=labldata, bins=color_bins, color='g', histtype='step')
             plt.hist(r_i_color[brightest_idx], alpha=0.5, bins=color_bins, label='Brightest Third', histtype='step', color='k')
@@ -380,7 +497,7 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
             plt.xlabel(bands[0] + ' - ' + bands[1])
 
             plt.subplot(1,2,2)
-            plt.title('Posterior Color Histogram')
+            plt.title('Posterior Color Histogram (Frame ' + str(c)+')')
             plt.hist(g_r_color, label='Chain', alpha=0.5, bins=color_bins, histtype='step', color='r')
             plt.hist(-truecolor[1], label=labldata, bins=color_bins, color='g', histtype='step')
             plt.hist(g_r_color[brightest_idx], alpha=0.5, bins=color_bins, label='Brightest Third', histtype='step', color='k')
@@ -401,7 +518,7 @@ def zoom_in_frame(data_array, x, y, f, hx, hy, hf, bounds, frame_dir, c, nmgy_pe
     plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 95))
     plt.colorbar()
     plt.scatter(x, y, marker='x', s=factor*f[:,0]/(2*sizefac), color='r')
-    mask = hfr >25
+    mask = hfr <25
     hfr = mag_to_cts(hf[:,0], nmgy_per_count[0])
     plt.scatter(hx[mask], hy[mask], marker='+', s=factor*hfr[mask]/(2*sizefac), color='lime')
     plt.xlim(bounds[0],bounds[1])
