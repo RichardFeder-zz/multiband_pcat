@@ -1,3 +1,3 @@
 # pcat-lion
-Probabilistic cataloging of light sources in the SDSS exposures. Modifying Stephen Portillo's code for use with multiband photometric data.
+Probabilistic cataloging of astronomical sources from SDSS exposures. Modification of Stephen Portillo's code for use with multiple band photometric data.
 
