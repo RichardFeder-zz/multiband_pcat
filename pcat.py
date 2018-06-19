@@ -18,6 +18,7 @@ import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
 from result_diagnostics import results, multiband_sample_frame
+from helpers import get_pint_dp, transform_q, adus_to_color, adu_to_magnitude, gaussian, mag_to_cts
 
 def generate_default_astrans(imsz):
     astransx, astransy, mat3, mat4, mat5, mat6 = [[] for x in xrange(6)]
@@ -42,6 +43,8 @@ timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
 dpi_val = 300
 multiple_regions = 1
+
+#generate random seed for initialization
 np.random.seed(20170501)
 
 # trueback = [180., 314., 103., 140.] #r, i, g, z
@@ -69,11 +72,13 @@ bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, data_array, da
 
 if multiband:
     #mock test
-    # bands = ['r']
-    band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
-    while band != 'x':
-        bands.append(band)
+    if datatype=='mock2':
+        bands = ['r']
+    else:
         band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
+        while band != 'x':
+            bands.append(band)
+            band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
     nbands = len(bands)
     print('Loading data for the following bands: ' + str(bands))
 else:
@@ -89,15 +94,16 @@ total_time = time.clock()
 for b in xrange(nbands):
     if multiband:
         #mock tests
-        # f = open('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt')
-        # psf = np.loadtxt('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
-        # g = open('Data/'+mock_test_name+'/'+mock_test_name+'-pix'+bands[b]+'.txt')
-        # data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
-
-        f = open('Data/'+dataname+'/'+dataname+'-psf'+str(bands[b])+'.txt')
-        psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
-        g = open('Data/'+dataname+'/'+dataname +'-pix'+bands[b]+'.txt')
-        data = np.loadtxt('Data/'+dataname+'/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
+        if datatype=='mock2':
+            f = open('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt')
+            psf = np.loadtxt('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
+            g = open('Data/'+mock_test_name+'/'+mock_test_name+'-pix'+bands[b]+'.txt')
+            data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
+        else:
+            f = open('Data/'+dataname+'/'+dataname+'-psf'+str(bands[b])+'.txt')
+            psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
+            g = open('Data/'+dataname+'/'+dataname +'-pix'+bands[b]+'.txt')
+            data = np.loadtxt('Data/'+dataname+'/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
     else:
         f = open('Data/'+dataname+'/'+dataname+'-psf.txt')
         psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf.txt',skiprows=1).astype(np.float32)
@@ -156,7 +162,7 @@ assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 margin = 10
 #mock test
-nsamp = 500
+nsamp = 2
 nloop = 1000
 
 def initialize_c():
@@ -175,20 +181,15 @@ def initialize_c():
 
 def create_directories(time_string):
     #mock tests
-    # new_dir_name = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
-    new_dir_name = directory_path + '/' + str(time_string)
+    if datatype=='mock2':
+        new_dir_name = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
+    else:
+        new_dir_name = directory_path + '/' + str(time_string)
     frame_dir_name = new_dir_name + '/frames'
     if not os.path.isdir(frame_dir_name):
         os.makedirs(frame_dir_name)
     return frame_dir_name
 
-def gaussian(x, mu, sig):
-    return -np.power(x - mu, 2.) / (2 * np.power(sig, 2.))
-
-def get_pint_dp(p):
-    pint = np.floor(p+0.5)
-    dp = p - pint
-    return pint.astype(int), dp
 
 def flux_proposal(f0, nw, trueminf, b):
     pixel_variance = trueback[b]/gains[b]
@@ -197,7 +198,6 @@ def flux_proposal(f0, nw, trueminf, b):
     N_src = 1400.
     if multiple_regions:
         lindf = np.float32(err_f/(np.sqrt(N_src*0.04*(2+nbands))))
-        # print lindf
     else:
         lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
@@ -210,18 +210,6 @@ def flux_proposal(f0, nw, trueminf, b):
     pff = ff + dff
     pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
     return pf
-
-def transform_q(x,y, mats):
-    transform_number.append(len(x))
-    if len(x) != len(y):
-        print('Unequal number of x and y coordinates')
-        return
-    xtrans, ytrans, dxpdx, dypdx, dxpdy, dypdy = mats
-    xints, dxs = get_pint_dp(x)
-    yints, dys = get_pint_dp(y)
-    xnew = xtrans[yints,xints] + dxs*dxpdx[yints,xints] + dys*dxpdy[yints,xints]
-    ynew = ytrans[yints,xints] + dxs*dypdx[yints,xints] + dys*dypdy[yints,xints] 
-    return np.array(xnew).astype(np.float32), np.array(ynew).astype(np.float32)
 
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety):
     dmodels, diff2s = [[],[]]
@@ -293,13 +281,6 @@ def neighbours(x,y,neigh,i,generate=False):
         return neighbours, j
     else:
         return neighbours
-
-def adus_to_color(flux0, flux1, nm_2_cts):
-    colors = adu_to_magnitude(flux0, nm_2_cts[0]) - adu_to_magnitude(flux1, nm_2_cts[1])
-    return colors
-def adu_to_magnitude(flux, nm_2_cts):
-    mags = 22.5-2.5*np.log10((np.array(flux)*nm_2_cts))
-    return mags
 
 def get_region(x, offsetx, regsize):
     return np.floor(x + offsetx).astype(np.int) / regsize
@@ -962,8 +943,10 @@ class Model:
 libmmult = npct.load_library('pcat-lion', '.')
 initialize_c()
 #mock tests
-# truth = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-tru.txt')
-truth = np.loadtxt('Data/'+dataname+'/'+dataname+'-tru.txt')
+if datatype=='mock2':
+    truth = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-tru.txt')
+else:
+    truth = np.loadtxt('Data/'+dataname+'/'+dataname+'-tru.txt')
 truex = truth[:,0]
 truey = truth[:,1]
 truef = truth[:,2:]
@@ -1023,19 +1006,15 @@ else:
     fsample = np.zeros((nsamp, nstar), dtype=np.float32)
 chi2sample = np.zeros((nsamp, nbands), dtype=np.int32)
 models = [Model() for k in xrange(ntemps)]
+
 #create directory for results
-
-
 frame_dir = create_directories(timestr)
 
-# signal.signal(signal.SIGINT, signal_handler)
 
 plt.ion()
 plt.figure(figsize=(15,10))
 # sampling loop
 for j in xrange(nsamp):
-    # print np.mean(transform_number) # how many sources are being perturbed
-    # signal.signal(signal.SIGINT, signal_handler)
     chi2_all = np.zeros((ntemps,nbands))
     print 'Loop', j
     sf = 0
@@ -1074,14 +1053,14 @@ for j in xrange(nsamp):
 if not multiband:
     colorsample = []
 print 'saving...'
-#mock test
-
-# np.savez(directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results/chain1x3.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
-np.savez(directory_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
 
 #mock test
-result_dir = directory_path + '/' + timestr
-# result_dir = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
+if datatype=='mock2':
+    np.savez(directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results/chain1x3.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
+    result_dir = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
+else:
+    np.savez(directory_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
+    result_dir = directory_path + '/' + timestr
 
 
 results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, labldata)
