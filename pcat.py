@@ -104,10 +104,10 @@ for b in xrange(nbands):
             g = open('Data/'+mock_test_name+'/'+mock_test_name+'-pix'+bands[b]+'.txt')
             data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
         else:
-            f = open('Data/'+dataname+'/'+dataname+'-psf'+str(bands[b])+'.txt')
-            psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
-            g = open('Data/'+dataname+'/'+dataname +'-pix'+bands[b]+'.txt')
-            data = np.loadtxt('Data/'+dataname+'/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
+            f = open('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt')
+            psf = np.loadtxt('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
+            g = open('Data/'+dataname+'/pixs/'+dataname +'-pix'+bands[b]+'.txt')
+            data = np.loadtxt('Data/'+dataname+'/cts/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
     else:
         f = open('Data/'+dataname+'/'+dataname+'-psf.txt')
         psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf.txt',skiprows=1).astype(np.float32)
@@ -146,7 +146,7 @@ for b in xrange(nbands):
     #load asTran files for other bands
     if b > 0:
         #data-specific
-        pathname = 'Data/'+dataname+'/asGrid002583-2-0136-100x100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms0_0.fits'
+        pathname = 'Data/'+dataname+'/asGrid/asGrid002583-2-0136-100x100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms0_0.fits'
         if os.path.isfile(pathname):
             transfer_hdus = fits.open(pathname)
             pixel_transfer_mats.append(np.array([transfer_hdus[0].data, transfer_hdus[1].data,transfer_hdus[2].data, transfer_hdus[3].data, transfer_hdus[4].data, transfer_hdus[5].data]))
@@ -198,6 +198,7 @@ def flux_proposal(f0, nw, trueminf, b):
     pixel_variance = trueback[b]/gains[b]
     N_eff = 17.5
     err_f = np.sqrt(N_eff * pixel_variance)
+    #data specific
     N_src = 1400.
     if multiple_regions:
         lindf = np.float32(err_f/(np.sqrt(N_src*0.04*(2+nbands))))
@@ -656,12 +657,12 @@ class Model:
         # mock test
         if visual or savefig:
             if datatype=='mock':
-                multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors,[], [], resids, weights, \
-                    bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, labldata='mock')     
+                hfs = []
             else:
-                multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hf[:,0], resids, weights, \
-                    bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, labldata)
-  
+                hfs = hf[:,0]
+            multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
+                bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, datatype)
+
         dtplot = time.clock()-tplot
         othertimes.append(dtplot)
         return self.n, chi2, timestat_array, othertimes, accept_fracs
@@ -949,7 +950,7 @@ initialize_c()
 if datatype=='mock2':
     truth = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-tru.txt')
 else:
-    truth = np.loadtxt('Data/'+dataname+'/'+dataname+'-tru.txt')
+    truth = np.loadtxt('Data/'+dataname+'/truth/'+dataname+'-tru.txt')
 truex = truth[:,0]
 truey = truth[:,1]
 truef = truth[:,2:]
@@ -961,12 +962,10 @@ if multiband:
         truecolors.append(truecolor)
 
 if datatype == 'mock':    
-    labldata = 'Mock Truth'
     hx, hy, hf = [], [], []
     hubble_coords = [hx, hy, hf]
     mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
 else:
-    labldata = datatype
     true_h = fits.open('Data/'+dataname+'/hubble_pixel_coords-2583-2-0136.fits')
 
     # print 'true xr, ', np.min(true_h[0].data), np.std(true_h[0].data)
@@ -985,10 +984,10 @@ else:
 
     hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
 
-    true_h = np.loadtxt('Data/'+dataname+'/HTcat-'+dataname+'.txt')
-    hx = true_h[:,0]
-    hy = true_h[:,1]
-    hf = true_h[:,2:]
+    # true_h = np.loadtxt('Data/'+dataname+'/HTcat-'+dataname+'.txt')
+    # hx = true_h[:,0]
+    # hy = true_h[:,1]
+    # hf = true_h[:,2:]
 
 
 
@@ -1067,6 +1066,6 @@ else:
     result_dir = directory_path + '/' + timestr
 
 
-results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, labldata)
+results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, datatype)
 dt_total = time.clock()-total_time
 print 'Full Run Time (s):', np.round(dt_total,3)
