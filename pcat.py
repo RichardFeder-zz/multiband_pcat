@@ -18,7 +18,7 @@ import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
 from result_diagnostics import results, multiband_sample_frame
-from helpers import get_pint_dp, transform_q, adus_to_color, adu_to_magnitude, gaussian, mag_to_cts
+from helpers import *
 
 def generate_default_astrans(imsz):
     astransx, astransy, mat3, mat4, mat5, mat6 = [[] for x in xrange(6)]
@@ -36,9 +36,7 @@ def generate_default_astrans(imsz):
 # Run, rerun, CamCol, DAOPHOTID, RA, DEC, xu, yu, u (mag), uErr, chi, sharp, flag, xg, yg, g, gErr, chi, sharp, flag, 
 # xr, yr, r, rerr, chi, sharp, flag, xi, yi, i, ierr, chi, sharp, flag, xz, yz, z, zerr, chi, sharp, flag
 
-# mock tests
-# directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/Data"
-directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/pcat-lion-results"
+
 timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
 dpi_val = 300
@@ -69,6 +67,12 @@ multiband = int(sys.argv[5]) > 0
 mock_test_name = 'mock_2star_16'
 
 bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, data_array, data_hdrs, weights, nmgy_per_count = [[] for x in xrange(12)]
+
+# mock tests
+if datatype=='mock2':
+    directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/Data"
+else:
+    directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/pcat-lion-results"
 
 if multiband:
     #mock test
@@ -134,26 +138,25 @@ for b in xrange(nbands):
     weight = 1. / variance
     weights.append(weight)
 
+    # establish image dimensions for first band, then other bands will use these
     if b==0:
         w0=w
         h0=h
         imsz = (w0, h0)
     #load asTran files for other bands
     if b > 0:
+        #data-specific
         pathname = 'Data/'+dataname+'/asGrid002583-2-0136-100x100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms0_0.fits'
         if os.path.isfile(pathname):
-            transfer_hdu_gr = fits.open(pathname)
-            pixel_transfer_mats.append(np.array([transfer_hdu_gr[0].data, transfer_hdu_gr[1].data,transfer_hdu_gr[2].data, transfer_hdu_gr[3].data, transfer_hdu_gr[4].data, transfer_hdu_gr[5].data]))
+            transfer_hdus = fits.open(pathname)
+            pixel_transfer_mats.append(np.array([transfer_hdus[0].data, transfer_hdus[1].data,transfer_hdus[2].data, transfer_hdus[3].data, transfer_hdus[4].data, transfer_hdus[5].data]))
         else:
             pixel_transfer_mats.append(generate_default_astrans([imsz[0], imsz[1]]))
-        #may eventually want transfer_hdu_ba, but as long as we only make proposals from one band and then transform to other bands we should be fine with this
         assert w==w0 and h==h0
 
     if visual and testpsfn:
         testpsf(ncs[b], cf, psfs[b], np.float32(np.random.uniform()*4), np.float32(np.random.uniform()*4), lib=libmmult.pcat_model_eval)
 
-ntemps = 1
-temps = np.sqrt(2) ** np.arange(ntemps)
 if multiple_regions:
     regsize = imsz[0]/2
 else:
@@ -162,7 +165,7 @@ assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 margin = 10
 #mock test
-nsamp = 2
+nsamp = 10
 nloop = 1000
 
 def initialize_c():
@@ -421,7 +424,7 @@ class Model:
             else:
                 new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
                 self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
-    def run_sampler(self, temperature, nloop=1000, visual=False, multiband=False, savefig=False):
+    def run_sampler(self, nloop=1000, visual=False, multiband=False, savefig=False):
         t0 = time.clock()
         nmov = np.zeros(nloop)
         movetype = np.zeros(nloop)
@@ -527,7 +530,7 @@ class Model:
                 if rtype != 3:
                     plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
                     plogL[:,(1-self.parity_x)::2] = float('-inf')
-                dlogP = (plogL - logL) / temperature
+                dlogP = plogL - logL
                 
                 dt2[i] = time.clock() - t2
                 t3 = time.clock()
@@ -622,7 +625,7 @@ class Model:
             chi2.append(np.sum(weights[b][xmin:xmax,ymin:ymax]*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])))        
         
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
-        print 'Temperature', temperature, 'background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
+        print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
         dt1 *= 1000
         dt2 *= 1000
         dt3 *= 1000
@@ -1005,7 +1008,8 @@ if multiband:
 else:
     fsample = np.zeros((nsamp, nstar), dtype=np.float32)
 chi2sample = np.zeros((nsamp, nbands), dtype=np.int32)
-models = [Model() for k in xrange(ntemps)]
+# models = [Model() for k in xrange(ntemps)]
+model = Model()
 
 #create directory for results
 frame_dir = create_directories(timestr)
@@ -1015,7 +1019,7 @@ plt.ion()
 plt.figure(figsize=(15,10))
 # sampling loop
 for j in xrange(nsamp):
-    chi2_all = np.zeros((ntemps,nbands))
+    chi2_all = np.zeros(nbands)
     print 'Loop', j
     sf = 0
     if nsamp<10:
@@ -1025,30 +1029,30 @@ for j in xrange(nsamp):
         sf = 1
         c+=1
      
-    temptemp = 1.
-    for k in xrange(ntemps):
-        _, chi2_all[k], statarrays, othertimes, accept_fracs = models[k].run_sampler(temptemp, visual=(k==0)*visual, multiband=multiband, savefig=sf)
+    _, chi2_all, statarrays, othertimes, accept_fracs = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
 
     tq_times[j] = othertimes[0]
     plt_times[j] = othertimes[1]
-    nsample[j] = models[0].n
-    xsample[j,:] = models[0].stars[Model._X, :]
-    ysample[j,:] = models[0].stars[Model._Y, :]
-    bkgsample[j] = models[0].back
+    nsample[j] = model.n
+    xsample[j,:] = model.stars[Model._X, :]
+    ysample[j,:] = model.stars[Model._Y, :]
+    bkgsample[j] = model.back
+
     accept_stats[j,:] = accept_fracs
     nmgy_sample = []
     if multiband:
         for b in xrange(nbands):
-            fsample[b][j,:] = models[0].stars[Model._F+b,:]
+            fsample[b][j,:] = model.stars[Model._F+b,:]
             if b>0:
                 nmpc = [nmgy_per_count[0], nmgy_per_count[b]]
-                csample = adus_to_color(models[0].stars[Model._F,:], models[0].stars[Model._F+b,:], nmpc)
+                csample = adus_to_color(model.stars[Model._F,:], model.stars[Model._F+b,:], nmpc)
                 csample = np.array([value for value in csample if not math.isnan(value)])
                 colorsample[b-1].append(csample)
 
     else:
-        fsample[j,:] = models[0].stars[Model._F, :]
-    chi2sample[j] = chi2_all[0]
+        fsample[j,:] = model.stars[Model._F, :]
+
+    chi2sample[j] = chi2_all
     timestats[j,:] = statarrays
 if not multiband:
     colorsample = []
