@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
+# from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
 from astropy.io import fits
-from helpers import get_pint_dp, transform_q, adus_to_color, adu_to_magnitude, mag_to_cts
+from helpers import *
 
 
 sizefac = 10.*136
@@ -14,13 +14,13 @@ mag_bins = np.linspace(15, 23, 15)
 hubble_dpos = np.array([[0.1528, 0.797],[0.1045,0.6760]])
 
 
-def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, chi2, bkgsample, accept_stats, result_directory, nbands, bands, multiband, nmgy_per_count, labldata):
+def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, chi2, bkgsample, accept_stats, result_directory, nbands, bands, multiband, nmgy_per_count, datatype):
     # plt.rc('text', usetex=True) #use for latex quality characters and such
 
-    if labldata == 'mock':
+    if datatype == 'mock':
         label = 'Mock Truth'
     else:
-        label = labldata
+        label = datatype
     burn_in = int(nsamp*burn_in_frac)
 
     # ------------------- SOURCE NUMBER ---------------------------
@@ -155,60 +155,65 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
 # ---------------------------------------- COLOR COLOR DISTRIBUTION ----------------------------
 
     #posterior color-color marginalized plot
-    if nbands==3:
-        plt.figure(figsize=(5,11))
-        plt.title('Posterior Color-Color Histogram')
-        color_post_bins = list(color_post_bins)
-        post_2dhist = []
-        bright_2dhist = []
-        for samp in xrange(burn_in, nsamp):
-            samp_colors = []
-            n_bright = int(len(fchain[0][samp][mask])/3)
-            brightest_idx = np.argpartition(fchain[0][samp][mask], n_bright)[-n_bright:]
-            for b in xrange(nbands-1):
-                nmpc = [nmgy_per_count[b], nmgy_per_count[b+1]]
-                samp_colors.append(adus_to_color(fchain[b][samp][mask][brightest_idx], fchain[b+1][samp][mask][brightest_idx], nmpc))
-            bright_2dh = np.histogram2d(samp_colors[1], samp_colors[0], bins=(color_post_bins, color_post_bins))
-            bright_2dhist.append(bright_2dh[0])
-            dhist = np.histogram2d([x for x in color[1][samp]], [x for x in color[0][samp]], bins=(color_post_bins, color_post_bins))
-            post_2dhist.append(dhist[0])
-        d_medians = np.median(np.array(post_2dhist), axis=0)
-        d_bright_medians = np.median(np.array(bright_2dhist), axis=0)
+    # if nbands==3:
+    #     plt.figure(figsize=(5,11))
+    #     plt.title('Posterior Color-Color Histogram')
+    #     color_post_bins = list(color_post_bins)
+    #     post_2dhist = []
+    #     bright_2dhist = []
+    #     for samp in xrange(burn_in, nsamp):
+    #         samp_colors = []
+    #         n_bright = int(len(fchain[0][samp][mask])/3)
+    #         brightest_idx = np.argpartition(fchain[0][samp][mask], n_bright)[-n_bright:]
+    #         for b in xrange(nbands-1):
+    #             nmpc = [nmgy_per_count[b], nmgy_per_count[b+1]]
+    #             samp_colors.append(adus_to_color(fchain[b][samp][mask][brightest_idx], fchain[b+1][samp][mask][brightest_idx], nmpc))
+    #         bright_2dh = np.histogram2d(samp_colors[1], samp_colors[0], bins=(color_post_bins, color_post_bins))
+    #         bright_2dhist.append(bright_2dh[0])
+    #         dhist = np.histogram2d([x for x in color[1][samp]], [x for x in color[0][samp]], bins=(color_post_bins, color_post_bins))
+    #         post_2dhist.append(dhist[0])
+    #     d_medians = np.median(np.array(post_2dhist), axis=0)
+    #     d_bright_medians = np.median(np.array(bright_2dhist), axis=0)
 
 
-        plt.subplot(2,1,1)
-        plt.title('All Sources', fontsize=10)
-        norm = ImageNormalize(d_medians, interval=MinMaxInterval(),stretch=SqrtStretch())
-        plt.imshow(d_medians, interpolation='none',norm=norm, origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
-        plt.colorbar()
-        plt.ylabel(bands[0]+' - '+bands[1])
-        # plt.subplot(3,1,2)
-        # plt.title('Brightest Third', fontsize=10)
-        # norm = ImageNormalize(d_bright_medians, interval=MinMaxInterval(),stretch=SqrtStretch())
-        # plt.imshow(d_bright_medians, interpolation='none', norm=norm, origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
-        # plt.colorbar()
-        # plt.ylabel(bands[0]+' - '+bands[1])
-        r_i_color = adus_to_color(truef[:,0], truef[:,1], [nmgy_per_count[0], nmgy_per_count[1]])
-        g_r_color = adu_to_magnitude(truef[:,2], nmgy_per_count[2]) - adu_to_magnitude(truef[:,0], nmgy_per_count[0])
-        plt.subplot(2,1,2)
-        plt.title(label, fontsize=10)
-        true_colorcolor = np.histogram2d(g_r_color, r_i_color, bins=(color_post_bins, color_post_bins))
-        norm = ImageNormalize(true_colorcolor[0], interval=MinMaxInterval(),stretch=SqrtStretch())
-        plt.imshow(true_colorcolor[0], interpolation='none', origin='low', norm=norm, extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
-        plt.xlabel(bands[1]+' - '+bands[2])
-        plt.ylabel(bands[0]+' - '+bands[1])
-        plt.colorbar()
-        plt.tight_layout()
-        plt.savefig(result_directory+'/posterior_color_color_histogram.png', bbox_inches='tight') 
+    #     plt.subplot(2,1,1)
+    #     plt.title('All Sources', fontsize=10)
+    #     norm = ImageNormalize(d_medians, interval=MinMaxInterval(),stretch=SqrtStretch())
+    #     plt.imshow(d_medians, interpolation='none',norm=norm, origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
+    #     plt.colorbar()
+    #     plt.ylabel(bands[0]+' - '+bands[1])
+    #     # plt.subplot(3,1,2)
+    #     # plt.title('Brightest Third', fontsize=10)
+    #     # norm = ImageNormalize(d_bright_medians, interval=MinMaxInterval(),stretch=SqrtStretch())
+    #     # plt.imshow(d_bright_medians, interpolation='none', norm=norm, origin='low', extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
+    #     # plt.colorbar()
+    #     # plt.ylabel(bands[0]+' - '+bands[1])
+    #     r_i_color = adus_to_color(truef[:,0], truef[:,1], [nmgy_per_count[0], nmgy_per_count[1]])
+    #     g_r_color = adu_to_magnitude(truef[:,2], nmgy_per_count[2]) - adu_to_magnitude(truef[:,0], nmgy_per_count[0])
+    #     plt.subplot(2,1,2)
+    #     plt.title(label, fontsize=10)
+    #     true_colorcolor = np.histogram2d(g_r_color, r_i_color, bins=(color_post_bins, color_post_bins))
+    #     norm = ImageNormalize(true_colorcolor[0], interval=MinMaxInterval(),stretch=SqrtStretch())
+    #     plt.imshow(true_colorcolor[0], interpolation='none', origin='low', norm=norm, extent=[color_post_bins[0], color_post_bins[-1], color_post_bins[0], color_post_bins[-1]])
+    #     plt.xlabel(bands[1]+' - '+bands[2])
+    #     plt.ylabel(bands[0]+' - '+bands[1])
+    #     plt.colorbar()
+    #     plt.tight_layout()
+    #     plt.savefig(result_directory+'/posterior_color_color_histogram.png', bbox_inches='tight') 
 
 
-def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, h_coords, hf, resids, weights, bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual=0, savefig=0, labldata='mock'):
+def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, h_coords, hf, resids, weights, bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual=0, savefig=0, datatype='mock'):
     # plt.rc('text', usetex=True) #use for latex quality characters and such
     
+    if datatype=='mock':
+        labldata = 'Mock Truth'
+    else:
+        labldata = datatype
+
 
     sizefac = 10.*136
     
-    if labldata != 'mock':
+    if datatype != 'mock':
         posmask = np.logical_and(h_coords[0]<99.5, h_coords[1]<99.5)
         hf = hf[posmask]
         hmask = hf < 22
@@ -230,7 +235,7 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
         plt.figure()
         plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 95))    
         mask = ref_f[:,0] > 25
-        if labldata != 'mock':
+        if datatype != 'mock':
             plt.scatter(h_coords[0][posmask][hmask], h_coords[1][posmask][hmask], marker='+', s=3*2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime') #hubble
         plt.scatter(x, y, marker='x', s=(10000/15**2)*f[0]/(2*sizefac), color='r')
         plt.scatter(ref_x[mask], ref_y[mask]-1, marker='+', s=(10000/15**2)*ref_f[mask,0]/(2*sizefac), color='g') #daophot
@@ -266,7 +271,7 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
         plt.ylim(-0.5, len(data_array[0])-0.5)
         plt.colorbar()
         plt.subplot(1,3,3)
-        if labldata == 'mock':
+        if datatype == 'mock':
             (n, bins, patches) = plt.hist(adu_to_magnitude(f[0], nmgy_per_count[0]), bins=mag_bins, alpha=0.5, color='r', label='Chain - ' + bands[0], histtype='step')
             plt.hist(adu_to_magnitude(ref_f[:,0], nmgy_per_count[0]), bins=bins,alpha=0.5, label=labldata, color='g', histtype='step')
         else:
@@ -294,7 +299,7 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
 # ---------------------- DECIDE WHICH BAND TO USE/ WHICH COORDINATES TO PLOT --------------------------------
 
     if first_frame_band_no != 0:
-        if labldata != 'mock':
+        if datatype != 'mock':
             hx1, hy1 = transform_q(h_coords[0][posmask], h_coords[1][posmask], pixel_transfer_mats[first_frame_band_no-1])
             hx1 -= mean_dpos[first_frame_band_no-1, 0]
             hy1 -= mean_dpos[first_frame_band_no-1, 1]
@@ -302,7 +307,7 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
         x1 -= mean_dpos[first_frame_band_no-1, 0]
         y1 -= mean_dpos[first_frame_band_no-1, 1]
     else:
-        if labldata != 'mock':
+        if datatype != 'mock':
             hx1 = h_coords[0][posmask]
             hy1 = h_coords[1][posmask]
         x1 = x
