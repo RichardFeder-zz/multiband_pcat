@@ -202,7 +202,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
     #     plt.savefig(result_directory+'/posterior_color_color_histogram.png', bbox_inches='tight') 
 
 
-def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, h_coords, hf, resids, weights, bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual=0, savefig=0, datatype='mock'):
+def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, h_coords, hf, resids, weights, bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual=0, savefig=0, include_hubble=0, datatype='mock'):
     # plt.rc('text', usetex=True) #use for latex quality characters and such
     
     if datatype=='mock':
@@ -213,7 +213,8 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
 
     sizefac = 10.*136
     
-    if datatype != 'mock':
+    # if datatype != 'mock':
+    if include_hubble:
         posmask = np.logical_and(h_coords[0]<99.5, h_coords[1]<99.5)
         hf = hf[posmask]
         hmask = hf < 22
@@ -235,7 +236,8 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
         plt.figure()
         plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 95))    
         mask = ref_f[:,0] > 25
-        if datatype != 'mock':
+        # if datatype != 'mock':
+        if include_hubble:
             plt.scatter(h_coords[0][posmask][hmask], h_coords[1][posmask][hmask], marker='+', s=3*2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime') #hubble
         plt.scatter(x, y, marker='x', s=(10000/15**2)*f[0]/(2*sizefac), color='r')
         plt.scatter(ref_x[mask], ref_y[mask]-1, marker='+', s=(10000/15**2)*ref_f[mask,0]/(2*sizefac), color='g') #daophot
@@ -254,7 +256,8 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
         plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 95))
         plt.colorbar()
         sizefac = 10.*136
-        plt.scatter(h_coords[0][posmask][hmask], h_coords[1][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime') #hubble
+        if include_hubble:
+            plt.scatter(h_coords[0][posmask][hmask], h_coords[1][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy_per_count[0]) / sizefac, color='lime') #hubble
         
         # mask = ref_f[:,0] > 250 # will have to change this for other data sets
         # plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[mask] / sizefac, color='lime')
@@ -299,7 +302,8 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
 # ---------------------- DECIDE WHICH BAND TO USE/ WHICH COORDINATES TO PLOT --------------------------------
 
     if first_frame_band_no != 0:
-        if datatype != 'mock':
+        # if datatype != 'mock':
+        if include_hubble:
             hx1, hy1 = transform_q(h_coords[0][posmask], h_coords[1][posmask], pixel_transfer_mats[first_frame_band_no-1])
             hx1 -= mean_dpos[first_frame_band_no-1, 0]
             hy1 -= mean_dpos[first_frame_band_no-1, 1]
@@ -307,7 +311,8 @@ def multiband_sample_frame(data_array, x, y, f, ref_x, ref_y, ref_f, truecolor, 
         x1 -= mean_dpos[first_frame_band_no-1, 0]
         y1 -= mean_dpos[first_frame_band_no-1, 1]
     else:
-        if datatype != 'mock':
+        # if datatype != 'mock':
+        if include_hubble:
             hx1 = h_coords[0][posmask]
             hy1 = h_coords[1][posmask]
         x1 = x

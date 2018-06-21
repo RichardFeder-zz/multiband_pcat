@@ -41,6 +41,7 @@ timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
 dpi_val = 300
 multiple_regions = 1
+include_hubble = 0
 
 #generate random seed for initialization
 np.random.seed(20170501)
@@ -126,6 +127,7 @@ for b in xrange(nbands):
     bias, gain = [np.float32(i) for i in g.readline().split()]
     if multiband:
         a = np.float32(g.readline().split())
+        print a
         nmgy_per_count.append(a[0])
         if datatype=='mock':
             trueback[b] = a[1]
@@ -656,12 +658,12 @@ class Model:
         tplot = time.clock()
         # mock test
         if visual or savefig:
-            if datatype=='mock':
-                hfs = []
-            else:
+            if include_hubble:
                 hfs = hf[:,0]
-            multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
-                bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, datatype)
+            else:
+                hfs = []
+            # multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
+                # bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, datatype)
 
         dtplot = time.clock()-tplot
         othertimes.append(dtplot)
@@ -961,11 +963,12 @@ if multiband:
         truecolor = adus_to_color(truef[:,0], truef[:,b+1], nmpc) 
         truecolors.append(truecolor)
 
-if datatype == 'mock':    
-    hx, hy, hf = [], [], []
-    hubble_coords = [hx, hy, hf]
-    mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
-else:
+# if datatype == 'mock':    
+#     hx, hy, hf = [], [], []
+#     hubble_coords = [hx, hy, hf]
+#     mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
+# else:
+if include_hubble:
     true_h = fits.open('Data/'+dataname+'/hubble_pixel_coords-2583-2-0136.fits')
 
     # print 'true xr, ', np.min(true_h[0].data), np.std(true_h[0].data)
@@ -984,10 +987,15 @@ else:
 
     hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
 
-    # true_h = np.loadtxt('Data/'+dataname+'/HTcat-'+dataname+'.txt')
-    # hx = true_h[:,0]
-    # hy = true_h[:,1]
-    # hf = true_h[:,2:]
+    true_h = np.loadtxt('Data/'+dataname+'/HTcat-'+dataname+'.txt')
+    hx = true_h[:,0]
+    hy = true_h[:,1]
+    hf = true_h[:,2:]
+else:
+    hx, hy, hf = [], [], []
+    hubble_coords = [hx, hy, hf]
+    mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
+
 
 
 
@@ -1066,6 +1074,6 @@ else:
     result_dir = directory_path + '/' + timestr
 
 
-results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, datatype)
+# results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, datatype)
 dt_total = time.clock()-total_time
 print 'Full Run Time (s):', np.round(dt_total,3)
