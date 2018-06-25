@@ -1,22 +1,7 @@
-from astropy.io import fits
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
-import random
-import astropy
-import math
-import astropy.io.fits
-import astropy.wcs
-from matplotlib.colors import LogNorm 
-from scipy.optimize import curve_fit
-import pandas as pd
-from copy import deepcopy
-# from __future__ import division
-import scipy.signal
-import pyfits as pyf
-from matplotlib import rc
-
 
 offsets = np.array([0.5,0.75, 1.0, 1.5], dtype=np.float32)
 flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
