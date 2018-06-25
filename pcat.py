@@ -1,4 +1,6 @@
 import numpy as np
+import sys
+import os
 import numpy.ctypeslib as npct
 from ctypes import c_int, c_double
 import h5py
@@ -10,8 +12,6 @@ import signal
 import time
 import astropy.wcs
 import astropy.io.fits
-import sys
-import os
 import warnings
 from astropy.io import fits
 import random
@@ -20,18 +20,6 @@ from image_eval import psf_poly_fit, image_model_eval
 from result_diagnostics import results, multiband_sample_frame
 from helpers import *
 
-def generate_default_astrans(imsz):
-    astransx, astransy, mat3, mat4, mat5, mat6 = [[] for x in xrange(6)]
-    for x in xrange(imsz[0]):
-        astransx.append(np.linspace(0, imsz[0]-1, imsz[0]))
-        astransy.append(np.full((imsz[1]), x).transpose())
-    mat3 = np.full((imsz[0], imsz[1]), 1)
-    mat4 = np.zeros((imsz[0], imsz[1]))
-    mat5 = np.zeros((imsz[0], imsz[1]))
-    mat6 = np.full((imsz[0], imsz[1]), 1)
-    pixel_transfer_mats = np.zeros((6, imsz[0],imsz[1]))
-    pixel_transfer_mats = np.array([astransx, astransy, mat3, mat4, mat5, mat6])
-    return pixel_transfer_mats
 
 # Run, rerun, CamCol, DAOPHOTID, RA, DEC, xu, yu, u (mag), uErr, chi, sharp, flag, xg, yg, g, gErr, chi, sharp, flag, 
 # xr, yr, r, rerr, chi, sharp, flag, xi, yi, i, ierr, chi, sharp, flag, xz, yz, z, zerr, chi, sharp, flag
@@ -50,9 +38,7 @@ np.random.seed(20170501)
 trueback = [180., 314., 140.]
 # mean_dpos = np.array([[-0.642, 2.756 ],[3.231,10.8482], [0.68116, 6.72648]]) #this is for run 2583, camcol 2 for i, g, z
 # mean_dpos = np.array([[-1., 3.],[3.,10.]]) #r, i, g
-
-mean_dpos = np.array([[-1., 3.],[1.,7.]]) #r, i, z
-transform_number = []
+# mean_dpos = np.array([[-1., 3.],[1.,7.]]) #r, i, z
 np.seterr(divide='ignore', invalid='ignore')
 
 # script arguments
@@ -60,23 +46,38 @@ dataname = str(sys.argv[1])
 visual = int(sys.argv[2]) > 0
 # 1 to test, 0 not to test
 testpsfn = int(sys.argv[3]) > 0
-# 'mock' for simulated
+# 'mock' for simulated, 'mock2' for two source blended mock
 datatype = str(sys.argv[4])
 # 1 for multiband, 0 for single band
 multiband = int(sys.argv[5]) > 0
 
-mock_test_name = 'mock_2star_16'
-
-bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, data_array, data_hdrs, weights, nmgy_per_count = [[] for x in xrange(12)]
-
-# mock tests
 if datatype=='mock2':
-    directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/Data"
+    config_type = str(sys.argv[6])
+    nrealization = int(sys.argv[7])
+
+mock_test_name = 'mock_2star_18'
+
+bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
+    data_array, data_hdrs, weights, nmgy_per_count, mean_dpos = [[] for x in xrange(13)]
+
+
+if sys.platform=='darwin':
+    base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
+elif sys.platform=='linux2':
+    base_path = '/n/fink1/rfeder/mpcat/multiband_pcat/'
 else:
-    directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/pcat-lion-results"
+    base_path = raw_input('Operating system not detected, please enter base_path directory (eg. /Users/.../pcat-lion-master):')
+    if not os.path.isdir(base_path):
+        raise OSError('Directory chosen does not exist. Please try again.')
+
+
+if datatype=='mock2':
+    result_path = base_path + '/Data'
+else:
+    result_path = base_path + '/pcat-lion-results'
+print 'Results will go in', result_path
 
 if multiband:
-    #mock test
     if datatype=='mock2':
         bands = ['r']
     else:
@@ -90,10 +91,9 @@ else:
     nbands = 1
     bands = ['']
 
-# print 'Lion mode:', strgmode
 print 'datatype:', datatype
 
-total_time = time.clock()
+start_time = time.clock()
 
 #could simplify
 for b in xrange(nbands):
@@ -103,7 +103,7 @@ for b in xrange(nbands):
             f = open('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt')
             psf = np.loadtxt('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
             g = open('Data/'+mock_test_name+'/'+mock_test_name+'-pix'+bands[b]+'.txt')
-            data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
+            data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt').astype(np.float32)
         else:
             f = open('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt')
             psf = np.loadtxt('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
@@ -129,7 +129,7 @@ for b in xrange(nbands):
         a = np.float32(g.readline().split())
         print a
         nmgy_per_count.append(a[0])
-        if datatype=='mock':
+        if datatype=='mock' or datatype=='mock2':
             trueback[b] = a[1]
     biases.append(bias)
     gains.append(gain)
@@ -150,8 +150,10 @@ for b in xrange(nbands):
         #data-specific
         pathname = 'Data/'+dataname+'/asGrid/asGrid002583-2-0136-100x100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms0_0.fits'
         if os.path.isfile(pathname):
-            transfer_hdus = fits.open(pathname)
-            pixel_transfer_mats.append(np.array([transfer_hdus[0].data, transfer_hdus[1].data,transfer_hdus[2].data, transfer_hdus[3].data, transfer_hdus[4].data, transfer_hdus[5].data]))
+            pixel_transfer_mats.append(read_astrans_mats(pathname))
+            dx, dy = find_mean_offset(pathname, dim=imsz[0])
+            dpos = [int(dx), int(dy)]
+            mean_dpos.append(dpos)
         else:
             pixel_transfer_mats.append(generate_default_astrans([imsz[0], imsz[1]]))
         assert w==w0 and h==h0
@@ -166,8 +168,12 @@ else:
 assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 margin = 10
+
 #mock test
-nsamp = 10
+if datatype =='mock2':
+    nsamp = 20
+else:
+    nsamp = 1000
 nloop = 1000
 
 def initialize_c():
@@ -185,16 +191,14 @@ def initialize_c():
     libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
 def create_directories(time_string):
-    #mock tests
     if datatype=='mock2':
-        new_dir_name = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
+        new_dir_name = result_path+'/'+mock_test_name+'/' + str(dataname) + '/results'
     else:
-        new_dir_name = directory_path + '/' + str(time_string)
-    frame_dir_name = new_dir_name + '/frames'
+        new_dir_name = result_pat +'/'+ str(time_string)
+    frame_dir_name = new_dir_name+'/frames'
     if not os.path.isdir(frame_dir_name):
         os.makedirs(frame_dir_name)
     return frame_dir_name
-
 
 def flux_proposal(f0, nw, trueminf, b):
     pixel_variance = trueback[b]/gains[b]
@@ -296,14 +300,6 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
     match_y = (get_region(y[0:n], offsety, regsize) % 2) == parity_y
     return np.flatnonzero(np.logical_and(match_x, match_y))
 
-def signal_handler(signal, frame):
-    # print('Saving plots now..')
-    # if multiband:
-    #     results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, chi2sample, bkgsample, directory_path, timestr, nbands, bands, multiband, nmgy_per_count)
-    # else:
-    #     results(nsample,fsample, truef, [], nsamp, timestats, tq_times, chi2sample, bkgsample, directory_path, timestr, nbands, bands, multiband, nmgy_per_count)
-    os._exit
-
 class Proposal:
     _X = 0
     _Y = 1
@@ -397,8 +393,9 @@ class Proposal:
 class Model:
     #mock test
     nstar = 2000
+    if datatype=='mock2':
+        nstar = 20
     trueminf = np.float32(236) 
-    # trueminf = np.float32(236) 
     truealpha = np.float32(2)
     penalty = 1+0.5*(nbands) #multiband 
     kickrange = 1.
@@ -618,7 +615,8 @@ class Model:
         
         chi2 = []
         for b in xrange(nbands):
-            #don't evaluate chi2 on outer periphery
+            #don't evaluate chi2 on outer periphery, though this is mainly important for edge effects in multiband case
+            # could be 'if multiband:'
             if datatype != 'mock':
                 xmin, xmax = 2, imsz[0]-2
                 ymin, ymax = 2, imsz[1]-2
@@ -627,6 +625,9 @@ class Model:
                 ymin, ymax = 0, imsz[1]
             chi2.append(np.sum(weights[b][xmin:xmax,ymin:ymax]*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])))        
         
+        
+        # ---------------- Printing diagnostics here ---------------------
+
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
         print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
         dt1 *= 1000
@@ -654,6 +655,9 @@ class Model:
         print '-'*16
         print 'Total (s): %0.3f' % (np.sum(statarrays[2:])/1000)
         print '='*16
+        # print 'savefig = ', sf, 'c = ', c
+
+        # ------------------------------------------------------------------
 
         tplot = time.clock()
         # mock test
@@ -662,8 +666,9 @@ class Model:
                 hfs = hf[:,0]
             else:
                 hfs = []
-            # multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
-                # bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, datatype)
+
+            multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
+                bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, include_hubble, datatype)
 
         dtplot = time.clock()-tplot
         othertimes.append(dtplot)
@@ -740,6 +745,7 @@ class Model:
         pixel_variance = trueback[0]/gains[0]
         N_eff = 17.5
         err_f = np.sqrt(N_eff * pixel_variance)
+        # data specific
         N_src = 1400.
  
         dlogf = np.log(pfs[0]/f0[0])
@@ -963,20 +969,8 @@ if multiband:
         truecolor = adus_to_color(truef[:,0], truef[:,b+1], nmpc) 
         truecolors.append(truecolor)
 
-# if datatype == 'mock':    
-#     hx, hy, hf = [], [], []
-#     hubble_coords = [hx, hy, hf]
-#     mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
-# else:
 if include_hubble:
     true_h = fits.open('Data/'+dataname+'/hubble_pixel_coords-2583-2-0136.fits')
-
-    # print 'true xr, ', np.min(true_h[0].data), np.std(true_h[0].data)
-    # print 'true yr, ', np.min(true_h[1].data), np.std(true_h[1].data)
-    # print 'true xi, ', np.min(true_h[2].data), np.std(true_h[2].data)
-    # print 'true yi, ', np.min(true_h[3].data), np.std(true_h[3].data)
-    # print 'true xg, ', np.min(true_h[4].data), np.std(true_h[4].data)
-    # print 'true yg, ', np.min(true_h[5].data), np.std(true_h[5].data)
 
     hxr = true_h[0].data-310
     hyr = true_h[1].data-630
@@ -997,9 +991,6 @@ else:
     mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
 
 
-
-
-
 nstar = Model.nstar
 nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
@@ -1015,15 +1006,14 @@ if multiband:
 else:
     fsample = np.zeros((nsamp, nstar), dtype=np.float32)
 chi2sample = np.zeros((nsamp, nbands), dtype=np.int32)
-# models = [Model() for k in xrange(ntemps)]
 model = Model()
 
 #create directory for results
 frame_dir = create_directories(timestr)
 
-
-plt.ion()
-plt.figure(figsize=(15,10))
+if visual:
+    plt.ion()
+    plt.figure(1, figsize=(15, min(2, nbands)*5))
 # sampling loop
 for j in xrange(nsamp):
     chi2_all = np.zeros(nbands)
@@ -1032,9 +1022,10 @@ for j in xrange(nsamp):
     if nsamp<10:
         sf = 1
         c+= 1
-    elif j%(int(nsamp/10))==0 and nsamp > 9:
-        sf = 1
-        c+=1
+    else:
+        if j%10==0:
+            sf = 1
+            c+=1
      
     _, chi2_all, statarrays, othertimes, accept_fracs = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
 
@@ -1067,13 +1058,14 @@ print 'saving...'
 
 #mock test
 if datatype=='mock2':
-    np.savez(directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results/chain1x3.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
-    result_dir = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
+    np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
+    result_dir = result_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
 else:
-    np.savez(directory_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
-    result_dir = directory_path + '/' + timestr
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
+    result_dir = result_path + '/' + timestr
 
 
 # results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, datatype)
-dt_total = time.clock()-total_time
+
+dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)

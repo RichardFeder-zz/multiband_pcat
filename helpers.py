@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
 from astropy.io import fits
 
 def adus_to_color(flux0, flux1, nm_2_cts):
@@ -32,3 +31,27 @@ def transform_q(x,y, mats):
 
 def gaussian(x, mu, sig):
     return -np.power(x - mu, 2.) / (2 * np.power(sig, 2.))
+
+def generate_default_astrans(imsz):
+    astransx, astransy, mat3, mat4, mat5, mat6 = [[] for x in xrange(6)]
+    for x in xrange(imsz[0]):
+        astransx.append(np.linspace(0, imsz[0]-1, imsz[0]))
+        astransy.append(np.full((imsz[1]), x).transpose())
+    mat3 = np.full((imsz[0], imsz[1]), 1)
+    mat4 = np.zeros((imsz[0], imsz[1]))
+    mat5 = np.zeros((imsz[0], imsz[1]))
+    mat6 = np.full((imsz[0], imsz[1]), 1)
+    pixel_transfer_mats = np.zeros((6, imsz[0],imsz[1]))
+    pixel_transfer_mats = np.array([astransx, astransy, mat3, mat4, mat5, mat6])
+    return pixel_transfer_mats
+
+def read_astrans_mats(data_path):
+    hdu = fits.open(data_path)
+    mats = np.array([hdu[0].data, hdu[1].data,hdu[2].data, hdu[3].data, hdu[4].data, hdu[5].data])
+    return mats
+
+def find_mean_offset(filename, dim=100):
+    mats = read_astrans_mats(filename)
+    x, y = [np.random.uniform(10, dim-10, 1000) for p in xrange(2)]
+    x1, y1 = transform_q(x, y, mats)
+    return np.mean(x1-x), np.mean(y1-y)
