@@ -4,7 +4,7 @@ import os
 
 n_realizations = 3
 two_star_blend = 1
-two_star_mode = 'r' # r, r_i_g, rx3 are the three modes
+two_star_mode = 'rx3' # r, r_i_g, rx3 are the three modes
 dim = 18
 bands = ['r', 'i', 'g']
 
@@ -33,8 +33,6 @@ if two_star_blend:
 	r_g_colors = [-1.0, 0.0]
 	r_fluxes = np.array([250., 500., 1000.], dtype=np.float32)
 
-	if two_star_mode=='rx3':
-		trueback[0] *= 3
 else:
 	dir_name = 'mock' + str(imsz[0])
 
@@ -48,10 +46,16 @@ for n in xrange(n_realizations):
 	noise_realizations.append(np.random.normal(size=(imsz[1],imsz[0])).astype(np.float32))
 
 
+back_pix = truebacks
+if two_star_mode=='rx3':
+		back_pix[0] *= 3
+
+
+
 for b in xrange(len(bands)):
 	# pix
 	f = open('Data/'+dir_name+'/'+dir_name+'-pix'+bands[b]+'.txt', 'w')
-	f.write('%1d\t%1d\t1\n0.\t%0.3f\n%0.8f\t%1d' % (imsz[0], imsz[1], gain, nmgy_to_cts, truebacks[b]))
+	f.write('%1d\t%1d\t1\n0.\t%0.3f\n%0.8f\t%1d' % (imsz[0], imsz[1], gain, nmgy_to_cts, back_pix[b]))
 	f.close()
 	# psf
 	np.savetxt('Data/'+dir_name+'/'+dir_name+'-psf'+bands[b]+'.txt', psf, header='%1d\t%1d' % (nc, nbin), comments='')
@@ -83,9 +87,9 @@ if two_star_blend:
 			# ------------------- ITERATE THROUGH FLUX RATIOS -----------------------
 
 			for flux_ratio in flux_ratios:
-				subdir = 'Data/' + dir_name + '/' + dir_name + '-' + str(offset)+'-'+str(flux)+'-'+str(flux_ratio)
-				if not os.path.isdir(subdir):
-					os.makedirs(subdir)
+				# if two_star_mode=='rx3':
+				# 	subdir = 'Data/' + dir_name + '/' + dir_name + '-' + str(offset)+'-'+str(flux*3)+'-'+str(flux_ratio)
+				# else:
 
 				truer[1] = flux*flux_ratio*(1+10**(0.4*r_i_colors[1])+10**(-0.4*r_g_colors[1]))
 				truei[1] = flux*flux_ratio*10**(0.4*r_i_colors[1])
@@ -95,17 +99,25 @@ if two_star_blend:
 
 				mock_counts = []
 
+				f = flux
+				if two_star_mode=='rx3':
+					f *=3
+				subdir = 'Data/' + dir_name + '/' + dir_name + '-' + str(offset)+'-'+str(f)+'-'+str(flux_ratio)
+				if not os.path.isdir(subdir):
+					os.makedirs(subdir)
+
 				for b in xrange(len(bands)):
-					mock = image_model_eval(np.array(truex, dtype=np.float32), np.array(true_fluxes[b],dtype=np.float32), np.array(true_fluxes[b],dtype=np.float32), truebacks[b], imsz, nc, cf)
+					mock = image_model_eval(np.array(truex, dtype=np.float32), np.array(truey, dtype=np.float32), np.array(true_fluxes[b],dtype=np.float32), truebacks[b], imsz, nc, cf)
 					mock[mock < 1] = 1. # maybe some negative pixels
 					variance = mock / gain
 
 					for n in xrange(n_realizations):
 						mock += (np.sqrt(variance)*noise_realizations[n])
 
-						np.savetxt(subdir+'/'+dir_name+'-'+str(offset)+'-'+str(flux)+'-'+str(flux_ratio)+'-nr'+str(n+1)+'-cts'+bands[b]+'.txt', mock)
+						np.savetxt(subdir+'/'+dir_name+'-'+str(offset)+'-'+str(f)+'-'+str(flux_ratio)+'-nr'+str(n+1)+'-cts'+bands[b]+'.txt', mock)
+				
 				truth = np.array([np.array(truex), np.array(truey), np.array(truer), np.array(truei), np.array(trueg)], dtype=np.float32).T
-				np.savetxt(subdir + '/'+dir_name+'-'+str(offset)+'-'+str(flux)+'-'+str(flux_ratio)+'-tru.txt', truth)
+				np.savetxt(subdir + '/'+dir_name+'-'+str(offset)+'-'+str(f)+'-'+str(flux_ratio)+'-tru.txt', truth)
 
 # for standard nstar mock data
 else:

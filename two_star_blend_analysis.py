@@ -15,7 +15,7 @@ ncases = len(cases)
 num_realizations = 1 # number of noise realizations
 
 
-mock_test_name = 'mock_2star_16'
+mock_test_name = 'mock_2star_'+str(imsz)
 directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master"
 
 def find_offsets_errs(f, rat, plist, offsets, num, case):
@@ -53,12 +53,12 @@ def find_min_ds(xs, ys, fs, source, case, flux_ratios, r_fluxes, offsets, a, b, 
 def load_arrays(a, b, c, nrealization=0):
 	dataname = mock_test_name+'-' + str(offsets[a])+'-'+str(r_fluxes[b])+'-'+str(flux_ratios[c])
 
-	chain_types = ['chain3', 'chain1', 'chain1x3']
+	chain_types = ['r_i_g', 'r', 'rx3']
 
 	all_x, all_y, all_f, ns = [[] for x in xrange(4)]
 
 	for chain in chain_types:
-		if chain == 'chain1x3':
+		if chain == 'rx3':
 			dataname = mock_test_name+'-' + str(offsets[a])+'-'+str(3.*r_fluxes[b])+'-'+str(flux_ratios[c])
 		if nrealization > 0:
 			p = np.load(directory_path+'/Data/'+mock_test_name+'/'+dataname+'/results/'+chain+'-'+str(nrealization)+'.npz')

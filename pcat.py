@@ -20,7 +20,6 @@ from image_eval import psf_poly_fit, image_model_eval
 from result_diagnostics import results, multiband_sample_frame
 from helpers import *
 
-
 # Run, rerun, CamCol, DAOPHOTID, RA, DEC, xu, yu, u (mag), uErr, chi, sharp, flag, xg, yg, g, gErr, chi, sharp, flag, 
 # xr, yr, r, rerr, chi, sharp, flag, xi, yi, i, ierr, chi, sharp, flag, xz, yz, z, zerr, chi, sharp, flag
 
@@ -36,9 +35,7 @@ np.random.seed(20170501)
 
 # trueback = [180., 314., 103., 140.] #r, i, g, z
 trueback = [180., 314., 140.]
-# mean_dpos = np.array([[-0.642, 2.756 ],[3.231,10.8482], [0.68116, 6.72648]]) #this is for run 2583, camcol 2 for i, g, z
-# mean_dpos = np.array([[-1., 3.],[3.,10.]]) #r, i, g
-# mean_dpos = np.array([[-1., 3.],[1.,7.]]) #r, i, z
+
 np.seterr(divide='ignore', invalid='ignore')
 
 # script arguments
@@ -121,7 +118,6 @@ for b in xrange(nbands):
     ncs.append(nc)
     cf = psf_poly_fit(psf, nbin=nbin)
     cfs.append(cf)
-    npar = cf.shape[0]
     w, h, nb = [np.int32(i) for i in g.readline().split()]
     imdim = (w,h)
     bias, gain = [np.float32(i) for i in g.readline().split()]
@@ -173,28 +169,33 @@ margin = 10
 if datatype =='mock2':
     nsamp = 20
 else:
-    nsamp = 1000
+    nsamp = 100
 nloop = 1000
 
 def initialize_c():
-    if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
+    if os.path.getmtime('pcat-lion-test.c') > os.path.getmtime('pcat-lion-test.so'):
+    # if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
         warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
     array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
     array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
     array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
     libmmult.pcat_model_eval.restype = None
     libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+    # libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_float, c_int, c_int, c_int, c_int]
+
     array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
     libmmult.pcat_imag_acpt.restype = None
     libmmult.pcat_imag_acpt.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
     libmmult.pcat_like_eval.restype = None
     libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+    # libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_float, c_int, c_int, c_int, c_int]
+
 
 def create_directories(time_string):
     if datatype=='mock2':
         new_dir_name = result_path+'/'+mock_test_name+'/' + str(dataname) + '/results'
     else:
-        new_dir_name = result_pat +'/'+ str(time_string)
+        new_dir_name = result_path +'/'+ str(time_string)
     frame_dir_name = new_dir_name+'/frames'
     if not os.path.isdir(frame_dir_name):
         os.makedirs(frame_dir_name)
@@ -213,7 +214,7 @@ def flux_proposal(f0, nw, trueminf, b):
     logdf = np.float32(0.01/np.sqrt(N_src))
     ff = np.log(logdf*logdf*f0 + logdf*np.sqrt(lindf*lindf + logdf*logdf*f0*f0)) / logdf
     ffmin = np.log(logdf*logdf*trueminf + logdf*np.sqrt(lindf*lindf + logdf*logdf*trueminf*trueminf)) / logdf
-    dff = np.random.normal(size=nw).astype(np.float32)
+    dff = np.random.normal(size=nw)
     aboveffmin = ff - ffmin
     oob_flux = (-dff > aboveffmin)
     dff[oob_flux] = -2*aboveffmin[oob_flux] - dff[oob_flux]
@@ -221,7 +222,7 @@ def flux_proposal(f0, nw, trueminf, b):
     pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
     return pf
 
-def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety):
+def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize, margin, offsetx, offsety):
     dmodels, diff2s = [[],[]]
     dt_transf = 0
     for b in xrange(nbands):
@@ -235,18 +236,23 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
             # xp += 0.5
             # yp += 0.5
             dt_transf += time.clock()-t4
-            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
+             weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
         else:    
             xp=x
             yp=y
-            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
+                weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+            # dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
+            #     weights=weights[b], ref=ref[b], lib=None, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
         dmodels.append(dmodel)
         diff2s.append(diff2)
     return dmodels, diff2s, dt_transf
 
 # ix, iy = 0. to 3.999
 def testpsf(nc, cf, psf, ix, iy, lib=None):
-    psf0 = image_model_eval(np.array([12.-ix/5.], dtype=np.float32), np.array([12.-iy/5.], dtype=np.float32), np.array([1.], dtype=np.float32), 0., (25,25), nc, cf, lib=lib)
+    psf0 = image_model_eval(np.array([12.-ix/5.], dtype=np.float32), np.array([12.-iy/5.], \
+        dtype=np.float32), np.array([1.], dtype=np.float32), 0., (25,25), nc, cf, lib=lib)
     plt.subplot(2,2,1)
     plt.imshow(psf0, interpolation='none', origin='lower')
     plt.title('matrix multiply PSF')
@@ -459,6 +465,8 @@ class Model:
         n_phon = evalx.size
         models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
             regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+        # models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=None, \
+        #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
  
         if multiband:
             diff2_total = np.sum(np.array(diff2s), axis=0)
@@ -593,7 +601,9 @@ class Model:
                     self.regsize = self.region_params[2]
                     self.nregx = self.region_params[3]
                     self.nregy = self.region_params[4]
-                    models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
+                    # models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
+                    #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+                    models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=None, \
                         regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
                     if multiband:
                         diff2_total = np.sum(np.array(diff2s), axis=0)
@@ -631,7 +641,7 @@ class Model:
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
         print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
         dt1 *= 1000
-        dt2 *= 1000
+        # dt2 *= 1000
         dt3 *= 1000
         accept_fracs = []
         othertimes = []
@@ -639,6 +649,7 @@ class Model:
         timestat_array = np.zeros((5, 1+len(moveweights)), dtype=np.float32)
         statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)']
         statarrays = [accept, outbounds, dt1, dt2, dt3]
+        print 'dt2:', np.sum(dt2)
         for j in xrange(len(statlabels)):
             timestat_array[j][0] = np.sum(statarrays[j])/1000
             if j==0:
@@ -655,12 +666,10 @@ class Model:
         print '-'*16
         print 'Total (s): %0.3f' % (np.sum(statarrays[2:])/1000)
         print '='*16
-        # print 'savefig = ', sf, 'c = ', c
 
         # ------------------------------------------------------------------
 
         tplot = time.clock()
-        # mock test
         if visual or savefig:
             if include_hubble:
                 hfs = hf[:,0]
@@ -672,7 +681,7 @@ class Model:
 
         dtplot = time.clock()-tplot
         othertimes.append(dtplot)
-        return self.n, chi2, timestat_array, othertimes, accept_fracs
+        return self.n, chi2, timestat_array, othertimes, accept_fracs, np.sum(dt2)
 
     def calculate_logL(diff2s, len_diff20):
         if multiband:
@@ -756,8 +765,8 @@ class Model:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
-        dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
-        dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
+        dx = np.random.normal(size=nw)*dpos_rms
+        dy = np.random.normal(size=nw)*dpos_rms
         starsp[self._X,:] = stars0[self._X,:] + dx
         starsp[self._Y,:] = stars0[self._Y,:] + dy
         for b in xrange(nbands):
@@ -824,15 +833,15 @@ class Model:
         # split
         if splitsville and self.n > 0 and self.n < self.nstar and bright_n > 0: # need something to split, but don't exceed nstar
             nms = min(nms, bright_n, self.nstar-self.n) # need bright source AND room for split source
-            dx = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
-            dy = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
+            dx = (np.random.normal(size=nms)*self.kickrange)
+            dy = (np.random.normal(size=nms)*self.kickrange)
             idx_move = np.random.choice(idx_bright, size=nms, replace=False)
             stars0 = self.stars.take(idx_move, axis=1)
             fminratio = stars0[self._F,:] / self.trueminf
  
             fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
             for b in xrange(nbands-1):
-                fracs.append(np.random.uniform(size=nms).astype(np.float32))
+                fracs.append(np.random.uniform(size=nms))
 
             starsp = np.empty_like(stars0)
             starsb = np.empty_like(stars0)
@@ -952,9 +961,12 @@ class Model:
             proposal.set_factor(factor)
         return proposal
 
-libmmult = npct.load_library('pcat-lion', '.')
+# --------------------------------- start executing the program now ---------------------------------------------
+
+libmmult = npct.load_library('pcat-lion-test', '.')
+# libmmult = npct.load_library('pcat-lion', '.')
 initialize_c()
-#mock tests
+
 if datatype=='mock2':
     truth = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-tru.txt')
 else:
@@ -972,12 +984,15 @@ if multiband:
 if include_hubble:
     true_h = fits.open('Data/'+dataname+'/hubble_pixel_coords-2583-2-0136.fits')
 
-    hxr = true_h[0].data-310
-    hyr = true_h[1].data-630
-    hxi = true_h[2].data-310
-    hyi = true_h[3].data-630
-    hxg = true_h[4].data-310
-    hyg = true_h[5].data-630
+    xoff = 310
+    yoff = 630
+
+    hxr = true_h[0].data-xoff
+    hyr = true_h[1].data-yoff
+    hxi = true_h[2].data-xoff
+    hyi = true_h[3].data-yoff
+    hxg = true_h[4].data-xoff
+    hyg = true_h[5].data-yoff
 
     hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
 
@@ -995,6 +1010,7 @@ nstar = Model.nstar
 nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
 ysample = np.zeros((nsamp, nstar), dtype=np.float32)
+dt2s = np.zeros(nsamp, dtype=np.float32)
 timestats = np.zeros((nsamp, 5, 5), dtype=np.float32)
 accept_stats = np.zeros((nsamp, 5), dtype=np.float32)
 tq_times = np.zeros(nsamp, dtype=np.float32)
@@ -1019,15 +1035,15 @@ for j in xrange(nsamp):
     chi2_all = np.zeros(nbands)
     print 'Loop', j
     sf = 0
-    if nsamp<10:
-        sf = 1
-        c+= 1
-    else:
-        if j%10==0:
-            sf = 1
-            c+=1
+    # if nsamp<10:
+    #     sf = 1
+    #     c+= 1
+    # else:
+    #     if j%10==0:
+    #         sf = 1
+    #         c+=1
      
-    _, chi2_all, statarrays, othertimes, accept_fracs = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
+    _, chi2_all, statarrays, othertimes, accept_fracs, dt2_val = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
 
     tq_times[j] = othertimes[0]
     plt_times[j] = othertimes[1]
@@ -1052,9 +1068,12 @@ for j in xrange(nsamp):
 
     chi2sample[j] = chi2_all
     timestats[j,:] = statarrays
+    dt2s[j] = dt2_val
 if not multiband:
     colorsample = []
 print 'saving...'
+
+print np.mean(dt2s), np.std(dt2s)
 
 #mock test
 if datatype=='mock2':
