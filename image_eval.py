@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+
 
 def psf_poly_fit(psf0, nbin):
         assert psf0.shape[0] == psf0.shape[1] # assert PSF is square
@@ -21,7 +21,7 @@ def psf_poly_fit(psf0, nbin):
 
         # loop over original psf pixels and get fit coefficients
         for iy in xrange(nc):
-         for ix in xrange(nc):
+            for ix in xrange(nc):
                 # solve p = A cf for cf
                 p = psf[iy*nbin:(iy+1)*nbin+1, ix*nbin:(ix+1)*nbin+1].flatten()
                 AtAinv = np.linalg.inv(np.dot(A.T, A))
@@ -41,6 +41,8 @@ def image_model_eval(x, y, f, back, imsz, nc, cf, regsize=None, margin=0, offset
 
     if weights is None:
         weights = np.full(imsz, 1., dtype=np.float32)
+    # elif len(weights)==1:
+    #     weights = np.full(imsz, weights, dtype=np.float32)
     if regsize is None:
         regsize = max(imsz[0], imsz[1])
 
@@ -62,7 +64,6 @@ def image_model_eval(x, y, f, back, imsz, nc, cf, regsize=None, margin=0, offset
     dy = iy - y
 
     dd = np.column_stack((np.full(nstar, 1., dtype=np.float32), dx, dy, dx*dx, dx*dy, dy*dy, dx*dx*dx, dx*dx*dy, dx*dy*dy, dy*dy*dy)).astype(np.float32) * f[:, None]
-
     if lib is None:
         image = np.full((imsz[1]+2*rad+1,imsz[0]+2*rad+1), back, dtype=np.float32)
         recon2 = np.dot(dd, cf).reshape((nstar,nc,nc))
@@ -74,25 +75,27 @@ def image_model_eval(x, y, f, back, imsz, nc, cf, regsize=None, margin=0, offset
         image = image[rad:imsz[1]+rad,rad:imsz[0]+rad]
 
         if ref is not None:
-                diff = ref - image
-        diff2 = np.zeros((nregy, nregx), dtype=np.float64)
-        for i in xrange(nregy):
-            y0 = max(i*regsize - offsety - margin, 0)
-            y1 = min((i+1)*regsize - offsety + margin, imsz[1])
-            for j in xrange(nregx):
-                x0 = max(j*regsize - offsetx - margin, 0)
-                x1 = min((j+1)*regsize - offsetx + margin, imsz[0])
-                subdiff = diff[y0:y1,x0:x1]
-                diff2[i,j] = np.sum(subdiff*subdiff*weights[y0:y1,x0:x1])
+            diff = ref - image
+            diff2 = np.zeros((nregy, nregx), dtype=np.float64)
+            for i in xrange(nregy):
+                y0 = max(i*regsize - offsety - margin, 0)
+                y1 = min((i+1)*regsize - offsety + margin, imsz[1])
+                for j in xrange(nregx):
+                    x0 = max(j*regsize - offsetx - margin, 0)
+                    x1 = min((j+1)*regsize - offsetx + margin, imsz[0])
+                    subdiff = diff[y0:y1,x0:x1]
+                    diff2[i,j] = np.sum(subdiff*subdiff*weights[y0:y1,x0:x1])
     else:
         image = np.full((imsz[1], imsz[0]), back, dtype=np.float32)
         recon = np.zeros((nstar,nc*nc), dtype=np.float32)
         reftemp = ref
         if ref is None:
-                reftemp = np.zeros((imsz[1], imsz[0]), dtype=np.float32)
+            reftemp = np.zeros((imsz[1], imsz[0]), dtype=np.float32)
         diff2 = np.zeros((nregy, nregx), dtype=np.float64)
+        # diff2 = np.zeros((nregy, nregx), dtype=np.float32)
         lib(imsz[0], imsz[1], nstar, nc, cf.shape[0], dd, cf, recon, ix, iy, image, reftemp, weights, diff2, regsize, margin, offsetx, offsety)
 
+    # print image.shape, nc
     if ref is not None:
         return image, diff2
     else:
