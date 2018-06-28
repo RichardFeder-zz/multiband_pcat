@@ -3,9 +3,9 @@ from image_eval import image_model_eval, psf_poly_fit
 import os
 
 n_realizations = 3
-two_star_blend = 1
+two_star_blend = 0
 two_star_mode = 'rx3' # r, r_i_g, rx3 are the three modes
-dim = 18
+dim = 100
 bands = ['r', 'i', 'g']
 
 f = open('Data/sdss.0921/sdss.0921_psf.txt')
@@ -122,6 +122,7 @@ if two_star_blend:
 # for standard nstar mock data
 else:
 	n_second_pop = 0
+	nstar = dim*dim/4
 	color_mus = [1, -0.5]
 	color_sigs = [0.3, 0.2]
 	truealpha = np.float32(2.0)
@@ -133,7 +134,7 @@ else:
 	truebackg = np.float32(115.)
 	truebacks = [truebackr, truebacki, truebackg]
 
-	true_params = np.zeros(size=(nstar, 2+len(bands)),dtype=np.float32)
+	true_params = np.zeros(shape=(nstar, 2+len(bands)),dtype=np.float32)
 	true_params[:,0] = np.random.uniform(size=nstar)*(imsz[0]-1) # x coordinate
 	true_params[:,1] = np.random.uniform(size=nstar)*(imsz[1]-1) # y coordinate
 	true_params[:,2] = trueminf * np.exp(truelogf) # r band flux
