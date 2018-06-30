@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
 # from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
@@ -25,7 +27,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
 
     # ------------------- SOURCE NUMBER ---------------------------
 
-    plt.figure()
+    #plt.figure(1)
     plt.title('Posterior Source Number Histogram')
     plt.hist(nchain[burn_in:], histtype='step', label='Posterior', color='b')
     plt.axvline(np.median(nchain[burn_in:]), label='Median=' + str(np.median(nchain[burn_in:])), color='b', linestyle='dashed')
@@ -37,7 +39,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
     
     sample_number = list(xrange(nsamp-burn_in))
     full_sample = xrange(nsamp)
-    plt.figure()
+   # plt.figure(2)
     plt.title('Chi-Squared Distribution over Samples')
     for b in xrange(nbands):
         plt.plot(sample_number, chi2[burn_in:,b], label=bands[b])
@@ -54,12 +56,12 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
     labels = ['Proposal', 'Likelihood', 'Implement', 'asTrans']
     for samp in xrange(nsamp):
         time_array += np.array([timestats[samp][2][0], timestats[samp][3][0], timestats[samp][4][0], tq_times[samp]])
-    plt.figure()
+   # plt.figure(3)
     plt.title('Computational Resources')
     plt.pie(time_array, labels=labels, autopct='%1.1f%%', shadow=True)
     plt.savefig(result_directory+ '/time_resource_statistics.pdf', bbox_inches='tight')
 
-    plt.figure()
+   # plt.figure(4)
     plt.title('Time Histogram for asTrans Transformations')
     plt.hist(tq_times[burn_in:], bins=20, histtype='step')
     plt.xlabel('Time (s)')
@@ -67,7 +69,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
     plt.legend()
     plt.savefig(result_directory+ '/asTrans_time_resources.pdf', bbox_inches='tight')
 
-    plt.figure()
+   # plt.figure(5)
     plt.title('Time Histogram for Plotting')
     plt.hist(plt_times, bins=20, histtype='step')
     plt.xlabel('Time (s)')
@@ -78,7 +80,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
     # ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
 
     proposals = ['All', 'Move', 'Birth/Death', 'Merge/Split', 'Background Shift']
-    plt.figure()
+   # plt.figure(6)
     plt.title('Proposal Acceptance Fractions')
     for x in xrange(len(accept_stats[0])):
         if not np.isnan(accept_stats[0,x]):
@@ -92,7 +94,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
     for b in xrange(nbands):
 # ------------------ BACKGROUND SAMPLES --------------------------------
         if np.median(bkgsample[:,b]) != bkgsample[0,b]: #don't plot this if we're not sampling the background
-            plt.figure()
+    #        plt.figure()
             plt.title('Background Distribution over Samples')
             plt.hist(bkgsample[burn_in:,b], label=bands[b], histtype='step')
             plt.axvline(np.median(bkgsample[burn_in:,b]), label='Median in ' + str(bands[b])+'-band: ' + str(np.median(bkgsample[burn_in:,b])), linestyle='dashed', color='b')
@@ -104,7 +106,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
 
 # ------------------------------ MAGNITUDE DISTRIBUTION ---------------------------------------
 
-        plt.figure()
+     #   plt.figure(7)
         plt.title('Posterior Magnitude Distribution - ' + str(bands[b]))
         true_mags = adu_to_magnitude(truef[:,b], nmgy_per_count[b])
         (n, bins, patches) = plt.hist(true_mags, histtype='step', label=label, color='g')
@@ -126,7 +128,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
 # ----------------------------------------- COLOR PLOTS --------------------------------------------
     color_post_bins = np.linspace(-1.5, 1.5, 30)
     for b in xrange(nbands-1):
-        plt.figure()
+        plt.figure(7)
         plt.title('Posterior Color Distribution (Normalized to 1)')
         nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
         plt.hist(adus_to_color(truef[:,0], truef[:,b+1], nmpc), histtype='step',bottom=0.1, bins=color_post_bins, label=label, color='C1', linewidth=4, normed=1, alpha=0.5)
@@ -151,6 +153,7 @@ def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, 
         plt.xlabel(str(bands[0]) + ' - ' + str(bands[b+1]))
         plt.legend()
         plt.savefig(result_directory+'/posterior_histogram_'+str(bands[0])+'_'+str(bands[b+1])+'_color.pdf', bbox_inches='tight')
+        plt.close()
 
 # ---------------------------------------- COLOR COLOR DISTRIBUTION ----------------------------
 
