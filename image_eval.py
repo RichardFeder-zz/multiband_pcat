@@ -1,5 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 def psf_poly_fit(psf0, nbin):
         assert psf0.shape[0] == psf0.shape[1] # assert PSF is square
@@ -75,15 +75,15 @@ def image_model_eval(x, y, f, back, imsz, nc, cf, regsize=None, margin=0, offset
 
         if ref is not None:
                 diff = ref - image
-        diff2 = np.zeros((nregy, nregx), dtype=np.float64)
-        for i in xrange(nregy):
-            y0 = max(i*regsize - offsety - margin, 0)
-            y1 = min((i+1)*regsize - offsety + margin, imsz[1])
-            for j in xrange(nregx):
-                x0 = max(j*regsize - offsetx - margin, 0)
-                x1 = min((j+1)*regsize - offsetx + margin, imsz[0])
-                subdiff = diff[y0:y1,x0:x1]
-                diff2[i,j] = np.sum(subdiff*subdiff*weights[y0:y1,x0:x1])
+                diff2 = np.zeros((nregy, nregx), dtype=np.float64)
+                for i in xrange(nregy):
+                        y0 = max(i*regsize - offsety - margin, 0)
+                        y1 = min((i+1)*regsize - offsety + margin, imsz[1])
+                        for j in xrange(nregx):
+                                x0 = max(j*regsize - offsetx - margin, 0)
+                                x1 = min((j+1)*regsize - offsetx + margin, imsz[0])
+                                subdiff = diff[y0:y1,x0:x1]
+                                diff2[i,j] = np.sum(subdiff*subdiff*weights[y0:y1,x0:x1])
     else:
         image = np.full((imsz[1], imsz[0]), back, dtype=np.float32)
         recon = np.zeros((nstar,nc*nc), dtype=np.float32)
