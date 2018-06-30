@@ -1012,8 +1012,8 @@ nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
 ysample = np.zeros((nsamp, nstar), dtype=np.float32)
 dt2s = np.zeros(nsamp, dtype=np.float32)
-timestats = np.zeros((nsamp, 5, 5), dtype=np.float32)
-accept_stats = np.zeros((nsamp, 5), dtype=np.float32)
+timestats = np.zeros((nsamp, 5, 4), dtype=np.float32)
+accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
 tq_times = np.zeros(nsamp, dtype=np.float32)
 plt_times = np.zeros(nsamp, dtype=np.float32)
 bkgsample = np.zeros((nsamp, nbands), dtype=np.float32)
@@ -1044,7 +1044,7 @@ for j in xrange(nsamp):
     #         sf = 1
     #         c+=1
      
-    _, chi2_all, statarrays, othertimes, accept_fracs, dt2_val = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
+    _, chi2_all, statarrays, othertimes, accept_fracs = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
 
     tq_times[j] = othertimes[0]
     plt_times[j] = othertimes[1]
@@ -1069,12 +1069,12 @@ for j in xrange(nsamp):
 
     chi2sample[j] = chi2_all
     timestats[j,:] = statarrays
-    dt2s[j] = dt2_val
+   # dt2s[j] = dt2_val
 if not multiband:
     colorsample = []
 print 'saving...'
 
-print np.mean(dt2s), np.std(dt2s)
+#print np.mean(dt2s), np.std(dt2s)
 
 #mock test
 if datatype=='mock2':
