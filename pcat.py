@@ -173,22 +173,19 @@ else:
 nloop = 1000
 
 def initialize_c():
-    if os.path.getmtime('pcat-lion-test.c') > os.path.getmtime('pcat-lion-test.so'):
-    # if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
+    # if os.path.getmtime('pcat-lion-test.c') > os.path.getmtime('pcat-lion-test.so'):
+    if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
         warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
     array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
     array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
     array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
     libmmult.pcat_model_eval.restype = None
     libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-    # libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_float, c_int, c_int, c_int, c_int]
-
     array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
     libmmult.pcat_imag_acpt.restype = None
     libmmult.pcat_imag_acpt.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
     libmmult.pcat_like_eval.restype = None
     libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-    # libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_float, c_int, c_int, c_int, c_int]
 
 
 def create_directories(time_string):
@@ -452,7 +449,7 @@ class Model:
         self.nregy = imsz[1] / self.regsize + 1
 
         #used when background shift is proposed in multiple regions
-        self.region_params = [0, 0, 0, 0, 0] #offsetx, offsety, regsize, parity
+        # self.region_params = [0, 0, 0, 0, 0] #offsetx, offsety, regsize, parity
 
         resids = []
         for b in xrange(nbands):
@@ -476,7 +473,8 @@ class Model:
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40., 40., 0.])
+        moveweights = np.array([80., 40., 40.])
+        # moveweights = np.array([80., 40., 40., 0.])
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
@@ -519,15 +517,18 @@ class Model:
             #         diff2_total = diff2s[0]
             #     logL = -0.5*diff2_total 
             #     # print "logL at 507", logL
-
-            movetypes = ['P *', 'BD *', 'MS *', 'BGD *']
+            movetypes = ['P *', 'BD *', 'MS *']
+            # movetypes = ['P *', 'BD *', 'MS *', 'BGD *']
             #proposal types
-            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.background_shift]
+            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
+            # movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.background_shift]
             proposal = movefns[rtype]()
             dt1[i] = time.clock() - t1
             if proposal.goodmove:
                 t2 = time.clock()
-                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, \
+                                                imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, \
+                                                margin=margin, offsetx=self.offsetx, offsety=self.offsety)
                 dttq[i] = dt_transf
                 # temporary fix
                 if multiband:
@@ -535,6 +536,7 @@ class Model:
                 else:
                     diff2_total = diff2s[0]
                 plogL = -0.5*diff2_total
+                #background
                 if rtype != 3:
                     plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
                     plogL[:,(1-self.parity_x)::2] = float('-inf')
@@ -548,7 +550,6 @@ class Model:
                 
                 if proposal.factor is not None:
                     dlogP[regiony, regionx] += proposal.factor
-
                     acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
@@ -591,29 +592,29 @@ class Model:
                         self.stars[:,self.n-1] = 0
                         self.n -= 1
 
-
-                if proposal.do_dback is not None:
-                    n_back_acpt += 1
-                    self.back += proposal.dback
-                    #reset parameters and calculate 
-                    self.offsetx = self.region_params[0]
-                    self.offsety = self.region_params[1]
-                    self.regsize = self.region_params[2]
-                    self.nregx = self.region_params[3]
-                    self.nregy = self.region_params[4]
-                    # models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
-                    #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
-                    models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=None, \
-                        regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
-                    if multiband:
-                        diff2_total = np.sum(np.array(diff2s), axis=0)
-                    else:
-                        diff2_total = diff2s[0]
-                    logL = -0.5*diff2_total
+                # if proposal.do_dback is not None:
+                #     n_back_acpt += 1
+                #     self.back += proposal.dback
+                #     #reset parameters and calculate 
+                #     self.offsetx = self.region_params[0]
+                #     self.offsety = self.region_params[1]
+                #     self.regsize = self.region_params[2]
+                #     self.nregx = self.region_params[3]
+                #     self.nregy = self.region_params[4]
+                #     # models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
+                #     #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+                #     models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=None, \
+                #         regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+                #     if multiband:
+                #         diff2_total = np.sum(np.array(diff2s), axis=0)
+                #     else:
+                #         diff2_total = diff2s[0]
+                #     logL = -0.5*diff2_total
 
                 dt3[i] = time.clock() - t3
 
                 if acceptprop.size > 0: 
+                    #background
                     if rtype != 3:
                         accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
                     else:
@@ -681,25 +682,25 @@ class Model:
 
         dtplot = time.clock()-tplot
         othertimes.append(dtplot)
-        return self.n, chi2, timestat_array, othertimes, accept_fracs, np.sum(dt2)
+        return self.n, chi2, timestat_array, othertimes, accept_fracs
 
-    def calculate_logL(diff2s, len_diff20):
-        if multiband:
-            diff2_recon = []
-            a = 0
-            b = len_diff20-1
-            print diff2s[b]
-            while diff2s[b] is not None:
-                print diff2s[b]
-                diff2_recon.append(diff2s[a:b])
-                a+= len_diff20+1
-                b+= len_diff20+1
-            print diff2_recon
-            diff2_total = np.sum(np.array(diff2_recon), axis=0)
-        else:
-            diff2_total = diff2s[0]
-        logL = -0.5*diff2_total 
-        return logL
+    # def calculate_logL(diff2s, len_diff20):
+    #     if multiband:
+    #         diff2_recon = []
+    #         a = 0
+    #         b = len_diff20-1
+    #         print diff2s[b]
+    #         while diff2s[b] is not None:
+    #             print diff2s[b]
+    #             diff2_recon.append(diff2s[a:b])
+    #             a+= len_diff20+1
+    #             b+= len_diff20+1
+    #         print diff2_recon
+    #         diff2_total = np.sum(np.array(diff2_recon), axis=0)
+    #     else:
+    #         diff2_total = diff2s[0]
+    #     logL = -0.5*diff2_total 
+    #     return logL
 
     def idx_parity_stars(self):
         return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, regsize)
@@ -721,21 +722,21 @@ class Model:
         return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (imsz[0] -1)), \
                 np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < imsz[1] - 1))
 
-    def background_shift(self):
-        which_band = 0 #for finding g band stuff
-        dback = np.zeros(nbands)
-        # dback[which_band] = np.random.normal(scale=0.01)
-        pixel_variance = trueback[which_band]/gains[which_band]
-        bkg_step_size = np.sqrt(pixel_variance)/(imsz[0]*imsz[1])
-        # bkg_step_size = 0.5
-        dback[which_band] = np.random.normal(scale=bkg_step_size)
-        # factor = gaussian(trueback[which_band]+dback[which_band], trueback[which_band], 1)*imsz[0]
-        factor = 0
-        # print(factor)
-        proposal = Proposal()
-        proposal.add_background_shift(self.back, dback, which_band, self.stars)
-        proposal.set_factor(factor)
-        return proposal
+    # def background_shift(self):
+    #     which_band = 0 #for finding g band stuff
+    #     dback = np.zeros(nbands)
+    #     # dback[which_band] = np.random.normal(scale=0.01)
+    #     pixel_variance = trueback[which_band]/gains[which_band]
+    #     bkg_step_size = np.sqrt(pixel_variance)/(imsz[0]*imsz[1])
+    #     # bkg_step_size = 0.5
+    #     dback[which_band] = np.random.normal(scale=bkg_step_size)
+    #     # factor = gaussian(trueback[which_band]+dback[which_band], trueback[which_band], 1)*imsz[0]
+    #     factor = 0
+    #     # print(factor)
+    #     proposal = Proposal()
+    #     proposal.add_background_shift(self.back, dback, which_band, self.stars)
+    #     proposal.set_factor(factor)
+    #     return proposal
 
 
     def move_stars(self): 
@@ -963,8 +964,8 @@ class Model:
 
 # --------------------------------- start executing the program now ---------------------------------------------
 
-libmmult = npct.load_library('pcat-lion-test', '.')
-# libmmult = npct.load_library('pcat-lion', '.')
+# libmmult = npct.load_library('pcat-lion-test', '.')
+libmmult = npct.load_library('pcat-lion', '.')
 initialize_c()
 
 if datatype=='mock2':
