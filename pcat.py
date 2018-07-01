@@ -94,30 +94,41 @@ start_time = time.clock()
 
 #could simplify
 for b in xrange(nbands):
-    if multiband:
-        #mock tests
-        if datatype=='mock2':
-            f = open('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt')
-            psf = np.loadtxt('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
-            g = open('Data/'+mock_test_name+'/'+mock_test_name+'-pix'+bands[b]+'.txt')
-            data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt').astype(np.float32)
-        else:
-            f = open('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt')
-            psf = np.loadtxt('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
-            g = open('Data/'+dataname+'/pixs/'+dataname +'-pix'+bands[b]+'.txt')
-            data = np.loadtxt('Data/'+dataname+'/cts/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
-    else:
-        f = open('Data/'+dataname+'/'+dataname+'-psf.txt')
-        psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf.txt',skiprows=1).astype(np.float32)
-        g = open('Data/'+dataname+'/'+dataname+'-pix.txt')
-        data = np.loadtxt('Data/'+dataname+'/'+dataname+'-cts.txt').astype(np.float32)
+    # if multiband:
+    #     #mock tests
+    #     if datatype=='mock2':
+    #         f = open('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt')
+    #         psf = np.loadtxt('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
+    #         g = open('Data/'+mock_test_name+'/'+mock_test_name+'-pix'+bands[b]+'.txt')
+    #         data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt').astype(np.float32)
+    #     else:
+    #         f = open('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt')
+    #         psf = np.loadtxt('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
+    #         g = open('Data/'+dataname+'/pixs/'+dataname +'-pix'+bands[b]+'.txt')
+    #         data = np.loadtxt('Data/'+dataname+'/cts/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
+    # else:
+    #     f = open('Data/'+dataname+'/'+dataname+'-psf.txt')
+    #     psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf.txt',skiprows=1).astype(np.float32)
+    #     g = open('Data/'+dataname+'/'+dataname+'-pix.txt')
+    #     data = np.loadtxt('Data/'+dataname+'/'+dataname+'-cts.txt').astype(np.float32)
 
-    nc, nbin = [np.int32(i) for i in f.readline().split()]
-    f.close()
-    psfs.append(psf)
+    if datatype=='mock2':
+        base_path = 'Data/'+mock_test_name+'/'+mock_test_name
+        paths = [base_path+'-psf'+str(bands[b])+'.txt', base_path+'-pix'+str(bands[b])+'.txt']
+        paths.append('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt')
+    else:
+        paths = ['Data/'+dataname+'/psfs/'+dataname+'-psf.txt', 'Data/'+dataname+'/pixs/'+dataname+'-pix.txt', \
+                    'Data/'+dataname+'/cts/'+dataname+'-cts.txt']
+        if multiband:
+            for path in paths:
+                path = path[:-4]+'-'+str(bands[b])+path[-4:]
+
+    psf, nc, cf = get_psf_and_vals(paths[0])
     ncs.append(nc)
-    cf = psf_poly_fit(psf, nbin=nbin)
     cfs.append(cf)
+    psfs.append(psf)
+
+    g = open(paths[1])
     w, h, nb = [np.int32(i) for i in g.readline().split()]
     imdim = (w,h)
     bias, gain = [np.float32(i) for i in g.readline().split()]
@@ -130,6 +141,8 @@ for b in xrange(nbands):
     biases.append(bias)
     gains.append(gain)
     g.close()
+
+    data = np.loadtxt(paths[2]).astype(np.float32)
     data -= bias
     data_array.append(data)
     variance = data / gain
@@ -649,6 +662,11 @@ class Model:
         othertimes.append(np.sum(dttq))
         timestat_array = np.zeros((5, 1+len(moveweights)), dtype=np.float32)
         statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)']
+
+        #timestat_arrays = [dt1, dt2, dt3, dt_transf]
+
+        # ### CLEAN THIS UP
+
         statarrays = [accept, outbounds, dt1, dt2, dt3]
         print 'dt2:', np.sum(dt2)
         for j in xrange(len(statlabels)):
@@ -667,6 +685,7 @@ class Model:
         print '-'*16
         print 'Total (s): %0.3f' % (np.sum(statarrays[2:])/1000)
         print '='*16
+
 
         # ------------------------------------------------------------------
 

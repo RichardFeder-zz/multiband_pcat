@@ -5,15 +5,338 @@ import numpy as np
 # from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
 from astropy.io import fits
 from helpers import *
+from image_eval import image_model_eval
+import h5py
 
 
 sizefac = 10.*136
 color_bins = np.linspace(-3, 3, 40)
-dpi_val = 300
-burn_in_frac = 0.3
-
-mag_bins = np.linspace(15, 23, 15)
 hubble_dpos = np.array([[0.1528, 0.797],[0.1045,0.6760]])
+
+
+
+def result_plots(result_path, ref_cat_path, \
+                    hubble_cat_path=None, \
+                    chain_datatype='npz', \
+                    mock2_type=None, \
+                    boolplotsave=1, \
+                    boolplotshow=0, \
+                    plttype='pdf', \
+                    bright_n=300, \
+                    burn_in_frac=0.3):
+
+    bands=['r', 'i', 'g', 'z']
+
+    if datatype == 'mock':
+        label = 'Mock Truth'
+    else:
+        label = datatype
+    burn_in = int(nsamp*burn_in_frac)
+
+    if chain_datatype.lower()=='npz':
+        chain = np.load(result_path+'/chain.npz')
+    elif chain_datatype.lower()=='hdf5':
+        chain = h5py.File(result_path+'/chain.hdf5', 'r')
+    else:
+        raise IOError('Could not read in data type, please use .npz or .hdf5 files.')
+
+    nsrcs = chain['n']
+    xsrcs = chain['x']
+    ysrcs = chain['y']
+    fsrcs = chain['f']
+    chi2 = chain['chi2']
+    timestats = chain['times'] # should be an array of shape (nsamp, 4)
+    acceptfracs = chain['accept']
+    nmgy_per_count = chain['nmgy']
+
+    nbands = len(fsrcs) # assuming fsrcs has shape (nbands, nsamp)
+
+    ref_cat = np.loadtxt(ref_cat_path)
+    ref_x = ref_cat[:,0]
+    ref_y = ref_cat[:,1]
+    ref_f = ref_cat[:,2:]
+    ref_mags = []
+    for b in xrange(nbands):
+        ref_mag = adu_to_magnitude(ref_f[:,b], nmgy_per_count[b])
+        ref_mags.append(ref_mag)
+
+
+    # ------------------- SOURCE NUMBER ---------------------------
+
+    plt.figure()
+    plt.title('Posterior Source Number Histogram')
+    plt.hist(nsrcs[burn_in:], histtype='step', label='Posterior', color='b')
+    plt.axvline(np.median(nsrcs[burn_in:]), label='Median=' + str(np.median(nsrcs[burn_in:])), color='b', linestyle='dashed')
+    plt.xlabel('nstar')
+    plt.legend()
+    if boolplotsave:
+        plt.savefig(result_path +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight')
+    if boolplotshow:
+        plt.show()
+
+    # -------------------- CHI2 ------------------------------------
+
+
+    sample_number = list(xrange(nsamp-burn_in))
+    full_sample = xrange(nsamp)
+    plt.figure()
+    plt.title('Chi-Squared Distribution over Catalog Samples')
+    for b in xrange(nbands):
+        plt.plot(sample_number, chi2[burn_in:,b], label=bands[b])
+        plt.axhline(np.min(chi2[burn_in:,b]), linestyle='dashed', alpha=0.5, label=str(np.min(chi2[burn_in:,b]))+' (' + str(bands[b]) + ')')
+    plt.xlabel('Sample')
+    plt.ylabel('Chi2')
+    plt.yscale('log')
+    plt.legend()
+    if boolplotsave:
+        plt.savefig(result_path + '/chi2_sample.'+plttype, bbox_inches='tight')
+    if boolplotshow:
+        plt.show()
+
+    # ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
+
+    time_array = np.zeros(4, dtype=np.float32)
+    labels = ['Proposal', 'Likelihood', 'Implement', 'Coordinate Transformation']
+    for samp in xrange(nsamp):
+        # time_array += np.array([timestats[samp][0], timestats[samp][1], timestats[samp][2], timestats[samp][3]])
+        time_array += np.array([timestats[samp][2][0], timestats[samp][3][0], timestats[samp][4][0], tq_times[samp]])
+    plt.figure()
+    plt.title('Computational Resources')
+    plt.pie(time_array, labels=labels, autopct='%1.1f%%', shadow=True)
+    if boolplotsave:
+        plt.savefig(result_path+ '/time_resource_statistics.'+plttype, bbox_inches='tight')
+    if boolplotshow:
+        plt.show()
+
+    astrans_times = timestats[burn_in:][3]
+
+    plt.figure()
+    plt.title('Time Histogram for asTrans Transformations')
+    # plt.hist(astrans_times, bins=20, histtype='step')
+    plt.hist(tq_times[burn_in:], bins=20, histtype='step')
+    plt.xlabel('Time (s)')
+    # plt.axvline(np.median(astrans_times), linestyle='dashed', color='r', label='Median: ' + str(np.median(astrans_times)))
+    plt.axvline(np.median(tq_times), linestyle='dashed', color='r', label='Median: ' + str(np.median(tq_times)))
+    plt.legend()
+    if boolplotsave:
+        plt.savefig(result_path+ '/asTrans_time_resources.'+plttype, bbox_inches='tight')
+    if boolplotshow:
+        plt.show()
+
+
+    plt.figure()
+    plt.title('Time Histogram for Plotting')
+    plt.hist(plt_times, bins=20, histtype='step')
+    plt.xlabel('Time (s)')
+    plt.axvline(np.median(plt_times), linestyle='dashed', color='r', label='Median: ' + str(np.median(plt_times)))
+    plt.legend()
+    if boolplotsave:
+        plt.savefig(result_path + '/plot_time_resources.'+plttype, bbox_inches='tight')
+    if boolplotshow:
+        plt.show()
+
+    # ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
+
+    proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
+    plt.figure()
+    plt.title('Proposal Acceptance Fractions')
+    for x in xrange(len(proposal_types)):
+        if not np.isnan(accept_stats[0,x]):
+            plt.plot(full_sample, accept_stats[:,x], label=proposal_types[x])
+    plt.legend()
+    plt.xlabel('Sample Number')
+    plt.ylabel('Acceptance Fraction')
+    if boolplotsave:
+        plt.savefig(result_path+'/acceptance_fraction.'+plttype, bbox_inches='tight')
+    if boolplotshow:
+        plt.show()
+
+
+    # -------------------------------- ITERATE OVER BANDS -------------------------------------
+    mag_bins = np.linspace(15, 23, 15)
+
+    for b in xrange(nbands):
+
+        plt.title('Posterior Magnitude Distribution - ' + str(bands[b]))
+        (n, bins, patches) = plt.hist(ref_mags[b], histtype='step', label=label, color='g')
+        post_hist = []
+        for samp in xrange(burn_in, nsamp):
+            hist = np.histogram([adu_to_magnitude(x, nmgy_per_count[b]) for x in fchain[b][samp] if x>0], bins=bins)
+            post_hist.append(hist[0]+0.01)
+        medians = np.median(np.array(post_hist), axis=0)
+        stds = np.std(np.array(post_hist), axis=0)
+        bincentres = [(bins[i]+bins[i+1])/2. for i in range(len(bins)-1)]
+        plt.errorbar(bincentres, medians, yerr=stds, fmt='o', label='Posterior')
+        plt.legend()
+        plt.yscale('log', nonposy='clip')
+        plt.ylim(0.05, 1000)
+        plt.xlabel('Magnitude - ' + str(bands[b]))
+        if boolplotsave:
+            plt.savefig(result_path+'/posterior_flux_histogram_'+str(bands[b])+'.'+plttype, bbox_inches='tight')
+        if boolplotshow:
+            plt.show()
+
+
+    color_post_bins = np.linspace(-1.5, 1.5, 30)
+    for b in xrange(nbands-1):
+
+        nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
+        post_hist, bright_hist = [], []
+
+        for samp in xrange(burn_in, samp):
+            mask = fsrcs[samp,0] > 0
+            n_bright = min(300, int(len(fsrcs[samp,0])/3))
+            brightest_idx = np.argpartition(fchain[0][samp][mask], n_bright)[-n_bright:]
+            bright_h = np.histogram(adus_to_color(fsrcs[samp,0][mask][brightest_idx], fsrcs[samp,b+1][mask][brightest_idx], nmpc), bins=color_post_bins)
+            # hist = np.histogram([x for x in color[b][samp]], bins=color_post_bins)
+            # post_hist.append(hist[0]+0.01)
+        medians = np.median(np.array(post_hist), axis=0)
+        medians /= (np.sum(medians)*(color_post_bins[1]-color_post_bins[0]))  
+        medians_bright = np.median(np.array(bright_hist), axis=0)
+        medians_bright /= (np.sum(medians_bright)*(color_post_bins[1]-color_post_bins[0]))  
+        bincentres = [(color_post_bins[i]+color_post_bins[i+1])/2. for i in range(len(color_post_bins)-1)]
+
+
+        plt.figure()
+        plt.title('Normalized Posterior Color Distribution')
+        plt.step(bincentres, medians, where='mid', color='b', label='Posterior', alpha=0.5)
+        plt.step(bincentres, medians_bright, where='mid', color='k', label='Brightest Third', alpha=0.5)
+        plt.legend()
+        plt.xlabel(str(bands[0]) + ' - ' + str(bands[b+1]))
+        plt.legend()
+        if boolplotsave:
+            plt.savefig(result_path+'/posterior_histogram_'+str(bands[0])+'_'+str(bands[b+1])+'_color.'+plttype, bbox_inches='tight')
+        if boolplotshow:
+            plt.show()
+
+
+
+
+
+
+# can now create a function that makes multiband sample frames but retroactively, based off of the chain samples and standard model evaluation. 
+
+def multiband_retro_frames(result_path, ref_cat_path, data_path\
+                        hubble_cat_path=None, \
+                        chain_datatype='npz', \
+                        num_frames=10, \
+                        mock2_type=None, \
+                        boolplotsave=1, \
+                        plttype='pdf', \
+                        bright_n=300, \
+                        imdim=100,  \
+                        bands=['r']):
+
+    
+    if datatype=='mock':
+        labldata = 'Mock Truth'
+    else:
+        labldata = datatype
+
+    sizefac = 10.*136
+
+    nsrcs = chain['n']
+    xsrcs = np.array(chain['x'], dtype=np.float32)
+    ysrcs = np.array(chain['y'], dtype=np.float32)
+    fsrcs = chain['f']
+    chi2 = chain['chi2']
+    timestats = chain['times'] # should be an array of shape (nsamp, 4)
+    acceptfracs = chain['accept']
+    nmgy_per_count = chain['nmgy']
+
+    nsamp = len(nsrcs)
+    nbands = len(fsrcs) # assuming fsrcs has shape (nbands, nsamp)
+
+    ref_cat = np.loadtxt(ref_cat_path)
+    ref_x = ref_cat[:,0]
+    ref_y = ref_cat[:,1]
+    ref_f = ref_cat[:,2:]
+    ref_mags = []
+    for b in xrange(nbands):
+        ref_mag = adu_to_magnitude(ref_f[:,b], nmgy_per_count[b])
+        ref_mags.append(ref_mag)
+
+
+    if hubble_cat_path is not None:
+        hubble_pos = fits.open(hubble_cat_path)
+
+        xoff = 310
+        yoff = 630
+
+        hxr = hubble_pos[0].data-xoff
+        hyr = hubble_pos[1].data-yoff
+        hxi = hubble_pos[2].data-xoff
+        hyi = hubble_pos[3].data-yoff
+        hxg = hubble_pos[4].data-xoff
+        hyg = hubble_pos[5].data-yoff
+
+        hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
+
+        hubble_cat = np.loadtxt(hubble_cat_path)
+        hx = hubble_cat[:,0]
+        hy = hubble_cat[:,1]
+        hf = hubble_cat[:,2:]
+
+        posmask = np.logical_and(hx+0.5<imdim, hy+0.5<imdim)
+        hf = hf[posmask]
+        hmask = hf < 22
+
+    imsz = [imdim, imdim]
+
+
+    frame_nums = np.linspace(0,nsamp, num_frames)
+
+
+    for num in frame_nums:
+
+        if len(bands)==1:
+
+            psf, nc, cf = get_psf_and_vals(data_path+'/psfs/psffile.txt')
+            data = np.loadtxt(data_path+'/cts/ctsfile.txt')
+            model = image_model_eval(xsrcs[num], ysrcs[num], fsrcs[num], bkg, imsz, nc, cf)
+            resid = data-model
+            nmgy = get_nanomaggy_per_count(data_path+'/frames/framefile.txt')
+
+
+            
+            plt.figure(figsize=(15,5))
+            plt.subplot(1,3,1)
+            plt.imshow(data, origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data), vmax=np.percentile(data, 95))
+            plt.colorbar()
+            sizefac = 10.*136
+            if hubble_cat_path is not None:
+                plt.scatter(hubble_coords[0][posmask][hmask], hubble_coords[1][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy) / sizefac, color='lime') #hubble
+            else:
+                mask = ref_f[:,0] > 250 # will have to change this for other data sets
+                plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[mask] / sizefac, color='lime')
+                mask = np.logical_not(mask)
+                plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[mask] / sizefac, color='g')
+
+            plt.scatter(xsrcs[num], ysrcs[num], marker='x', s=(10000/len(data)**2)*fsrcs[num,0]/(2*sizefac), color='r')
+            plt.xlim(-0.5, len(data)-0.5)
+            plt.ylim(-0.5, len(data)-0.5)
+
+            plt.subplot(1,3,2)
+            plt.imshow(resid*np.sqrt(weight), origin='lower', interpolation='none', cmap='bwr', vmin=-5, vmax=5)
+            plt.xlim(-0.5, len(data)-0.5)
+            plt.ylim(-0.5, len(data)-0.5)
+            plt.colorbar()
+            plt.subplot(1,3,3)
+            if datatype == 'mock':
+                (n, bins, patches) = plt.hist(adu_to_magnitude(fsrcs[num,0], nmgy), bins=mag_bins, alpha=0.5, color='r', label='Chain - ' + bands[0], histtype='step')
+                plt.hist(adu_to_magnitude(ref_f[:,0], nmgy), bins=bins,alpha=0.5, label=labldata, color='g', histtype='step')
+            else:
+                (n, bins, patches) = plt.hist(adu_to_magnitude(fsrcs[num,0], nmgy), bins=mag_bins, alpha=0.5, color='r', label='Chain - ' + bands[0], histtype='step')
+            plt.legend()
+            plt.xlabel(str(bands[0]))
+            plt.yscale('log')
+            plt.ylim((0.5, int(nstar/2)))
+            if boolplotsave:
+                plt.savefig(frame_dir + '/frame_' + str(c) + '.pdf', bbox_inches='tight')
+            if boolplotshow:
+                plt.show()
+
+
 
 
 def results(nchain, fchain, truef, color, nsamp, timestats, tq_times,plt_times, chi2, bkgsample, accept_stats, result_directory, nbands, bands, multiband, nmgy_per_count, datatype):

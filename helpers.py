@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from astropy.io import fits
+from image_eval import psf_poly_fit
 
 def adus_to_color(flux0, flux1, nm_2_cts):
     colors = adu_to_magnitude(flux0, nm_2_cts[0]) - adu_to_magnitude(flux1, nm_2_cts[1])
@@ -55,3 +56,22 @@ def find_mean_offset(filename, dim=100):
     x, y = [np.random.uniform(10, dim-10, 1000) for p in xrange(2)]
     x1, y1 = transform_q(x, y, mats)
     return np.mean(x1-x), np.mean(y1-y)
+
+def get_psf_and_vals(path):
+    f = open(path)
+    psf = np.loadtxt(path, skiprows=1).astype(np.float32)
+    nc, nbin = [np.int32(i) for i in f.readline().split()]
+    f.close()
+    cf = psf_poly_fit(psf, nbin=nbin)
+    return psf, nc, cf
+
+def get_nanomaggy_per_count(frame_path):
+    fits_frame = fits.open(frame_path)
+    frame_header = fits_frame[0].header
+    nanomaggy_per_count = frame_header['NMGY']
+    return nanomaggy_per_count
+
+
+
+
+
