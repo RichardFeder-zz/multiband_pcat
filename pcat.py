@@ -211,7 +211,7 @@ def flux_proposal(f0, nw, trueminf, b):
     #data specific
     N_src = 1400.
     if datatype=='mock2':
-        N_src = 10
+        N_src = 10.
     if multiple_regions:
         lindf = np.float32(5*err_f/(np.sqrt(N_src*0.04*(2+nbands))))
     else:
@@ -509,9 +509,7 @@ class Model:
         for i in xrange(nloop):
             t1 = time.clock()
             rtype = rtype_array[i]
-            # rtype = np.random.choice(moveweights.size, p=moveweights)
             movetype[i] = rtype
-            # defaults
             pn = self.n
             # should regions be perturbed randomly or systematically?
             if multiple_regions: #don't do multiple regions if there is a background shift
@@ -732,11 +730,12 @@ class Model:
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
 
-        starsp[self._X,:] += np.random.normal(size=nw)*dpos_rms #adding dx, dy scatter
-        starsp[self._Y,:] += np.random.normal(size=nw)*dpos_rms
+        dx = np.random.normal(size=nw)*dpos_rms
+        dy = np.random.normal(size=nw)*dpos_rms
 
-        # for b in xrange(nbands):
-        #     starsp[self._F+b:,:] = pfs[b]
+        starsp[self._X,:] = stars0[self._X,:] + dx
+        starsp[self._Y,:] = stars0[self._Y,:] + dy
+
         starsp[self._F:,:] = pfs
 
         self.bounce_off_edges(starsp)
@@ -809,7 +808,6 @@ class Model:
  
             fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
 
-            # fracs = np.append(fracs, np.random.uniform(size=(nms, nbands-1)), axis=1)
             for b in xrange(nbands-1):
                 fracs.append(np.random.uniform(size=nms))
 
@@ -820,7 +818,6 @@ class Model:
             starsp[self._Y,:] = stars0[self._Y,:] + ((1-fracs[0])*dy)
             starsb[self._X,:] = stars0[self._X,:] - fracs[0]*dx
             starsb[self._Y,:] = stars0[self._Y,:] - fracs[0]*dy
-
             starsp[self._F:,:] = stars0[self._F:,:]*fracs
             starsb[self._F:,:] = stars0[self._F:,:] * (1-np.array(fracs))
 
