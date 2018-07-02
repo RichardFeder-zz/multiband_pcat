@@ -216,7 +216,7 @@ def result_plots(result_path, ref_cat_path, \
 
 # can now create a function that makes multiband sample frames but retroactively, based off of the chain samples and standard model evaluation. 
 
-def multiband_retro_frames(result_path, ref_cat_path, data_path\
+def multiband_retro_frames(result_path, ref_cat_path, data_path,\
                         hubble_cat_path=None, \
                         chain_datatype='npz', \
                         num_frames=10, \

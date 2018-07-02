@@ -34,7 +34,8 @@ include_hubble = 0
 np.random.seed(20170501)
 
 # trueback = [180., 314., 103., 140.] #r, i, g, z
-trueback = [180., 314., 140.]
+#trueback = [180., 315., 140.]
+trueback = [314.]
 
 np.seterr(divide='ignore', invalid='ignore')
 
@@ -51,6 +52,8 @@ multiband = int(sys.argv[5]) > 0
 if datatype=='mock2':
     config_type = str(sys.argv[6])
     nrealization = int(sys.argv[7])
+if datatype=='mock':
+    trueback = []
 
 mock_test_name = 'mock_2star_18'
 
@@ -61,7 +64,7 @@ bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
 if sys.platform=='darwin':
     base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
 elif sys.platform=='linux2':
-    base_path = '/n/fink1/rfeder/mpcat/multiband_pcat/'
+    base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
 else:
     base_path = raw_input('Operating system not detected, please enter base_path directory (eg. /Users/.../pcat-lion-master):')
     if not os.path.isdir(base_path):
@@ -120,8 +123,8 @@ for b in xrange(nbands):
         paths = ['Data/'+dataname+'/psfs/'+dataname+'-psf.txt', 'Data/'+dataname+'/pixs/'+dataname+'-pix.txt', \
                     'Data/'+dataname+'/cts/'+dataname+'-cts.txt']
         if multiband:
-            for path in paths:
-                path = path[:-4]+'-'+str(bands[b])+path[-4:]
+            for p in xrange(len(paths)):
+                paths[p] = paths[p][:-4]+str(bands[b])+paths[p][-4:]
 
     psf, nc, cf = get_psf_and_vals(paths[0])
     ncs.append(nc)
@@ -134,10 +137,10 @@ for b in xrange(nbands):
     bias, gain = [np.float32(i) for i in g.readline().split()]
     if multiband:
         a = np.float32(g.readline().split())
-        print a
+        print a, len(a)
         nmgy_per_count.append(a[0])
         if datatype=='mock' or datatype=='mock2':
-            trueback[b] = a[1]
+            trueback.append(a[1])
     biases.append(bias)
     gains.append(gain)
     g.close()
@@ -182,7 +185,7 @@ margin = 10
 if datatype =='mock2':
     nsamp = 20
 else:
-    nsamp = 100
+    nsamp = 500
 nloop = 1000
 
 def initialize_c():
@@ -218,9 +221,10 @@ def flux_proposal(f0, nw, trueminf, b):
     #data specific
     N_src = 1400.
     if multiple_regions:
-        lindf = np.float32(err_f/(np.sqrt(N_src*0.04*(2+nbands))))
+        lindf = np.float32(5*err_f/(np.sqrt(N_src*0.04*(2+nbands))))
+        #print 'lindf', np.mean(lindf)
     else:
-        lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
+        lindf = np.float32(err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
     ff = np.log(logdf*logdf*f0 + logdf*np.sqrt(lindf*lindf + logdf*logdf*f0*f0)) / logdf
     ffmin = np.log(logdf*logdf*trueminf + logdf*np.sqrt(lindf*lindf + logdf*logdf*trueminf*trueminf)) / logdf
@@ -230,6 +234,7 @@ def flux_proposal(f0, nw, trueminf, b):
     dff[oob_flux] = -2*aboveffmin[oob_flux] - dff[oob_flux]
     pff = ff + dff
     pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
+   # print 'std difference is', np.std(f0-pf), np.mean(np.abs(f0-pf))
     return pf
 
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize, margin, offsetx, offsety):
@@ -486,7 +491,7 @@ class Model:
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40., 40.])
+        moveweights = np.array([70., 40., 40.])
         # moveweights = np.array([80., 40., 40., 0.])
         moveweights /= np.sum(moveweights)
 
@@ -655,7 +660,7 @@ class Model:
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
         print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
         dt1 *= 1000
-        # dt2 *= 1000
+        dt2 *= 1000
         dt3 *= 1000
         accept_fracs = []
         othertimes = []
@@ -668,7 +673,7 @@ class Model:
         # ### CLEAN THIS UP
 
         statarrays = [accept, outbounds, dt1, dt2, dt3]
-        print 'dt2:', np.sum(dt2)
+        #print 'dt2:', np.sum(dt2)
         for j in xrange(len(statlabels)):
             timestat_array[j][0] = np.sum(statarrays[j])/1000
             if j==0:
@@ -787,6 +792,7 @@ class Model:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
         dx = np.random.normal(size=nw)*dpos_rms
         dy = np.random.normal(size=nw)*dpos_rms
+       # print 'dx average: ', np.mean(np.abs(dx))
         starsp[self._X,:] = stars0[self._X,:] + dx
         starsp[self._Y,:] = stars0[self._Y,:] + dy
         for b in xrange(nbands):

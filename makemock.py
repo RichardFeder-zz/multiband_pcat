@@ -5,7 +5,7 @@ import os
 n_realizations = 3
 two_star_blend = 0
 two_star_mode = 'rx3' # r, r_i_g, rx3 are the three modes
-dim = 100
+dim = 40
 bands = ['r', 'i', 'g']
 
 f = open('Data/sdss.0921/sdss.0921_psf.txt')
@@ -38,6 +38,10 @@ else:
 
 if not os.path.isdir('Data/' + dir_name):
 	os.makedirs('Data/' + dir_name)
+        os.makedirs('Data/'+dir_name+'/psfs')
+        os.makedirs('Data/'+dir_name+'/pixs')
+        os.makedirs('Data/'+dir_name+'/cts')
+        os.makedirs('Data/'+dir_name+'/truth')
 
 
 # generate specified number of noise realizations
@@ -54,11 +58,11 @@ if two_star_mode=='rx3':
 
 for b in xrange(len(bands)):
 	# pix
-	f = open('Data/'+dir_name+'/'+dir_name+'-pix'+bands[b]+'.txt', 'w')
+	f = open('Data/'+dir_name+'/pixs/'+dir_name+'-pix'+bands[b]+'.txt', 'w')
 	f.write('%1d\t%1d\t1\n0.\t%0.3f\n%0.8f\t%1d' % (imsz[0], imsz[1], gain, nmgy_to_cts, back_pix[b]))
 	f.close()
 	# psf
-	np.savetxt('Data/'+dir_name+'/'+dir_name+'-psf'+bands[b]+'.txt', psf, header='%1d\t%1d' % (nc, nbin), comments='')
+	np.savetxt('Data/'+dir_name+'/psfs/'+dir_name+'-psf'+bands[b]+'.txt', psf, header='%1d\t%1d' % (nc, nbin), comments='')
 
 
 if two_star_blend:
@@ -155,15 +159,15 @@ else:
 		mock[mock < 1] = 1.
 		variance = mock / gain
 		mock += (np.sqrt(variance) * np.random.normal(size=(imsz[1],imsz[0]))).astype(np.float32)
-		np.savetxt('Data/'+dir_name+'/'+dir_name+'-cts'+str(bands[b])+'.txt', mock)
+		np.savetxt('Data/'+dir_name+'/cts/'+dir_name+'-cts'+str(bands[b])+'.txt', mock)
 
-		np.savetxt('Data/' + dir_name + '/' + dir_name+'-psf'+str(bands[b])+'.txt', psf, header='%1d\t%1d' % (nc, nbin), comments='')
+		np.savetxt('Data/' + dir_name + '/psfs/' + dir_name+'-psf'+str(bands[b])+'.txt', psf, header='%1d\t%1d' % (nc, nbin), comments='')
 
-		f = open('Data/' + dir_name + '/' + dir_name+'-pix'+str(bands[b])+'.txt', 'w')
+		f = open('Data/' + dir_name + '/pixs/' + dir_name+'-pix'+str(bands[b])+'.txt', 'w')
 		f.write('%1d\t%1d\t1\n0.\t%0.3f\n%0.8f\t%1d' % (imsz[0], imsz[1], gain, nmgy_to_cts, truebacks[b]))
 		f.close()
 
-	np.savetxt('Data/'+dir_name+'/'+dir_name+'-tru.txt', true_params)
+	np.savetxt('Data/'+dir_name+'/truth/'+dir_name+'-tru.txt', true_params)
 
 	# truth = np.array([truex, truey, truef, truefi, truefg]).T
 	# np.savetxt('Data/' + dir_name + '/' + dir_name+'-tru.txt', truth)
