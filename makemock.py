@@ -51,8 +51,8 @@ for n in xrange(n_realizations):
 
 
 back_pix = truebacks
-if two_star_mode=='rx3':
-		back_pix[0] *= 3
+# if two_star_mode=='rx3':
+# 		back_pix[0] *= 3
 
 
 
@@ -64,6 +64,8 @@ for b in xrange(len(bands)):
 	# psf
 	np.savetxt('Data/'+dir_name+'/psfs/'+dir_name+'-psf'+bands[b]+'.txt', psf, header='%1d\t%1d' % (nc, nbin), comments='')
 
+if two_star_mode=='rx3':
+	trubacks[0] *= 3
 
 if two_star_blend:
 	for offset in offsets:

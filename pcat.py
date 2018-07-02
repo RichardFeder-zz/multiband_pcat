@@ -168,6 +168,10 @@ assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 margin = 10
 
+if datatype=='mock2':
+    if config_type=='rx3':
+        trueback[0] *= 3
+
 
 #mock test
 if datatype =='mock2':
