@@ -97,23 +97,6 @@ start_time = time.clock()
 
 #could simplify
 for b in xrange(nbands):
-    # if multiband:
-    #     #mock tests
-    #     if datatype=='mock2':
-    #         f = open('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt')
-    #         psf = np.loadtxt('Data/'+mock_test_name+'/'+mock_test_name+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
-    #         g = open('Data/'+mock_test_name+'/'+mock_test_name+'-pix'+bands[b]+'.txt')
-    #         data = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt').astype(np.float32)
-    #     else:
-    #         f = open('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt')
-    #         psf = np.loadtxt('Data/'+dataname+'/psfs/'+dataname+'-psf'+str(bands[b])+'.txt',skiprows=1).astype(np.float32)
-    #         g = open('Data/'+dataname+'/pixs/'+dataname +'-pix'+bands[b]+'.txt')
-    #         data = np.loadtxt('Data/'+dataname+'/cts/'+dataname+'-cts'+ bands[b]+'.txt').astype(np.float32)
-    # else:
-    #     f = open('Data/'+dataname+'/'+dataname+'-psf.txt')
-    #     psf = np.loadtxt('Data/'+dataname+'/'+dataname+'-psf.txt',skiprows=1).astype(np.float32)
-    #     g = open('Data/'+dataname+'/'+dataname+'-pix.txt')
-    #     data = np.loadtxt('Data/'+dataname+'/'+dataname+'-cts.txt').astype(np.float32)
 
     if datatype=='mock2':
         base_path = 'Data/'+mock_test_name+'/'+mock_test_name
