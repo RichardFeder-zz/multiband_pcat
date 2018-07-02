@@ -10,14 +10,16 @@ rewrite = 1
 # r_fluxes = np.array([500.0])
 
 offsets = np.array([0.5, 0.75, 1.0, 1.5], dtype=np.float32)
-flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
-r_fluxes = np.array([250., 500., 1000.], dtype=np.float32)
+# flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
+flux_ratios = np.array([1.0], dtype=np.float32)
+r_fluxes = np.array([1000.], dtype=np.float32)
+# r_fluxes = np.array([250., 500., 1000.], dtype=np.float32)
 
 # cases = ['chain3', 'chain1', 'chain1x3']
 cases = ['r+i+g', 'r', 'rx3']
 
 
-n_noise_realizations = 2
+n_noise_realizations = 3
 
 n_iterations = (len(offsets))*(len(flux_ratios))*(len(r_fluxes))*n_noise_realizations
 
@@ -27,6 +29,8 @@ for config_type in cases:
 	print 'Working on case', config_type
 	for offset in offsets:
 		for flux in r_fluxes:
+			if config_type=='rx3':
+				flux *=3
 			for flux_ratio in flux_ratios:
 				dataname = mock_test_name+'-' + str(offset)+'-'+str(flux)+'-'+str(flux_ratio)
 				print 'Running ' + str(dataname)

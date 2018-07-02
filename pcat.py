@@ -52,7 +52,7 @@ multiband = int(sys.argv[5]) > 0
 if datatype=='mock2':
     config_type = str(sys.argv[6])
     nrealization = int(sys.argv[7])
-if datatype=='mock':
+if datatype=='mock' or datatype=='mock2':
     trueback = []
 
 mock_test_name = 'mock_2star_18'
@@ -79,7 +79,10 @@ print 'Results will go in', result_path
 
 if multiband:
     if datatype=='mock2':
-        bands = ['r']
+        if config_type=='r' or config_type=='rx3':
+            bands = ['r']
+        elif config_type=='r+i+g':
+            bands = ['r', 'i', 'g']
     else:
         band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
         while band != 'x':
@@ -99,9 +102,10 @@ start_time = time.clock()
 for b in xrange(nbands):
 
     if datatype=='mock2':
-        base_path = 'Data/'+mock_test_name+'/'+mock_test_name
-        paths = [base_path+'-psf'+str(bands[b])+'.txt', base_path+'-pix'+str(bands[b])+'.txt']
-        paths.append('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt')
+        base_path = 'Data/'+mock_test_name
+        paths = [base_path+'/psfs/'+mock_test_name+'-psf'+str(bands[b])+'.txt', \
+                 base_path+'/pixs/'+mock_test_name+'-pix'+str(bands[b])+'.txt']
+        paths.append(base_path+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt')
     else:
         paths = ['Data/'+dataname+'/psfs/'+dataname+'-psf.txt', 'Data/'+dataname+'/pixs/'+dataname+'-pix.txt', \
                     'Data/'+dataname+'/cts/'+dataname+'-cts.txt']
@@ -164,9 +168,10 @@ assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 margin = 10
 
+
 #mock test
 if datatype =='mock2':
-    nsamp = 20
+    nsamp = 100
 else:
     nsamp = 500
 nloop = 1000

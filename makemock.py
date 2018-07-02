@@ -3,9 +3,9 @@ from image_eval import image_model_eval, psf_poly_fit
 import os
 
 n_realizations = 3
-two_star_blend = 0
-two_star_mode = 'rx3' # r, r_i_g, rx3 are the three modes
-dim = 40
+two_star_blend = 1
+two_star_mode = 'r_i_g' # r, r_i_g, rx3 are the three modes
+dim = 18
 bands = ['r', 'i', 'g']
 
 f = open('Data/sdss.0921/sdss.0921_psf.txt')
@@ -38,10 +38,10 @@ else:
 
 if not os.path.isdir('Data/' + dir_name):
 	os.makedirs('Data/' + dir_name)
-        os.makedirs('Data/'+dir_name+'/psfs')
-        os.makedirs('Data/'+dir_name+'/pixs')
-        os.makedirs('Data/'+dir_name+'/cts')
-        os.makedirs('Data/'+dir_name+'/truth')
+	os.makedirs('Data/'+dir_name+'/psfs')
+	os.makedirs('Data/'+dir_name+'/pixs')
+	os.makedirs('Data/'+dir_name+'/cts')
+	os.makedirs('Data/'+dir_name+'/truth')
 
 
 # generate specified number of noise realizations
@@ -151,8 +151,6 @@ else:
 
 
 	dir_name = 'mock' + str(imsz[0])
-	if not os.path.isdir('Data/' + dir_name):
-		os.makedirs('Data/' + dir_name)
 
 	for b in xrange(len(bands)):
 		mock = image_model_eval(true_params[:,0], true_params[:,1], true_params[:,2+b], truebacks[b], imsz, nc, cf)
