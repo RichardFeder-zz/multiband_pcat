@@ -1,23 +1,31 @@
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+import sys
 
 offsets = np.array([0.5,0.75, 1.0, 1.5], dtype=np.float32)
-flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
-r_fluxes = np.array([250.0, 500.0, 1000.0], dtype=np.float32)
-imsz = 16
+flux_ratios = np.array([1.0], dtype=np.float32)
+r_fluxes = np.array([1000.0], dtype=np.float32)
+
+#flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
+#r_fluxes = np.array([250.0, 500.0, 1000.0], dtype=np.float32)
+imsz = 18
 nsamp = 100
-tol = 3
+tol = 2
 pdf_or_png = 'png'
 cases = ['r+i+g', 'r', 'rx3']
 ncases = len(cases)
-num_realizations = 1 # number of noise realizations
+num_realizations = 3 # number of noise realizations
 
 
 mock_test_name = 'mock_2star_'+str(imsz)
-directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master"
-
+#directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master"
+if sys.platform=='darwin':
+    directory_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
+elif sys.platform=='linux2':
+        directory_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+        result_path = '/n/home07/rfederstaehle/figures'
 def find_offsets_errs(f, rat, plist, offsets, num, case):
 	sublist = [p for p in plist if p[1]==f and p[2]==rat and p[3]==case]
 	offs, mean_errs, std_errs = [[] for x in xrange(3)]
@@ -53,7 +61,7 @@ def find_min_ds(xs, ys, fs, source, case, flux_ratios, r_fluxes, offsets, a, b, 
 def load_arrays(a, b, c, nrealization=0):
 	dataname = mock_test_name+'-' + str(offsets[a])+'-'+str(r_fluxes[b])+'-'+str(flux_ratios[c])
 
-	chain_types = ['r_i_g', 'r', 'rx3']
+	chain_types = ['r+i+g', 'r', 'rx3']
 
 	all_x, all_y, all_f, ns = [[] for x in xrange(4)]
 
@@ -214,7 +222,11 @@ for source in xrange(2): # calculate errors for each source
 				plt.ylim(0, y_lim_types[err_type])
 				c+=1
 		plt.tight_layout()
-		plt.savefig(directory_path+'/Data/'+mock_test_name+'/'+figure_labels[err_type]+str(source+1)+'_py.'+pdf_or_png, bbox_inches='tight')
+                plt.legend()
+                if sys.platform =='linux2':
+                    plt.savefig(result_path+'/'+mock_test_name+'_'+figure_labels[err_type]+str(source+1)+'_py.'+pdf_or_png, bbox_inches='tight')
+                else:
+                    plt.savefig(directory_path+'/Data/'+mock_test_name+'/'+figure_labels[err_type]+str(source+1)+'_py.'+pdf_or_png, bbox_inches='tight')
 
 
 # # ---------------------------- PREVALENCE PLOTS --------------------------------
@@ -224,7 +236,7 @@ if num_realizations > 1:
 	full_nstar_vals = []
 	for realization in xrange(num_realizations):
 		print 'realization:', realization
-		nstar_vals = get_prevalence(realization)
+		nstar_vals = get_prevalence(realization+1)
 		full_nstar_vals.extend(nstar_vals)
 else:
 	full_nstar_vals = get_prevalence()
@@ -261,4 +273,8 @@ for flux in r_fluxes:
 				plt.tick_params(labelbottom=False)
 			c += 1
 	plt.tight_layout()
-	plt.savefig(directory_path+'/Data/'+mock_test_name+'/prevalence_panels_'+str(flux)+'_py.'+pdf_or_png, bbox_inches='tight')
+        plt.legend()
+        if sys.platform =='linux2':
+            plt.savefig(result_path+'/'+mock_test_name+'_prevalence_panels_'+str(flux)+'_py.'+pdf_or_png, bbox_inches='tight')
+        else:
+            plt.savefig(directory_path+'/Data/'+mock_test_name+'/prevalence_panels_'+str(flux)+'_py.'+pdf_or_png, bbox_inches='tight')
