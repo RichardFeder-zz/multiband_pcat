@@ -17,7 +17,7 @@ from astropy.io import fits
 import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
-from result_diagnostics import results, multiband_sample_frame
+# from result_diagnostics import results, multiband_sample_frame
 from helpers import *
 
 # Run, rerun, CamCol, DAOPHOTID, RA, DEC, xu, yu, u (mag), uErr, chi, sharp, flag, xg, yg, g, gErr, chi, sharp, flag, 
@@ -26,15 +26,15 @@ from helpers import *
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
-multiple_regions = 0
+multiple_regions = 1
 include_hubble = 0
 
 #generate random seed for initialization
 np.random.seed(20170501)
 
-# trueback = [180., 314., 103., 140.] #r, i, g, z
+trueback = [180., 314., 103., 140.] #r, i, g, z
 #trueback = [180., 315., 140.]
-trueback = [314.]
+# trueback = [314.]
 
 np.seterr(divide='ignore', invalid='ignore')
 
@@ -176,7 +176,7 @@ if datatype=='mock2':
 if datatype =='mock2':
     nsamp = 100
 else:
-    nsamp = 500
+    nsamp = 20
 nloop = 1000
 
 def initialize_c():
@@ -613,7 +613,7 @@ class Model:
         
         chi2 = []
 
-        if datatype != 'mock' and datatype != 'mock2':
+        if datatype != 'mock' and datatype != 'mock2' and multiband:
             xmin, xmax = 2, imsz[0]-2
             ymin, ymax = 2, imsz[1]-2
         else:
@@ -633,18 +633,20 @@ class Model:
         dt1 *= 1000
         dt2 *= 1000
         dt3 *= 1000
+        dttq *= 1000 #coordinate transfer times
         accept_fracs = []
-        othertimes = []
-        othertimes.append(np.sum(dttq))
-        timestat_array = np.zeros((5, 1+len(moveweights)), dtype=np.float32)
-        statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)']
+        # othertimes = []
+        # othertimes.append(np.sum(dttq))
+        timestat_array = np.zeros((6, 1+len(moveweights)), dtype=np.float32)
+
+        statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)', 'Coordinates (s)']
 
         #timestat_arrays = [dt1, dt2, dt3, dt_transf]
 
         # ### CLEAN THIS UP
 
-        statarrays = [accept, outbounds, dt1, dt2, dt3]
-        #print 'dt2:', np.sum(dt2)
+        statarrays = [accept, outbounds, dt1, dt2, dt3, dttq]
+
         for j in xrange(len(statlabels)):
             timestat_array[j][0] = np.sum(statarrays[j])/1000
             if j==0:
@@ -665,19 +667,16 @@ class Model:
 
         # ------------------------------------------------------------------
 
-        tplot = time.clock()
         if visual or savefig:
             if include_hubble:
                 hfs = hf[:,0]
             else:
                 hfs = []
 
-            multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
-                bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, include_hubble, datatype)
+            #multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
+            #    bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, include_hubble, datatype)
 
-        dtplot = time.clock()-tplot
-        othertimes.append(dtplot)
-        return self.n, chi2, timestat_array, othertimes, accept_fracs
+        return self.n, chi2, timestat_array, accept_fracs
 
     def idx_parity_stars(self):
         return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, regsize)
@@ -978,7 +977,7 @@ nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
 ysample = np.zeros((nsamp, nstar), dtype=np.float32)
 dt2s = np.zeros(nsamp, dtype=np.float32)
-timestats = np.zeros((nsamp, 5, 4), dtype=np.float32)
+timestats = np.zeros((nsamp, 6, 4), dtype=np.float32)
 accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
 tq_times = np.zeros(nsamp, dtype=np.float32)
 plt_times = np.zeros(nsamp, dtype=np.float32)
@@ -1010,10 +1009,8 @@ for j in xrange(nsamp):
     #         sf = 1
     #         c+=1
      
-    _, chi2_all, statarrays, othertimes, accept_fracs = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
+    _, chi2_all, statarrays, accept_fracs = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
 
-    tq_times[j] = othertimes[0]
-    plt_times[j] = othertimes[1]
     nsample[j] = model.n
     xsample[j,:] = model.stars[Model._X, :]
     ysample[j,:] = model.stars[Model._Y, :]
@@ -1047,7 +1044,7 @@ if datatype=='mock2':
     np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
     result_dir = result_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
 else:
-    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count)
     result_dir = result_path + '/' + timestr
 
 
