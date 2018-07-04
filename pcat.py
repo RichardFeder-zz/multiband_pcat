@@ -26,7 +26,7 @@ from helpers import *
 timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
 
-multiple_regions = 0
+multiple_regions = 1
 include_hubble = 0
 
 #generate random seed for initialization
@@ -229,7 +229,8 @@ def flux_proposal(f0, nw, trueminf, b):
     return pf
 
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize, margin, offsetx, offsety):
-    dmodels, diff2s = [[],[]]
+    dmodels = np.zeros(shape=(nbands, imsz[0], imsz[0]), dtype=np.float32)
+    diff2s = np.zeros((nbands, 2+multiple_regions, 2+multiple_regions), dtype=np.float64)
     dt_transf = 0
     for b in xrange(nbands):
         if b>0:
@@ -259,10 +260,8 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
                 weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
             # dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
             #     weights=weights[b], ref=ref[b], lib=None, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
-        dmodels.append(dmodel)
-        diff2s.append(diff2)
-        print regsize
-        print diff2
+        dmodels[b] = dmodel
+        diff2s[b] = diff2
     return dmodels, diff2s, dt_transf
 
 # ix, iy = 0. to 3.999
@@ -337,9 +336,7 @@ class Proposal:
         self.dback = np.zeros(nbands, dtype=np.float32)
         self.xphon = np.array([], dtype=np.float32)
         self.yphon = np.array([], dtype=np.float32)
-        self.fphon = []
-        for x in xrange(nbands):
-            self.fphon.append(np.array([], dtype=np.float32))
+        self.fphon = np.array([[] for x in xrange(nbands)], dtype=np.float32)
 
     def set_factor(self, factor):
         self.factor = factor
@@ -351,7 +348,7 @@ class Proposal:
     def assert_types(self):
         assert self.xphon.dtype == np.float32
         assert self.yphon.dtype == np.float32
-        assert self.fphon[0].dtype == np.float32
+        assert self.fphon.dtype == np.float32
 
 
     def __add_phonions_stars(self, stars, remove=False):
@@ -474,7 +471,7 @@ class Model:
         #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
  
         if multiband:
-            diff2_total = np.sum(np.array(diff2s), axis=0)
+            diff2_total = np.sum(diff2s, axis=0)
         else:
             diff2_total = diff2s[0]
         logL = -0.5*diff2_total 
@@ -523,7 +520,7 @@ class Model:
                 dttq[i] = dt_transf
                 # temporary fix
                 if multiband:
-                    diff2_total = np.sum(np.array(diff2s), axis=0)
+                    diff2_total = np.sum(diff2s, axis=0)
                 else:
                     diff2_total = diff2s[0]
                 plogL = -0.5*diff2_total
@@ -566,7 +563,7 @@ class Model:
                     models[b] += dmodel_acpt
 
                 if multiband:
-                    diff2_total1 = np.sum(np.array(diff2s), axis=0)
+                    diff2_total1 = np.sum(diff2s, axis=0)
                 else:
                     diff2_total1 = np.array(diff2s[0])
                 logL = -0.5*diff2_total1
