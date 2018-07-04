@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('TkAgg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 # from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
@@ -8,15 +8,16 @@ from helpers import *
 from image_eval import image_model_eval
 import h5py
 import sys
-
+import os
 
 if sys.platform=='darwin':
     result_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/pcat-lion-results/'
     data_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/Data'
 elif sys.platform=='linux2':
     ## CHECK THESE
-    result_path = '/n/fink1/rfeder/mpcat/'
+    result_path = '/n/home07/rfederstaehle/figures/'
     data_path = '/n/fink1/rfeder/mpcat/multiband_pcat/Data'
+    chain_path = '/n/fink1/rfeder/mpcat/multiband_pcat/pcat-lion-results/'
 else:
     base_path = raw_input('Operating system not detected, please enter base_path directory (eg. /Users/.../pcat-lion-master):')
     if not os.path.isdir(base_path):
@@ -26,6 +27,7 @@ else:
 run = '002583'
 camcol = '2'
 field = '0136'
+mag_bins = np.linspace(15, 23, 15)
 
 run_cam_field = run+'-'+camcol+'-'+field
 
@@ -34,7 +36,10 @@ result_dir_name = str(sys.argv[2])
 
 ref_cat_path = data_path+'/'+dataname+'/truth/'+dataname+'-tru.txt'
 result_path += result_dir_name
-
+chain_path += result_dir_name
+print 'result_path: ', result_path
+if not os.path.isdir(result_path):
+    os.makedirs(result_path)
 
 def result_plots(result_path, ref_cat_path, \
                     hubble_cat_path=None, \
@@ -56,9 +61,9 @@ def result_plots(result_path, ref_cat_path, \
     
 
     if chain_datatype.lower()=='npz':
-        chain = np.load(result_path+'/chain.npz')
+        chain = np.load(chain_path+'/chain.npz')
     elif chain_datatype.lower()=='hdf5':
-        chain = h5py.File(result_path+'/chain.hdf5', 'r')
+        chain = h5py.File(chain_path+'/chain.hdf5', 'r')
     else:
         raise IOError('Could not read in data type, please use .npz or .hdf5 files.')
 
@@ -244,6 +249,8 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
                         nframes=10, \
                         mock2_type=None, \
                         boolplotsave=1, \
+                        boolplotshow=0, \
+                        frame_number_list=None, \
                         datatype='real', \
                         plttype='pdf', \
                         bright_n=300, \
@@ -257,6 +264,14 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
         labldata = datatype
 
     sizefac = 10.*136
+
+    if chain_datatype.lower()=='npz':
+        chain = np.load(chain_path+'/chain.npz')
+    elif chain_datatype.lower()=='hdf5':
+        chain = h5py.File(chain_path+'/chain.hdf5', 'r')
+    else:
+        raise IOError('Could not read in data type, please use .npz or .hdf5 files.')
+
 
     nsrcs = chain['n']
     xsrcs = np.array(chain['x'], dtype=np.float32)
@@ -289,11 +304,13 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 
     imsz = [imdim, imdim]
 
-    psf_basic_path = data_path+'/psfs/'+dataname+'-psf.txt'
-    cts_basic_path = data_path+'/cts/'+dataname+'-cts.txt'
+    psf_basic_path = data_path+'/'+dataname+'/psfs/'+dataname+'-psf.txt'
+    cts_basic_path = data_path+'/'+dataname+'/cts/'+dataname+'-cts.txt'
 
     if datatype != 'mock':
-        frame_basic_path = data_path+'/frames/frame--'+run_cam_field+'.fits'
+        frame_basic_path = data_path+'/'+dataname+'/frames/frame--'+run_cam_field+'.fits'
+    gains = [4.6199999, 4.3899999]
+    color_bins = np.linspace(-1.5, 1.5, 30)
 
     nmgys = []
     for band in bands:
@@ -314,13 +331,16 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 
     for num in frame_number_list:
 
-        num = int(num)
+        num = max(int(num-1), 0)
+
+        x = 5*nbands
+        print 'x=', x
 
         # data, residual, magnitude distribution
-        plt.figure(figsize=(15,5*nbands))
+        plt.figure(figsize=(15,10))
 
         for b in xrange(nbands):
-            bop = int(3*(nbands-1))
+            bop = int(3*b)
 
             psf_path = psf_basic_path.replace('.txt', bands[b]+'.txt')
             cts_path = cts_basic_path.replace('.txt', bands[b]+'.txt')
@@ -329,25 +349,26 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             data = np.loadtxt(cts_path)
             model = image_model_eval(xsrcs[num], ysrcs[num], fsrcs[b, num], bkgs[b], imsz, nc, cf)
             resid = data-model
-
-
+            variance = data / gains[b]
+            weight = 1. / variance
+            #plt.figure(figsize=(15,x))
             plt.subplot(nbands, 3, 1+bop)
             plt.imshow(data, origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data), vmax=np.percentile(data, 95))
             plt.colorbar()
-            if hubble_cat_path is not None:
-                plt.scatter(hubble_coords[2*b][posmask][hmask], hubble_coords[1+2*b][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy) / sizefac, color='lime') #hubble
-            else:
-                mask = ref_f[:,0] > 250 # will have to change this for other data sets
-                plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[:,b][mask] / sizefac, color='lime')
-                mask = np.logical_not(mask)
-                plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[:,b][mask] / sizefac, color='g')
+            #if hubble_cat_path is not None:
+                #plt.scatter(hubble_coords[2*b][posmask][hmask], hubble_coords[1+2*b][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy) / sizefac, color='lime') #hubble
+            #else:
+            mask = ref_f[:,0] > 250 # will have to change this for other data sets
+            plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[:,b][mask] / sizefac, color='lime')
+            mask = np.logical_not(mask)
+            plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[:,b][mask] / sizefac, color='g')
 
             plt.scatter(xsrcs[num], ysrcs[num], marker='x', s=(10000/len(data)**2)*fsrcs[b, num]/(2*sizefac), color='r')
             plt.xlim(-0.5, len(data)-0.5)
             plt.ylim(-0.5, len(data)-0.5)
 
             plt.subplot(nbands, 3, 2+bop)
-            plt.imshow(resid*np.sqrt(weight), origin='lower', interpolation='none', cmap='bwr', vmin=-5, vmax=5)
+            plt.imshow(resid*np.sqrt(weight), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
             plt.xlim(-0.5, len(data)-0.5)
             plt.ylim(-0.5, len(data)-0.5)
             plt.colorbar()
@@ -362,13 +383,14 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             plt.xlabel(str(bands[b]))
             plt.yscale('log')
         if boolplotsave:
-            plt.savefig(frame_dir + '/sample_' + str(num) + '_mags.'+plttype, bbox_inches='tight')
+            plt.savefig(result_path + '/sample_' + str(num) + '_mags.'+plttype, bbox_inches='tight')
         if boolplotshow:
             plt.show()
         plt.close()
 
         if nbands > 1:
-            plt.figure(5*(nbands-1), 5)
+            x = 5*(nbands-1)
+            plt.figure(figsize=(5, 5))
 
         for b in xrange(nbands-1):
             nmgy_per_count = [nmgys[0], nmgys[b+1]]
@@ -381,7 +403,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             plt.yscale('log')
             plt.xlabel(bands[0] + ' - ' + bands[1])
         if boolplotsave:
-            plt.savefig(frame_dir + '/color_histograms_sample_' + str(num) + '.pdf', bbox_inches='tight')
+            plt.savefig(result_path + '/color_histograms_sample_' + str(num) + '.pdf', bbox_inches='tight')
         if boolplotshow:
             plt.show()
         plt.close()
@@ -390,6 +412,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 
 
 
-result_plots(result_path, ref_cat_path)
+#result_plots(result_path, ref_cat_path)
+multiband_retro_frames(result_path, ref_cat_path, data_path, bands=['r', 'i'])
 
 
