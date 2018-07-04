@@ -369,6 +369,7 @@ class Proposal:
         self.stars0 = stars0
         self.starsp = starsp
         self.goodmove = True
+        mask = np.logical_and(np.logical_and(starsp[self._X,:] > 0, starsp[self._X,:]<99.5), np.logical_and(starsp[self._Y,:] > 0, starsp[self._Y,:]<99.5))
         inbounds = self.in_bounds(starsp)
         starsp = starsp.compress(inbounds, axis=1)
         self.__add_phonions_stars(stars0, remove=True)
@@ -718,8 +719,8 @@ class Model:
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
 
-        dx = np.random.normal(size=nw)*dpos_rms
-        dy = np.random.normal(size=nw)*dpos_rms
+        dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
+        dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
 
         starsp[self._X,:] = stars0[self._X,:] + dx
         starsp[self._Y,:] = stars0[self._Y,:] + dy
