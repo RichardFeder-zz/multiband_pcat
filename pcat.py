@@ -230,7 +230,9 @@ def flux_proposal(f0, nw, trueminf, b):
 
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize, margin, offsetx, offsety):
     dmodels = np.zeros(shape=(nbands, imsz[0], imsz[0]), dtype=np.float32)
-    diff2s = np.zeros((nbands, 2+multiple_regions, 2+multiple_regions), dtype=np.float64)
+    # diff2s = np.zeros((nbands, 2+multiple_regions, 2+multiple_regions), dtype=np.float64)
+    diff2s = []
+    dmodels = []
     dt_transf = 0
     for b in xrange(nbands):
         if b>0:
@@ -251,17 +253,16 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
             # xp += 0.5
             # yp += 0.5
             dt_transf += time.clock()-t4
-            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
-             weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
         else:    
             xp=x
             yp=y
-            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
-                weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
-            # dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
-            #     weights=weights[b], ref=ref[b], lib=None, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+
+        dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
+            weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+                 #     weights=weights[b], ref=ref[b], lib=None, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
         dmodels[b] = dmodel
-        diff2s[b] = diff2
+        # diff2s[b] = diff2
+        diff2s.append(diff2)
     return dmodels, diff2s, dt_transf
 
 # ix, iy = 0. to 3.999
@@ -336,7 +337,10 @@ class Proposal:
         self.dback = np.zeros(nbands, dtype=np.float32)
         self.xphon = np.array([], dtype=np.float32)
         self.yphon = np.array([], dtype=np.float32)
-        self.fphon = np.array([[] for x in xrange(nbands)], dtype=np.float32)
+        # self.fphon = np.array([[] for x in xrange(nbands)], dtype=np.float32)
+        self.fphon = []
+        for x in xrange(nbands):
+            self.fphon.append(np.array([], dtype=np.float32))
 
     def set_factor(self, factor):
         self.factor = factor
@@ -348,14 +352,16 @@ class Proposal:
     def assert_types(self):
         assert self.xphon.dtype == np.float32
         assert self.yphon.dtype == np.float32
-        assert self.fphon.dtype == np.float32
-
+        # assert self.fphon.dtype == np.float32
+        assert self.fphon[0].dtype == np.float32
 
     def __add_phonions_stars(self, stars, remove=False):
         fluxmult = -1 if remove else 1
         self.xphon = np.append(self.xphon, stars[self._X,:])
         self.yphon = np.append(self.yphon, stars[self._Y,:])
-        self.fphon = np.concatenate((self.fphon, np.array(fluxmult*stars[self._F:,:], dtype=np.float32)), axis=1)
+        for b in xrange(nbands):
+            self.fphon[b] = np.append(self.fphon[b], np.array(fluxmult*stars[self._F+b,:], dtype=np.float32))
+        # self.fphon = np.concatenate((self.fphon, np.array(fluxmult*stars[self._F:,:], dtype=np.float32)), axis=1)
         self.assert_types()
 
     def add_move_stars(self, idx_move, stars0, starsp):
@@ -422,8 +428,8 @@ class Model:
     def __init__(self):
         self.back = np.zeros(nbands, dtype=np.float32)
         self.regsize = regsize
-        self.n = self.nstar
-        # self.n = np.random.randint(self.nstar)+1
+        #self.n = self.nstar
+        self.n = np.random.randint(self.nstar)+1
         #self.n = np.random.randint(self.nstar)+1
         self.stars = np.zeros((2+nbands,self.nstar), dtype=np.float32)
         self.stars[:,0:self.n] = np.random.uniform(size=(2+nbands,self.n))  # refactor into some sort of prior function?
@@ -471,12 +477,15 @@ class Model:
             regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
         # models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=None, \
         #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
- 
+        print 'diff2s:', diff2s
+
         if multiband:
-            diff2_total = np.sum(diff2s, axis=0)
+            diff2_total = np.sum(np.array(diff2s), axis=0)
         else:
             diff2_total = diff2s[0]
-        logL = -0.5*diff2_total 
+
+        logL = -0.5*diff2_total
+        print 'logL:', logL
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
@@ -493,7 +502,7 @@ class Model:
             yparities = np.random.randint(2, size=nloop)
 
         rtype_array = np.random.choice(moveweights.size, p=moveweights, size=nloop)
-        movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
+        # movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
 
         dback = [np.float32(0.) for x in xrange(nbands)]
 
@@ -510,6 +519,8 @@ class Model:
                 self.parity_x = 0
                 self.parity_y = 0
 
+            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
+
             #proposal types
             proposal = movefns[rtype]()
             # dt1[i] = tmove
@@ -522,7 +533,8 @@ class Model:
                 dttq[i] = dt_transf
                 # temporary fix
                 if multiband:
-                    diff2_total = np.sum(diff2s, axis=0)
+                    # diff2_total = np.sum(diff2s, axis=0)
+                    diff2_total = np.sum(np.array(diff2s), axis=0)
                 else:
                     diff2_total = diff2s[0]
                 plogL = -0.5*diff2_total
@@ -565,7 +577,8 @@ class Model:
                     models[b] += dmodel_acpt
 
                 if multiband:
-                    diff2_total1 = np.sum(diff2s, axis=0)
+                    diff2_total1 = np.sum(np.array(diff2s), axis=0)
+                    # diff2_total1 = np.sum(diff2s, axis=0)
                 else:
                     diff2_total1 = np.array(diff2s[0])
                 logL = -0.5*diff2_total1
@@ -692,7 +705,6 @@ class Model:
         pixel_variance = trueback[0]/gains[0]
         N_eff = 17.5
         err_f = np.sqrt(N_eff * pixel_variance)
-        # data specific
         N_src = 1400.
         if datatype=='mock2':
             N_src = 10.
@@ -712,7 +724,10 @@ class Model:
         starsp[self._X,:] = stars0[self._X,:] + dx
         starsp[self._Y,:] = stars0[self._Y,:] + dy
 
-        starsp[self._F:,:] = pfs
+        for b in xrange(nbands):
+            starsp[self._F+b,:] = pfs[b]
+
+        # starsp[self._F:,:] = pfs
 
         self.bounce_off_edges(starsp)
 
@@ -776,8 +791,8 @@ class Model:
         # split
         if splitsville and self.n > 0 and self.n < self.nstar and bright_n > 0: # need something to split, but don't exceed nstar
             nms = min(nms, bright_n, self.nstar-self.n) # need bright source AND room for split source
-            dx = (np.random.normal(size=nms)*self.kickrange)
-            dy = (np.random.normal(size=nms)*self.kickrange)
+            dx = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
+            dy = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
             idx_move = np.random.choice(idx_bright, size=nms, replace=False)
             stars0 = self.stars.take(idx_move, axis=1)
             fminratio = stars0[self._F,:] / self.trueminf
@@ -785,7 +800,7 @@ class Model:
             fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
 
             for b in xrange(nbands-1):
-                fracs.append(np.random.uniform(size=nms))
+                fracs.append(np.random.uniform(size=nms).astype(np.float32))
 
             starsp = np.empty_like(stars0)
             starsb = np.empty_like(stars0)
@@ -794,8 +809,14 @@ class Model:
             starsp[self._Y,:] = stars0[self._Y,:] + ((1-fracs[0])*dy)
             starsb[self._X,:] = stars0[self._X,:] - fracs[0]*dx
             starsb[self._Y,:] = stars0[self._Y,:] - fracs[0]*dy
-            starsp[self._F:,:] = stars0[self._F:,:]*fracs
-            starsb[self._F:,:] = stars0[self._F:,:] * (1-np.array(fracs))
+
+
+            for b in xrange(nbands):
+                starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
+                starsb[self._F+b,:] = stars0[self._F+b,:] * (1-fracs[b])
+
+            # starsp[self._F:,:] = stars0[self._F:,:]*fracs
+            # starsb[self._F:,:] = stars0[self._F:,:] * (1-np.array(fracs))
 
             # don't want to think about how to bounce split-merge
             # don't need to check if above fmin, because of how frac is decided

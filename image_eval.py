@@ -33,7 +33,7 @@ def psf_poly_fit(psf0, nbin):
 def image_model_eval(x, y, f, back, imsz, nc, cf, regsize=None, margin=0, offsetx=0, offsety=0, weights=None, ref=None, lib=None):
     assert x.dtype == np.float32
     assert y.dtype == np.float32
-    #assert f.dtype == np.float32
+    # assert f.dtype == np.float32
     # not sure what to do with cf
     #assert cf.dtype == np.float32
     if ref is not None:
