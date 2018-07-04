@@ -17,7 +17,6 @@ from astropy.io import fits
 import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
-# from result_diagnostics import results, multiband_sample_frame
 from helpers import *
 
 # Run, rerun, CamCol, DAOPHOTID, RA, DEC, xu, yu, u (mag), uErr, chi, sharp, flag, xg, yg, g, gErr, chi, sharp, flag, 
@@ -26,7 +25,8 @@ from helpers import *
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
-multiple_regions = 1
+
+multiple_regions = 0
 include_hubble = 0
 
 #generate random seed for initialization
@@ -156,7 +156,7 @@ for b in xrange(nbands):
             pixel_transfer_mats.append(generate_default_astrans([imsz[0], imsz[1]]))
         assert w==w0 and h==h0
 
-    if visual and testpsfn:
+    if testpsfn:
         testpsf(ncs[b], cf, psfs[b], np.float32(np.random.uniform()*4), np.float32(np.random.uniform()*4), lib=libmmult.pcat_model_eval)
 
 if multiple_regions:
@@ -234,7 +234,6 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
     for b in xrange(nbands):
         if b>0:
             t4 = time.clock()
-            # print 'b>0', b, x, y
             try:
                 xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
             except:
@@ -262,6 +261,8 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
             #     weights=weights[b], ref=ref[b], lib=None, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
         dmodels.append(dmodel)
         diff2s.append(diff2)
+        print regsize
+        print diff2
     return dmodels, diff2s, dt_transf
 
 # ix, iy = 0. to 3.999
@@ -352,20 +353,12 @@ class Proposal:
         assert self.yphon.dtype == np.float32
         assert self.fphon[0].dtype == np.float32
 
-    def add_background_shift(self, back, dback, which_band, stars):
-        if back[which_band] + dback[which_band] > 0:
-            self.do_dback = True
-            self.goodmove = True
-            self.dback[which_band] = dback[which_band]
-            self.stars0 = stars
 
     def __add_phonions_stars(self, stars, remove=False):
         fluxmult = -1 if remove else 1
         self.xphon = np.append(self.xphon, stars[self._X,:])
         self.yphon = np.append(self.yphon, stars[self._Y,:])
         self.fphon = np.concatenate((self.fphon, np.array(fluxmult*stars[self._F:,:], dtype=np.float32)), axis=1)
-        # for b in xrange(nbands):
-        #     self.fphon[b] = np.append(self.fphon[b], np.array(fluxmult*stars[self._F+b,:], dtype=np.float32))
         self.assert_types()
 
     def add_move_stars(self, idx_move, stars0, starsp):
@@ -445,7 +438,7 @@ class Model:
             else:
                 new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
                 self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
-    def run_sampler(self, nloop=1000, visual=False, multiband=False, savefig=False):
+    def run_sampler(self, nloop=1000, multiband=False):
         t0 = time.clock()
         nmov = np.zeros(nloop)
         movetype = np.zeros(nloop)
@@ -489,7 +482,6 @@ class Model:
             resids[b] -= models[b]
         # proposal types
         moveweights = np.array([80., 40., 40.])
-        # moveweights = np.array([80., 40., 40., 0.])
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
@@ -520,11 +512,9 @@ class Model:
                 self.parity_y = 0
 
             #proposal types
-            tmvfns = time.clock()
             proposal = movefns[rtype]()
-            tmove = time.clock()-tmvfns
-            dt1[i] = tmove
-            # dt1[i] = time.clock() - t1
+            # dt1[i] = tmove
+            dt1[i] = time.clock() - t1
             if proposal.goodmove:
                 t2 = time.clock()
                 dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, \
@@ -635,17 +625,13 @@ class Model:
         dt3 *= 1000
         dttq *= 1000 #coordinate transfer times
         accept_fracs = []
-        # othertimes = []
-        # othertimes.append(np.sum(dttq))
+
         timestat_array = np.zeros((6, 1+len(moveweights)), dtype=np.float32)
 
         statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)', 'Coordinates (s)']
 
-        #timestat_arrays = [dt1, dt2, dt3, dt_transf]
-
-        # ### CLEAN THIS UP
-
         statarrays = [accept, outbounds, dt1, dt2, dt3, dttq]
+        # print statarrays
 
         for j in xrange(len(statlabels)):
             timestat_array[j][0] = np.sum(statarrays[j])/1000
@@ -667,14 +653,6 @@ class Model:
 
         # ------------------------------------------------------------------
 
-        if visual or savefig:
-            if include_hubble:
-                hfs = hf[:,0]
-            else:
-                hfs = []
-
-            #multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hfs, resids, weights, \
-            #    bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, include_hubble, datatype)
 
         return self.n, chi2, timestat_array, accept_fracs
 
@@ -929,7 +907,6 @@ class Model:
 
 # --------------------------------- start executing the program now ---------------------------------------------
 
-# libmmult = npct.load_library('pcat-lion-test', '.')
 libmmult = npct.load_library('pcat-lion', '.')
 initialize_c()
 
@@ -993,23 +970,12 @@ model = Model()
 #create directory for results
 frame_dir = create_directories(timestr)
 
-if visual:
-    plt.ion()
-    plt.figure(1, figsize=(15, min(2, nbands)*5))
 # sampling loop
 for j in xrange(nsamp):
     chi2_all = np.zeros(nbands)
     print 'Loop', j
-    sf = 0
-    # if nsamp<10:
-    #     sf = 1
-    #     c+= 1
-    # else:
-    #     if j%10==0:
-    #         sf = 1
-    #         c+=1
-     
-    _, chi2_all, statarrays, accept_fracs = model.run_sampler(visual=visual, multiband=multiband, savefig=sf)
+
+    _, chi2_all, statarrays, accept_fracs = model.run_sampler(multiband=multiband)
 
     nsample[j] = model.n
     xsample[j,:] = model.stars[Model._X, :]
@@ -1032,23 +998,18 @@ for j in xrange(nsamp):
 
     chi2sample[j] = chi2_all
     timestats[j,:] = statarrays
-   # dt2s[j] = dt2_val
 if not multiband:
     colorsample = []
 print 'saving...'
 
-#print np.mean(dt2s), np.std(dt2s)
 
 #mock test
 if datatype=='mock2':
-    np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
+    np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
     result_dir = result_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
 else:
-    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count)
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback)
     result_dir = result_path + '/' + timestr
-
-
-# results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, datatype)
 
 dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)
