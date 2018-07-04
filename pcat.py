@@ -3,7 +3,7 @@ import sys
 import os
 import numpy.ctypeslib as npct
 from ctypes import c_int, c_double
-import h5py
+#import h5py
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
 matplotlib.use('TkAgg')
@@ -26,7 +26,7 @@ from helpers import *
 timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
 
-multiple_regions = 1
+multiple_regions = 0
 include_hubble = 0
 
 #generate random seed for initialization
@@ -150,7 +150,7 @@ for b in xrange(nbands):
         if os.path.isfile(pathname):
             pixel_transfer_mats.append(read_astrans_mats(pathname))
             dx, dy = find_mean_offset(pathname, dim=imsz[0])
-            dpos = [int(dx), int(dy)]
+            dpos = [int(round(dx)), int(round(dy))]
             mean_dpos.append(dpos)
         else:
             pixel_transfer_mats.append(generate_default_astrans([imsz[0], imsz[1]]))
@@ -176,7 +176,7 @@ if datatype=='mock2':
 if datatype =='mock2':
     nsamp = 100
 else:
-    nsamp = 20
+    nsamp = 500
 nloop = 1000
 
 def initialize_c():
@@ -215,7 +215,7 @@ def flux_proposal(f0, nw, trueminf, b):
     if multiple_regions:
         lindf = np.float32(5*err_f/(np.sqrt(N_src*0.04*(2+nbands))))
     else:
-        lindf = np.float32(err_f/np.sqrt(N_src*(2+nbands)))
+        lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
     ff = np.log(logdf*logdf*f0 + logdf*np.sqrt(lindf*lindf + logdf*logdf*f0*f0)) / logdf
     ffmin = np.log(logdf*logdf*trueminf + logdf*np.sqrt(lindf*lindf + logdf*logdf*trueminf*trueminf)) / logdf
@@ -422,7 +422,9 @@ class Model:
     def __init__(self):
         self.back = np.zeros(nbands, dtype=np.float32)
         self.regsize = regsize
-        self.n = np.random.randint(self.nstar)+1
+        self.n = self.nstar
+        # self.n = np.random.randint(self.nstar)+1
+        #self.n = np.random.randint(self.nstar)+1
         self.stars = np.zeros((2+nbands,self.nstar), dtype=np.float32)
         self.stars[:,0:self.n] = np.random.uniform(size=(2+nbands,self.n))  # refactor into some sort of prior function?
         self.stars[self._X,0:self.n] *= imsz[0]-1
@@ -478,7 +480,7 @@ class Model:
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40., 40.])
+        moveweights = np.array([80., 40.,40.])
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
@@ -1005,8 +1007,9 @@ if datatype=='mock2':
     np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
     result_dir = result_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
 else:
-    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback)
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
     result_dir = result_path + '/' + timestr
 
 dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)
+print 'Time String:', str(timestr)
