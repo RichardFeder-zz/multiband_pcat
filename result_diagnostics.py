@@ -14,7 +14,6 @@ if sys.platform=='darwin':
     result_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/pcat-lion-results/'
     data_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/Data'
 elif sys.platform=='linux2':
-    ## CHECK THESE
     result_path = '/n/home07/rfederstaehle/figures/'
     data_path = '/n/fink1/rfeder/mpcat/multiband_pcat/Data'
     chain_path = '/n/fink1/rfeder/mpcat/multiband_pcat/pcat-lion-results/'
@@ -74,6 +73,7 @@ def result_plots(result_path, ref_cat_path, \
     xsrcs = chain['x']
     ysrcs = chain['y']
     fsrcs = chain['f']
+    colorsrcs = chain['colors']
     chi2 = chain['chi2']
     timestats = chain['times'] # should be an array of shape (nsamp, 4)
     accept_stats = chain['accept']
@@ -212,11 +212,9 @@ def result_plots(result_path, ref_cat_path, \
             mask = fsrcs[0,samp,:] > 0
             n_bright = min(300, int(len(fsrcs[0,samp])/3))
 
-
-            colors = adus_to_color(fsrcs[0,samp][mask], fsrcs[b+1,samp][mask], nmpc)
+            colors = colorsrcs[b][samp]
             brightest_idx = np.argpartition(fsrcs[0,samp][mask], n_bright)[-n_bright:]
             
-
             bright_h = np.histogram(colors[brightest_idx], bins=color_post_bins)
             hist = np.histogram(colors, bins=color_post_bins)
             post_hist.append(hist[0]+0.01)
@@ -280,6 +278,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
     xsrcs = np.array(chain['x'], dtype=np.float32)
     ysrcs = np.array(chain['y'], dtype=np.float32)
     fsrcs = chain['f']
+    colorsrcs = chain['colors']
     chi2 = chain['chi2']
     timestats = chain['times'] # should be an array of shape (nsamp, 4)
     acceptfracs = chain['accept']
@@ -412,12 +411,14 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 
         for b in xrange(nbands-1):
             nmgy_per_count = [nmgys[0], nmgys[b+1]]
-            colors = adus_to_color(fsrcs[0, num], fsrcs[b+1, num], nmgy_per_count)
+            colors = colorsrcs[b][num]
+            # colors = adus_to_color(fsrcs[0, num], fsrcs[b+1, num], nmgy_per_count)
             #refcolors = ref_mags[0]-ref_mags[b+1]
             plt.subplot(1, nbands, b+1)
-            colors = colors[~np.isinf(colors)]
+            # colors = colors[~np.isinf(colors)]
             print 'colors:', colors
-            plt.hist(colors[~np.isnan(colors)], label='Chain', bins=color_bins, bottom=0.1, histtype='step', color='r')
+            plt.hist(colors, label='Chain', bins=color_bins, bottom=0.1, histtype='step', color='r')
+            # plt.hist(colors[~np.isnan(colors)], label='Chain', bins=color_bins, bottom=0.1, histtype='step', color='r')
             #plt.hist(refcolors, label=labldata, bins=color_bins, bottom=0.1, histtype='step', color='g')
             plt.legend(loc=2)
             plt.yscale('log')

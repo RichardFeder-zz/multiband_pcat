@@ -3,7 +3,6 @@ import sys
 import os
 import numpy.ctypeslib as npct
 from ctypes import c_int, c_double
-#import h5py
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
 matplotlib.use('TkAgg')
@@ -119,7 +118,6 @@ for b in xrange(nbands):
 
     g = open(paths[1])
     w, h, nb = [np.int32(i) for i in g.readline().split()]
-    imdim = (w,h)
     bias, gain = [np.float32(i) for i in g.readline().split()]
     if multiband:
         a = np.float32(g.readline().split())
@@ -158,6 +156,15 @@ for b in xrange(nbands):
 
     if testpsfn:
         testpsf(ncs[b], cf, psfs[b], np.float32(np.random.uniform()*4), np.float32(np.random.uniform()*4), lib=libmmult.pcat_model_eval)
+
+
+print 'mean_dpos:', mean_dpos
+print 'biases:', biases
+print 'gains:', gains
+print 'nmgy_per_count:', nmgy_per_count
+print 'backgrounds:', trueback
+
+
 
 if multiple_regions:
     regsize = imsz[0]/2
@@ -204,6 +211,26 @@ def create_directories(time_string):
         os.makedirs(frame_dir_name)
     return frame_dir_name
 
+
+def log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety):
+    cat = zip(x,y,f)
+    name = 'pcat-lion-results/'+timestr+'/log.txt'
+    np.savetxt(name.replace('log.txt', 'log_x.txt'), x)
+    np.savetxt(name.replace('log.txt', 'log_y.txt'), y)
+    np.savetxt(name.replace('log.txt', 'log_f.txt'), f)
+
+    # np.savetxt(name.replace('log.txt', 'log_weights.txt'), weights)
+
+
+    with open(name.replace('log.txt', 'log_main.txt'), 'w') as f:
+        f.write('bkg is %s\n\n' % str(bkg))
+        f.write('imsz is %s\n\n' % str(imsz))
+        f.write('regsize is %s\n' % str(regsize))
+        f.write('margin is %s, offsetx is %s, offsety is %s' % (str(margin), str(offsetx), str(offsety)))
+
+    sys.exit()
+
+
 def flux_proposal(f0, nw, trueminf, b):
     pixel_variance = trueback[b]/gains[b]
     N_eff = 17.5
@@ -225,12 +252,10 @@ def flux_proposal(f0, nw, trueminf, b):
     dff[oob_flux] = -2*aboveffmin[oob_flux] - dff[oob_flux]
     pff = ff + dff
     pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
-   # print 'std difference is', np.std(f0-pf), np.mean(np.abs(f0-pf))
+    # print 'std difference is', np.std(f0-pf), np.mean(np.abs(f0-pf))
     return pf
 
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize, margin, offsetx, offsety):
-    dmodels = np.zeros(shape=(nbands, imsz[0], imsz[0]), dtype=np.float32)
-    # diff2s = np.zeros((nbands, 2+multiple_regions, 2+multiple_regions), dtype=np.float64)
     diff2s = []
     dmodels = []
     dt_transf = 0
@@ -240,18 +265,11 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
             try:
                 xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
             except:
-                print 'x', x
-                print 'y', y
-                print 'f', f
-                print 'imsz', imsz
-                print 'offsetx, offsety', offsetx, offsety
-                raise ValueError('whoopsie')
+                log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, ref, regsize, margin, offsetx, offsety)
+                # raise ValueError('whoopsie')
             #correcting for different band trimmings, hubble offset
             xp -= mean_dpos[b-1, 0]
             yp -= mean_dpos[b-1, 1]
-            #test
-            # xp += 0.5
-            # yp += 0.5
             dt_transf += time.clock()-t4
         else:    
             xp=x
@@ -259,9 +277,7 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
 
         dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
             weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
-                 #     weights=weights[b], ref=ref[b], lib=None, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
-        dmodels[b] = dmodel
-        # diff2s[b] = diff2
+        dmodels.append(dmodel)
         diff2s.append(diff2)
     return dmodels, diff2s, dt_transf
 
@@ -417,9 +433,7 @@ class Model:
     truealpha = np.float32(2)
     penalty = 1+0.5*(nbands) #multiband 
     kickrange = 1.
-    # color_sigs = [np.sqrt(0.75)] # r-i, 
     color_sigs = [0.5, 0.5] # r-i, r-z
-    # color_mus = [0.75]
     color_mus = [0.25, 0.1] # r-i, r-z
 
     _X = 0
@@ -454,7 +468,7 @@ class Model:
         dt2 = np.zeros(nloop)
         dt3 = np.zeros(nloop)
         dttq = np.zeros(nloop)
-        # single region
+        
         if multiple_regions:
             self.offsetx = np.random.randint(self.regsize)
             self.offsety = np.random.randint(self.regsize)
@@ -476,12 +490,12 @@ class Model:
         n_phon = evalx.size
         models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
             regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
-        # models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=None, \
-        #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
-        print 'diff2s:', diff2s
+
 
         if multiband:
+            print 'diff2s:', diff2s
             diff2_total = np.sum(np.array(diff2s), axis=0)
+            print 'diff2_total:', diff2_total
         else:
             diff2_total = diff2s[0]
 
@@ -532,9 +546,7 @@ class Model:
                                                 imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, \
                                                 margin=margin, offsetx=self.offsetx, offsety=self.offsety)
                 dttq[i] = dt_transf
-                # temporary fix
                 if multiband:
-                    # diff2_total = np.sum(diff2s, axis=0)
                     diff2_total = np.sum(np.array(diff2s), axis=0)
                 else:
                     diff2_total = diff2s[0]
@@ -560,6 +572,9 @@ class Model:
                         print 'refx, refy', refx, refy
                         print 'regionx, regiony', regiony, regionx
                         print 'proposal.factor, proposal.factor.shape', proposal.factor, proposal.factor.shape
+                        print 'x', proposal.xphon
+                        print 'y', proposal.yphon
+
                         raise IndexError('somethings woopy')
                     acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                     acceptprop = acceptreg[regiony, regionx]
@@ -718,7 +733,7 @@ class Model:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
-
+ 
         dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
 
@@ -937,7 +952,7 @@ else:
     truth = np.loadtxt('Data/'+dataname+'/truth/'+dataname+'-tru.txt')
 truex = truth[:,0]
 truey = truth[:,1]
-truef = truth[:,2:]
+truef = truth[:,2:2+nbands]
 truecolors = []
 if multiband:
     for b in xrange(nbands-1):
@@ -995,13 +1010,14 @@ frame_dir = create_directories(timestr)
 for j in xrange(nsamp):
     chi2_all = np.zeros(nbands)
     print 'Loop', j
-
     _, chi2_all, statarrays, accept_fracs = model.run_sampler(multiband=multiband)
 
     nsample[j] = model.n
     xsample[j,:] = model.stars[Model._X, :]
     ysample[j,:] = model.stars[Model._Y, :]
     bkgsample[j] = model.back
+    chi2sample[j] = chi2_all
+    timestats[j,:] = statarrays
 
     accept_stats[j,:] = accept_fracs
     nmgy_sample = []
@@ -1017,19 +1033,19 @@ for j in xrange(nsamp):
     else:
         fsample[j,:] = model.stars[Model._F, :]
 
-    chi2sample[j] = chi2_all
-    timestats[j,:] = statarrays
+    # log_parameters(model.stars[Model._X,:], model.stars[Model._Y,:], model.stars[Model._F:,:], model.back, imsz, nc, cfs, weights, regsize, margin, model.offsetx, model.offsety)
+
+
 if not multiband:
     colorsample = []
+
 print 'saving...'
 
-
-#mock test
 if datatype=='mock2':
     np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
     result_dir = result_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
 else:
-    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
     result_dir = result_path + '/' + timestr
 
 dt_total = time.clock()-start_time

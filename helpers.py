@@ -20,15 +20,17 @@ def get_pint_dp(p):
     return pint.astype(int), dp
 
 def transform_q(x,y, mats):
-    if len(x) != len(y):
-        print('Unequal number of x and y coordinates')
-        return
+    assert len(x)==len(y)
     xtrans, ytrans, dxpdx, dypdx, dxpdy, dypdy = mats
     xints, dxs = get_pint_dp(x)
     yints, dys = get_pint_dp(y)
-    xnew = xtrans[yints,xints] + dxs*dxpdx[yints,xints] + dys*dxpdy[yints,xints]
-    ynew = ytrans[yints,xints] + dxs*dypdx[yints,xints] + dys*dypdy[yints,xints] 
-    return np.array(xnew).astype(np.float32), np.array(ynew).astype(np.float32)
+    try:
+        xnew = xtrans[yints,xints] + dxs*dxpdx[yints,xints] + dys*dxpdy[yints,xints]
+        ynew = ytrans[yints,xints] + dxs*dypdx[yints,xints] + dys*dypdy[yints,xints] 
+        return np.array(xnew).astype(np.float32), np.array(ynew).astype(np.float32)
+    except:
+        print xints, dxs, yints, dys
+        raise ValueError('problem accessing elements')
 
 def gaussian(x, mu, sig):
     return -np.power(x - mu, 2.) / (2 * np.power(sig, 2.))
@@ -53,9 +55,10 @@ def read_astrans_mats(data_path):
 
 def find_mean_offset(filename, dim=100):
     mats = read_astrans_mats(filename)
-    x, y = [np.random.uniform(10, dim-10, 1000) for p in xrange(2)]
+    x, y = [np.random.uniform(10, dim-10, 10000) for p in xrange(2)]
     x1, y1 = transform_q(x, y, mats)
-    return np.mean(x1-x), np.mean(y1-y)
+    dx, dy = np.mean(x1-x), np.mean(y1-y)
+    return dx, dy
 
 def get_psf_and_vals(path):
     f = open(path)
@@ -71,6 +74,28 @@ def get_nanomaggy_per_count(frame_path):
     nanomaggy_per_count = frame_header['NMGY']
     return nanomaggy_per_count
 
+def get_hubble(hubble_cat_path, xoff=310, yoff=630):
+    hubble_pos = fits.open(hubble_cat_path)
+
+    hxr = hubble_pos[0].data-xoff
+    hyr = hubble_pos[1].data-yoff
+    hxi = hubble_pos[2].data-xoff
+    hyi = hubble_pos[3].data-yoff
+    hxg = hubble_pos[4].data-xoff
+    hyg = hubble_pos[5].data-yoff
+
+    hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
+
+    hubble_cat = np.loadtxt(hubble_cat_path)
+    hx = hubble_cat[:,0]
+    hy = hubble_cat[:,1]
+    hf = hubble_cat[:,2:]
+
+    posmask = np.logical_and(hx+0.5<imdim, hy+0.5<imdim)
+    hf = hf[posmask]
+    hmask = hf < 22
+
+    return hubble_coords, hf, hmask
 
 
 
