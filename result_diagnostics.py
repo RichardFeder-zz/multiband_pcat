@@ -73,7 +73,7 @@ def result_plots(result_path, ref_cat_path, \
     xsrcs = chain['x']
     ysrcs = chain['y']
     fsrcs = chain['f']
-    colorsrcs = chain['colors']
+#    colorsrcs = chain['colors']
     chi2 = chain['chi2']
     timestats = chain['times'] # should be an array of shape (nsamp, 4)
     accept_stats = chain['accept']
@@ -203,7 +203,8 @@ def result_plots(result_path, ref_cat_path, \
 
 
     color_post_bins = np.linspace(-1.5, 1.5, 30)
-    for b in xrange(nbands-1):
+    for b in xrange(0):
+#   for b in xrange(nbands-1):
 
         nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
         post_hist, bright_hist = [], []
@@ -278,7 +279,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
     xsrcs = np.array(chain['x'], dtype=np.float32)
     ysrcs = np.array(chain['y'], dtype=np.float32)
     fsrcs = chain['f']
-    colorsrcs = chain['colors']
+#    colorsrcs = chain['colors']
     chi2 = chain['chi2']
     timestats = chain['times'] # should be an array of shape (nsamp, 4)
     acceptfracs = chain['accept']
@@ -288,6 +289,8 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
     print 'backgrounds:', bkgs
     nsamp = len(nsrcs)
     nbands = np.array(fsrcs).shape[0] # assuming fsrcs has shape (nbands, nsamp, nstar)
+
+    #resids = chain['resids']
 
     ref_cat = np.loadtxt(ref_cat_path)
     ref_x = ref_cat[:,0]
@@ -314,6 +317,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
         frame_basic_path = data_path+'/'+dataname+'/frames/frame--'+run_cam_field+'.fits'
     gains = [4.6199999, 4.3899999]
     biases = [1044., 1177.]
+    print 'biases:', biases
     color_bins = np.linspace(-1.5, 1.5, 30)
 
     nmgys = []
@@ -329,10 +333,12 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             nmgy = get_nanomaggy_per_count(frame_path)
         nmgys.append(nmgy)
 
+    mean_dpos = np.array([[-1, 3]]).astype(np.float32)
 
     if frame_number_list is None:
         frame_number_list = np.linspace(0, nsamp, nframes)
 
+    c = 0
     for num in frame_number_list:
 
         num = max(int(num-1), 0)
@@ -352,18 +358,32 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             #get background
             data = np.loadtxt(cts_path)
             imsz = [len(data), len(data[0])]
-            if datatype != 'mock':
-                data -= biases[b]
+            data -= biases[b]
+            #if datatype != 'mock':
+                #data -= biases[b]
+                #print 'hooya'
 
             if b==0:
                 xs = xsrcs[num]
                 ys = ysrcs[num]
             else:
                 xs, ys = transform_q(xsrcs[num], ysrcs[num], pixel_transfer_mats[b-1])
+                #xs -= mean_dpos[b-1, 0]
+                #ys -= mean_dpos[b-1, 1]
             model = image_model_eval(xs, ys, fsrcs[b, num], bkgs[b], imsz, nc, cf)
             resid = data-model
             variance = data / gains[b]
             weight = 1. / variance
+
+           # plt.figure()
+           # plt.imshow(resids[0,b,:,:]*np.sqrt(weight), origin='lower', interpolation='none', cmap='Greys', vmin=-30, vmax=30)
+           # if boolplotsave:
+           #     plt.savefig(result_path + '/resid_' + str(num) +str(bands[b])+ '.'+plttype, bbox_inches='tight')
+           # plt.close()
+
+
+
+
             #plt.figure(figsize=(15,x))
             plt.subplot(nbands, 3, 1+bop)
             plt.imshow(data, origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data), vmax=np.percentile(data, 95))
@@ -384,7 +404,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 #            plt.imshow(resid, origin='lower', interpolation='none', cmap='Greys', vmin=-\
 #100, vmax=100)
 
-            plt.imshow(resid*np.sqrt(weight), origin='lower', interpolation='none', cmap='Greys', vmin=-30, vmax=30)
+            plt.imshow(resid*np.sqrt(weight), origin='lower', interpolation='none', cmap='Greys', vmin=-10, vmax=10)
             plt.xlim(-0.5, len(data)-0.5)
             plt.ylim(-0.5, len(data)-0.5)
             plt.colorbar()
@@ -408,8 +428,8 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
         if nbands > 1:
             x = 5*(nbands-1)
             plt.figure(figsize=(5, 5))
-
-        for b in xrange(nbands-1):
+        for b in xrange(0):
+        #for b in xrange(nbands-1):
             nmgy_per_count = [nmgys[0], nmgys[b+1]]
             colors = colorsrcs[b][num]
             # colors = adus_to_color(fsrcs[0, num], fsrcs[b+1, num], nmgy_per_count)
@@ -433,7 +453,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 
 
 
-result_plots(result_path, ref_cat_path, datatype='mock')
-multiband_retro_frames(result_path, ref_cat_path, data_path, bands=['r', 'i'], datatype='mock')
+#result_plots(result_path, ref_cat_path, datatype='real')
+multiband_retro_frames(result_path, ref_cat_path, data_path, bands=['r', 'i'], datatype='real')
 
 

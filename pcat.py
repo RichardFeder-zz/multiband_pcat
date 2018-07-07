@@ -25,7 +25,7 @@ from helpers import *
 timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
 
-multiple_regions = 0
+multiple_regions = 1
 include_hubble = 0
 
 #generate random seed for initialization
@@ -183,7 +183,7 @@ if datatype=='mock2':
 if datatype =='mock2':
     nsamp = 100
 else:
-    nsamp = 500
+    nsamp = 800
 nloop = 1000
 
 def initialize_c():
@@ -220,7 +220,6 @@ def log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offset
     np.savetxt(name.replace('log.txt', 'log_f.txt'), f)
 
     # np.savetxt(name.replace('log.txt', 'log_weights.txt'), weights)
-
 
     with open(name.replace('log.txt', 'log_main.txt'), 'w') as f:
         f.write('bkg is %s\n\n' % str(bkg))
@@ -265,8 +264,11 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
             try:
                 xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
             except:
-                log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, ref, regsize, margin, offsetx, offsety)
-                # raise ValueError('whoopsie')
+                print 'band', b
+                print np.amax(x), np.amin(x), np.amax(y), np.amax(x)
+                print np.amax(f), np.amin(f)
+                log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety)
+                raise
             #correcting for different band trimmings, hubble offset
             xp -= mean_dpos[b-1, 0]
             yp -= mean_dpos[b-1, 1]
@@ -385,9 +387,9 @@ class Proposal:
         self.stars0 = stars0
         self.starsp = starsp
         self.goodmove = True
-        mask = np.logical_and(np.logical_and(starsp[self._X,:] > 0, starsp[self._X,:]<99.5), np.logical_and(starsp[self._Y,:] > 0, starsp[self._Y,:]<99.5))
-        inbounds = self.in_bounds(starsp)
-        starsp = starsp.compress(inbounds, axis=1)
+        #mask = np.logical_and(np.logical_and(starsp[self._X,:] > 0, starsp[self._X,:]<99.5), np.logical_and(starsp[self._Y,:] > 0, starsp[self._Y,:]<99.5))
+        #inbounds = self.in_bounds(starsp)
+        #starsp = starsp.compress(inbounds, axis=1)
         self.__add_phonions_stars(stars0, remove=True)
         self.__add_phonions_stars(starsp)
 
@@ -504,7 +506,7 @@ class Model:
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40.,40.])
+        moveweights = np.array([80., 40., 40.])
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
@@ -574,8 +576,19 @@ class Model:
                         print 'proposal.factor, proposal.factor.shape', proposal.factor, proposal.factor.shape
                         print 'x', proposal.xphon
                         print 'y', proposal.yphon
-
-                        raise IndexError('somethings woopy')
+                        print 'maximum x, maximum y', np.amax(proposal.xphon), np.amax(proposal.yphon)
+                        print 'minimum x, minimum y', np.amin(proposal.xphon), np.amin(proposal.yphon)
+                        print 'max f, minf', np.amax(proposal.fphon), np.amin(proposal.fphon)
+                        print 'max factor, min factor', np.amax(proposal.factor), np.amin(proposal.factor)
+                        print np.sum(np.isnan(proposal.factor)), np.sum(np.isinf(proposal.factor))
+                        print np.sum(np.isnan(proposal.xphon)), np.sum(np.isinf(proposal.xphon))
+                        print np.sum(np.isnan(proposal.xphon)), np.sum(np.isinf(proposal.xphon))
+                        print 'max regionx,regiony, min regionx, regiony', np.amax(regionx), np.amax(regiony), np.amin(regionx), np.amin(regiony)
+                        np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, \
+                         nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
+                        print 'Time String:', str(timestr)
+                        raise
+                        #raise IndexError('somethings woopy')
                     acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
@@ -682,7 +695,7 @@ class Model:
         # ------------------------------------------------------------------
 
 
-        return self.n, chi2, timestat_array, accept_fracs
+        return self.n, chi2, timestat_array, accept_fracs, resids
 
     def idx_parity_stars(self):
         return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, regsize)
@@ -725,15 +738,24 @@ class Model:
         if datatype=='mock2':
             N_src = 10.
  
+
+        #for b in xrange(nbands):
+        #    dlogf = np.log(pfs[b]/f0[b])
+        #    if b==0:
+        #        factor = -self.truealpha*dlogf
+        #    else:
+        #        factor += -self.truealpha*dlogf
         dlogf = np.log(pfs[0]/f0[0])
         factor = -self.truealpha*dlogf
 
-        factor = np.array(factor) + np.sum(color_factors, axis=0)
+        #factor = np.array(factor) + np.sum(color_factors, axis=0)
         if multiple_regions:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
  
+        dpos_rms[dpos_rms < 1e-3] = 1e-3
+
         dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
 
@@ -995,6 +1017,7 @@ accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
 tq_times = np.zeros(nsamp, dtype=np.float32)
 plt_times = np.zeros(nsamp, dtype=np.float32)
 bkgsample = np.zeros((nsamp, nbands), dtype=np.float32)
+#residuals = np.zeros((10, nbands, imsz[0], imsz[1]), dtype=np.float32)
 if multiband:
     fsample = [np.zeros((nsamp, nstar), dtype=np.float32) for x in xrange(nbands)]
     colorsample = [[] for x in xrange(nbands-1)]
@@ -1010,7 +1033,7 @@ frame_dir = create_directories(timestr)
 for j in xrange(nsamp):
     chi2_all = np.zeros(nbands)
     print 'Loop', j
-    _, chi2_all, statarrays, accept_fracs = model.run_sampler(multiband=multiband)
+    _, chi2_all, statarrays, accept_fracs, resids = model.run_sampler(multiband=multiband)
 
     nsample[j] = model.n
     xsample[j,:] = model.stars[Model._X, :]
@@ -1018,7 +1041,6 @@ for j in xrange(nsamp):
     bkgsample[j] = model.back
     chi2sample[j] = chi2_all
     timestats[j,:] = statarrays
-
     accept_stats[j,:] = accept_fracs
     nmgy_sample = []
     if multiband:
