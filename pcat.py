@@ -33,7 +33,7 @@ np.random.seed(20170501)
 
 trueback = [180., 314., 103., 140.] #r, i, g, z
 #trueback = [180., 315., 140.]
-# trueback = [314.]
+#trueback = [314.]
 
 np.seterr(divide='ignore', invalid='ignore')
 
@@ -167,7 +167,8 @@ print 'backgrounds:', trueback
 
 
 if multiple_regions:
-    regsize = imsz[0]/2
+    regsize = imsz[0]/5
+    regions_factor = (float(regsize)/float(imsz[0]))**2
 else:
     regsize = imsz[0]# single region
 assert imsz[0] % regsize == 0
@@ -212,12 +213,17 @@ def create_directories(time_string):
     return frame_dir_name
 
 
-def log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety):
+def log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety, xint=None, yint=None, dx=None, dy=None):
     cat = zip(x,y,f)
     name = 'pcat-lion-results/'+timestr+'/log.txt'
     np.savetxt(name.replace('log.txt', 'log_x.txt'), x)
     np.savetxt(name.replace('log.txt', 'log_y.txt'), y)
     np.savetxt(name.replace('log.txt', 'log_f.txt'), f)
+    if xint is not None:
+        np.savetxt(name.replace('log.txt', 'log_xint.txt'), xint)
+        np.savetxt(name.replace('log.txt', 'log_yint.txt'), yint)
+        np.savetxt(name.replace('log.txt', 'log_dx.txt'), dx)
+        np.savetxt(name.replace('log.txt', 'log_dy.txt'), dy)
 
     # np.savetxt(name.replace('log.txt', 'log_weights.txt'), weights)
 
@@ -239,7 +245,8 @@ def flux_proposal(f0, nw, trueminf, b):
     if datatype=='mock2':
         N_src = 10.
     if multiple_regions:
-        lindf = np.float32(5*err_f/(np.sqrt(N_src*0.04*(2+nbands))))
+        lindf = np.float32(err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))
+        #lindf = np.float32(5*err_f/(np.sqrt(N_src*0.04*(2+nbands))))
     else:
         lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
@@ -265,9 +272,13 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize,
                 xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
             except:
                 print 'band', b
+                xint, dx = get_pint_dp(x)
+                yint, dy = get_pint_dp(y)
+                print np.amax(xint), np.amin(xint), np.amax(dx), np.amin(dx)
+                print np.amax(yint), np.amin(yint), np.amax(dy), np.amin(dy)
                 print np.amax(x), np.amin(x), np.amax(y), np.amax(x)
                 print np.amax(f), np.amin(f)
-                log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety)
+                log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety, xint=xint, yint=yint, dx=dx, dy=dy)
                 raise
             #correcting for different band trimmings, hubble offset
             xp -= mean_dpos[b-1, 0]
@@ -352,11 +363,14 @@ class Proposal:
         self.factor = None
         self.goodmove = False
         self.do_dback = None
+        self.dx = np.zeros([], dtype=np.float32)
+        self.dy = np.zeros([], dtype=np.float32)
         self.dback = np.zeros(nbands, dtype=np.float32)
         self.xphon = np.array([], dtype=np.float32)
         self.yphon = np.array([], dtype=np.float32)
         # self.fphon = np.array([[] for x in xrange(nbands)], dtype=np.float32)
         self.fphon = []
+        self.inbounds = np.array([])
         for x in xrange(nbands):
             self.fphon.append(np.array([], dtype=np.float32))
 
@@ -388,14 +402,19 @@ class Proposal:
         self.starsp = starsp
         self.goodmove = True
         #mask = np.logical_and(np.logical_and(starsp[self._X,:] > 0, starsp[self._X,:]<99.5), np.logical_and(starsp[self._Y,:] > 0, starsp[self._Y,:]<99.5))
-        #inbounds = self.in_bounds(starsp)
-        #starsp = starsp.compress(inbounds, axis=1)
+        inbounds = self.in_bounds(starsp)
+        starsp = starsp.compress(inbounds, axis=1)
+        stars0 = stars0.compress(inbounds, axis=1)
+        #self.starsp = self.starsp.compress(inbounds, axis=1)
         self.__add_phonions_stars(stars0, remove=True)
         self.__add_phonions_stars(starsp)
 
     def add_birth_stars(self, starsb):
         self.do_birth = True
         self.starsb = starsb
+        #inbounds = self.in_bounds(starsb)
+        #starsb = starsb.compress(inbounds,axis=1)
+        #self.starsb = starsb.compress(inbounds,axis=1)
         self.goodmove = True
         if starsb.ndim == 3:
             starsb = starsb.reshape((starsb.shape[0], starsb.shape[1]*starsb.shape[2]))
@@ -422,10 +441,6 @@ class Proposal:
             refx = xk if xk.ndim == 1 else xk[:,0]
             refy = yk if yk.ndim == 1 else yk[:,0]
             return refx, refy
-        #not sure if this is the right thing to do for dback 
-        elif self.do_dback is not None:
-            return self.stars0[self._X,:], self.stars0[self._Y,:]
-
 class Model:
     #mock test
     nstar = 2000
@@ -495,14 +510,11 @@ class Model:
 
 
         if multiband:
-            print 'diff2s:', diff2s
             diff2_total = np.sum(np.array(diff2s), axis=0)
-            print 'diff2_total:', diff2_total
         else:
             diff2_total = diff2s[0]
 
         logL = -0.5*diff2_total
-        print 'logL:', logL
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
@@ -544,9 +556,19 @@ class Model:
             dt1[i] = time.clock() - t1
             if proposal.goodmove:
                 t2 = time.clock()
-                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, \
+                try:
+                    dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, \
                                                 imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, \
                                                 margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+                except:
+                    print 'rtype:', rtype
+                    print 'loop', i
+                    name = 'pcat-lion-results/'+timestr+'/log.txt'
+                    np.savetxt(name.replace('log.txt', 'log_xphon.txt'), proposal.xphon)
+                    np.savetxt(name.replace('log.txt', 'log_yphon.txt'), proposal.yphon)
+                    np.savetxt(name.replace('log.txt', 'log_fphon.txt'), proposal.fphon)
+
+                    raise
                 dttq[i] = dt_transf
                 if multiband:
                     diff2_total = np.sum(np.array(diff2s), axis=0)
@@ -571,11 +593,9 @@ class Model:
                         print 'rtype:', rtype
                         print 'regsize:', self.regsize
                         print 'offsetx, offsety', self.offsetx, self.offsety
-                        print 'refx, refy', refx, refy
-                        print 'regionx, regiony', regiony, regionx
-                        print 'proposal.factor, proposal.factor.shape', proposal.factor, proposal.factor.shape
-                        print 'x', proposal.xphon
-                        print 'y', proposal.yphon
+                        print 'refx, refy', np.amax(refx), np.amin(refx), np.amax(refy), np.amin(refy)
+                        print 'regionx, regiony', regionx, regiony
+                        print np.amax(self.stars[self._X,:]), np.amin(self.stars[self._X,:]), np.amax(self.stars[self._Y,:]), np.amin(self.stars[self._Y,:])
                         print 'maximum x, maximum y', np.amax(proposal.xphon), np.amax(proposal.yphon)
                         print 'minimum x, minimum y', np.amin(proposal.xphon), np.amin(proposal.yphon)
                         print 'max f, minf', np.amax(proposal.fphon), np.amin(proposal.fphon)
@@ -587,8 +607,8 @@ class Model:
                         np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, \
                          nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
                         print 'Time String:', str(timestr)
+                        print 'previous proposal:', rtype_array[i-1]
                         raise
-                        #raise IndexError('somethings woopy')
                     acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
@@ -725,7 +745,7 @@ class Model:
         starsp = np.empty_like(stars0)
         f0 = stars0[self._F:,:]
         pfs = []
-        color_factors = np.zeros((nbands-1, nw)).astype(np.float32)
+        #color_factors = np.zeros((nbands-1, nw)).astype(np.float32)
 
         for b in xrange(nbands):
             pf = flux_proposal(f0[b], nw, 0, b)
@@ -748,14 +768,13 @@ class Model:
         dlogf = np.log(pfs[0]/f0[0])
         factor = -self.truealpha*dlogf
 
-        #factor = np.array(factor) + np.sum(color_factors, axis=0)
         if multiple_regions:
-            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
+            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
  
         dpos_rms[dpos_rms < 1e-3] = 1e-3
-
+        dpos_rms[dpos_rms > 1] = 1e-2
         dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
 
@@ -767,7 +786,19 @@ class Model:
 
         # starsp[self._F:,:] = pfs
 
+        if starsp[self._X,:].any() < 0:
+            print 'x is less than zero here!!'
+        if starsp[self._Y,:].any() < 0:
+            print 'y is less than zero here!!'
+
         self.bounce_off_edges(starsp)
+
+        if starsp[self._X,:].any() < 0:
+            print 'x after bounce is less than zero here!!'
+        if starsp[self._Y,:].any() < 0:
+            print 'y after bounce is less than zero here!!'
+
+
 
         proposal = Proposal()
         proposal.add_move_stars(idx_move, stars0, starsp)
