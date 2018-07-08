@@ -167,7 +167,7 @@ print 'backgrounds:', trueback
 
 
 if multiple_regions:
-    regsize = imsz[0]/5
+    regsize = imsz[0]/2
     regions_factor = (float(regsize)/float(imsz[0]))**2
 else:
     regsize = imsz[0]# single region
@@ -401,20 +401,15 @@ class Proposal:
         self.stars0 = stars0
         self.starsp = starsp
         self.goodmove = True
-        #mask = np.logical_and(np.logical_and(starsp[self._X,:] > 0, starsp[self._X,:]<99.5), np.logical_and(starsp[self._Y,:] > 0, starsp[self._Y,:]<99.5))
         inbounds = self.in_bounds(starsp)
         starsp = starsp.compress(inbounds, axis=1)
         stars0 = stars0.compress(inbounds, axis=1)
-        #self.starsp = self.starsp.compress(inbounds, axis=1)
         self.__add_phonions_stars(stars0, remove=True)
         self.__add_phonions_stars(starsp)
 
     def add_birth_stars(self, starsb):
         self.do_birth = True
         self.starsb = starsb
-        #inbounds = self.in_bounds(starsb)
-        #starsb = starsb.compress(inbounds,axis=1)
-        #self.starsb = starsb.compress(inbounds,axis=1)
         self.goodmove = True
         if starsb.ndim == 3:
             starsb = starsb.reshape((starsb.shape[0], starsb.shape[1]*starsb.shape[2]))
@@ -442,7 +437,6 @@ class Proposal:
             refy = yk if yk.ndim == 1 else yk[:,0]
             return refx, refy
 class Model:
-    #mock test
     nstar = 2000
     if datatype=='mock2':
         nstar = 20
@@ -460,9 +454,7 @@ class Model:
     def __init__(self):
         self.back = np.zeros(nbands, dtype=np.float32)
         self.regsize = regsize
-        #self.n = self.nstar
         self.n = np.random.randint(self.nstar)+1
-        #self.n = np.random.randint(self.nstar)+1
         self.stars = np.zeros((2+nbands,self.nstar), dtype=np.float32)
         self.stars[:,0:self.n] = np.random.uniform(size=(2+nbands,self.n))  # refactor into some sort of prior function?
         self.stars[self._X,0:self.n] *= imsz[0]-1
@@ -515,6 +507,7 @@ class Model:
             diff2_total = diff2s[0]
 
         logL = -0.5*diff2_total
+        print 'logL:', logL
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
@@ -579,6 +572,7 @@ class Model:
                 plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
                 plogL[:,(1-self.parity_x)::2] = float('-inf')
                 dlogP = plogL - logL
+                # print 'dlogP:', dlogP
                 
                 dt2[i] = time.clock() - t2
                 t3 = time.clock()
@@ -609,6 +603,9 @@ class Model:
                         print 'Time String:', str(timestr)
                         print 'previous proposal:', rtype_array[i-1]
                         raise
+
+                    # print 'dlogP after:', dlogP
+
                     acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
@@ -631,6 +628,7 @@ class Model:
                 else:
                     diff2_total1 = np.array(diff2s[0])
                 logL = -0.5*diff2_total1
+
 
                 #implement accepted moves
                 if proposal.idx_move is not None:
@@ -830,6 +828,8 @@ class Model:
             starsb = starsb.compress(inbounds, axis=1)
             factor = np.full(starsb.shape[1], -self.penalty)
             proposal.add_birth_stars(starsb)
+            if np.isnan(factor).any():
+                print 'factor nan on birth death'
             proposal.set_factor(factor)
         # death
         # does region based death obey detailed balance?
@@ -842,6 +842,8 @@ class Model:
                 factor = np.full(nbd, self.penalty)
                 proposal.add_death_stars(idx_kill, starsk)
                 proposal.set_factor(factor)
+            if np.isnan(factor).any():
+                print 'factor nan on not lifeordeath'
         return proposal
 
 
@@ -971,9 +973,23 @@ class Model:
             # turn bright_n into an array
             bright_n = bright_n - (f0[0] > 2*self.trueminf) - (fk[0] > 2*self.trueminf) + (starsp[self._F,:] > 2*self.trueminf)
         if goodmove:
+            #factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
+            #    np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + \
+            #    np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
+
             factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
-                np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + \
+                np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(bright_n) + \
                 np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
+
+            if np.isnan(factor).any():
+                print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange)
+                print 'imsz factor', np.log(imsz[0]*imsz[1]) 
+                print 'fminratio:', fminratio
+                print 'sumfs[0], self.trueminf', sum_fs[0], self.trueminf
+                print 'fmin factor', np.log(1. - 2./fminratio)
+                print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio)
+
+
             if multiband:
                 for b in xrange(nbands-1):
                     stars0_color = adus_to_color(stars0[self._F,:], stars0[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
@@ -983,15 +999,25 @@ class Model:
                     if splitsville:
                         starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                         factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                        if np.isnan(factor[0]):
+                            print 'factor nan on split'
                     else:
                         starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                         factor += (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                        if np.isnan(factor[0]):
+                            print 'factor nan on merge'
+
             if not splitsville:
                 factor *= -1
                 factor += self.penalty
+                if np.isnan(self.penalty):
+                    print 'penalty is nan'
             else:
                 factor -= self.penalty
+
             proposal.set_factor(factor)
+            if np.isnan(factor[0]):
+                print 'factor:', factor
         return proposal
 
 # --------------------------------- start executing the program now ---------------------------------------------
