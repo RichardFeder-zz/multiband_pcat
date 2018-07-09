@@ -18,48 +18,21 @@ import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
 from helpers import *
-# from result_diagnostics import results, multiband_sample_frame
 
-def generate_default_astrans(imsz):
-    astransx, astransy, mat3, mat4, mat5, mat6 = [[] for x in xrange(6)]
-    for x in xrange(imsz[0]):
-        astransx.append(np.linspace(0, imsz[0]-1, imsz[0]))
-        astransy.append(np.full((imsz[1]), x).transpose())
-    mat3 = np.full((imsz[0], imsz[1]), 1)
-    mat4 = np.zeros((imsz[0], imsz[1]))
-    mat5 = np.zeros((imsz[0], imsz[1]))
-    mat6 = np.full((imsz[0], imsz[1]), 1)
-    pixel_transfer_mats = np.zeros((6, imsz[0],imsz[1]))
-    pixel_transfer_mats = np.array([astransx, astransy, mat3, mat4, mat5, mat6])
-    return pixel_transfer_mats
-
-def get_psf_and_vals(path):
-    f = open(path)
-    psf = np.loadtxt(path, skiprows=1).astype(np.float32)
-    nc, nbin = [np.int32(i) for i in f.readline().split()]
-    f.close()
-    cf = psf_poly_fit(psf, nbin=nbin)
-    return psf, nc, cf
-
-# Run, rerun, CamCol, DAOPHOTID, RA, DEC, xu, yu, u (mag), uErr, chi, sharp, flag, xg, yg, g, gErr, chi, sharp, flag, 
-# xr, yr, r, rerr, chi, sharp, flag, xi, yi, i, ierr, chi, sharp, flag, xz, yz, z, zerr, chi, sharp, flag
-
-# mock tests
-# directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/Data"
-directory_path = "/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/pcat-lion-results"
 timestr = time.strftime("%Y%m%d-%H%M%S")
 c = 0
-dpi_val = 300
+
 multiple_regions = 1
+include_hubble = 0
+
+#generate random seed for initialization
 np.random.seed(20170501)
 
-# trueback = [180., 314., 103., 140.] #r, i, g, z
-trueback = [180., 314., 140.]
-# mean_dpos = np.array([[-0.642, 2.756 ],[3.231,10.8482], [0.68116, 6.72648]]) #this is for run 2583, camcol 2 for i, g, z
-# mean_dpos = np.array([[-1., 3.],[3.,10.]]) #r, i, g
+trueback = [180., 314., 103., 140.] #r, i, g, z
+#trueback = [180., 315., 140.]
+#trueback = [314.]
+mean_dpos = np.array([[-1., 3.],[1.,7.]])
 
-mean_dpos = np.array([[-1., 3.],[1.,7.]]) #r, i, z
-transform_number = []
 np.seterr(divide='ignore', invalid='ignore')
 
 # script arguments
@@ -67,32 +40,22 @@ dataname = str(sys.argv[1])
 visual = int(sys.argv[2]) > 0
 # 1 to test, 0 not to test
 testpsfn = int(sys.argv[3]) > 0
-# 'mock' for simulated
+# 'mock' for simulated, 'mock2' for two source blended mock
 datatype = str(sys.argv[4])
 # 1 for multiband, 0 for single band
 multiband = int(sys.argv[5]) > 0
 
-mock_test_name = 'mock_2star_16'
+if datatype=='mock2':
+    config_type = str(sys.argv[6])
+    nrealization = int(sys.argv[7])
+if datatype=='mock' or datatype=='mock2':
+    trueback = []
 
-# bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, data_array, data_hdrs, weights, nmgy_per_count = [[] for x in xrange(12)]
+mock_test_name = 'mock_2star_18'
+
 bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
-    data_array, data_hdrs, weights, nmgy_per_count, mean_dpos = [[] for x in xrange(13)]
+    data_array, data_hdrs, weights, nmgy_per_count = [[] for x in xrange(12)]
 
-if multiband:
-    #mock test
-    # bands = ['r']
-    band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
-    while band != 'x':
-        bands.append(band)
-        band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
-    nbands = len(bands)
-    print('Loading data for the following bands: ' + str(bands))
-else:
-    nbands = 1
-    bands = ['']
-
-# print 'Lion mode:', strgmode
-# print 'datatype:', datatype
 
 if sys.platform=='darwin':
     base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
@@ -110,8 +73,28 @@ else:
     result_path = base_path + '/pcat-lion-results'
 print 'Results will go in', result_path
 
-total_time = time.clock()
+if multiband:
+    if datatype=='mock2':
+        if config_type=='r' or config_type=='rx3':
+            bands = ['r']
+        elif config_type=='r+i+g':
+            bands = ['r', 'i', 'g']
+    else:
+        band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
+        while band != 'x':
+            bands.append(band)
+            band = raw_input("Enter bands one by one in lowercase ('x' if no more): ")
+    nbands = len(bands)
+    print('Loading data for the following bands: ' + str(bands))
+else:
+    nbands = 1
+    bands = ['']
 
+print 'datatype:', datatype
+
+start_time = time.clock()
+
+#could simplify
 for b in xrange(nbands):
 
     if datatype=='mock2':
@@ -162,9 +145,9 @@ for b in xrange(nbands):
         pathname = 'Data/'+dataname+'/asGrid/asGrid002583-2-0136-100x100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms0_0.fits'
         if os.path.isfile(pathname):
             pixel_transfer_mats.append(read_astrans_mats(pathname))
-            dx, dy = find_mean_offset(pathname, dim=imsz[0])
-            dpos = [int(round(dx)), int(round(dy))]
-            mean_dpos.append(dpos)
+            # dx, dy = find_mean_offset(pathname, dim=imsz[0])
+            # dpos = [int(round(dx)), int(round(dy))]
+            # mean_dpos.append(dpos)
         else:
             pixel_transfer_mats.append(generate_default_astrans([imsz[0], imsz[1]]))
         assert w==w0 and h==h0
@@ -179,20 +162,27 @@ print 'gains:', gains
 print 'nmgy_per_count:', nmgy_per_count
 print 'backgrounds:', trueback
 
-
-
-ntemps = 1
-temps = np.sqrt(2) ** np.arange(ntemps)
 if multiple_regions:
     regsize = imsz[0]/2
+    regions_factor = (float(regsize)/float(imsz[0]))**2
 else:
     regsize = imsz[0]# single region
 assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 margin = 10
-#mock test
-nsamp = 500
+
+
+if datatype =='mock2':
+    nsamp = 100
+    if config_type=='rx3':
+        trueback[0] *= 3
+else:
+    nsamp = 800
 nloop = 1000
+
+
+ntemps = 1
+temps = np.sqrt(2) ** np.arange(ntemps)
 
 def initialize_c():
     if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
@@ -209,21 +199,33 @@ def initialize_c():
     libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
 def create_directories(time_string):
-    #mock tests
-    # new_dir_name = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
-    new_dir_name = directory_path + '/' + str(time_string)
-    frame_dir_name = new_dir_name + '/frames'
+    if datatype=='mock2':
+        new_dir_name = result_path+'/'+mock_test_name+'/' + str(dataname) + '/results'
+    else:
+        new_dir_name = result_path +'/'+ str(time_string)
+    frame_dir_name = new_dir_name+'/frames'
     if not os.path.isdir(frame_dir_name):
         os.makedirs(frame_dir_name)
     return frame_dir_name
 
-def gaussian(x, mu, sig):
-    return -np.power(x - mu, 2.) / (2 * np.power(sig, 2.))
+def log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety, xint=None, yint=None, dx=None, dy=None):
+    cat = zip(x,y,f)
+    name = 'pcat-lion-results/'+timestr+'/log.txt'
+    np.savetxt(name.replace('log.txt', 'log_x.txt'), x)
+    np.savetxt(name.replace('log.txt', 'log_y.txt'), y)
+    np.savetxt(name.replace('log.txt', 'log_f.txt'), f)
+    if xint is not None:
+        np.savetxt(name.replace('log.txt', 'log_xint.txt'), xint)
+        np.savetxt(name.replace('log.txt', 'log_yint.txt'), yint)
+        np.savetxt(name.replace('log.txt', 'log_dx.txt'), dx)
+        np.savetxt(name.replace('log.txt', 'log_dy.txt'), dy)
+    with open(name.replace('log.txt', 'log_main.txt'), 'w') as f:
+        f.write('bkg is %s\n\n' % str(bkg))
+        f.write('imsz is %s\n\n' % str(imsz))
+        f.write('regsize is %s\n' % str(regsize))
+        f.write('margin is %s, offsetx is %s, offsety is %s' % (str(margin), str(offsetx), str(offsety)))
 
-def get_pint_dp(p):
-    pint = np.floor(p+0.5)
-    dp = p - pint
-    return pint.astype(int), dp
+    sys.exit()
 
 def flux_proposal(f0, nw, trueminf, b):
     pixel_variance = trueback[b]/gains[b]
@@ -232,7 +234,6 @@ def flux_proposal(f0, nw, trueminf, b):
     N_src = 1400.
     if multiple_regions:
         lindf = np.float32(err_f/(np.sqrt(N_src*0.04*(2+nbands))))
-        # print lindf
     else:
         lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
@@ -246,17 +247,6 @@ def flux_proposal(f0, nw, trueminf, b):
     pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
     return pf
 
-def transform_q(x,y, mats):
-    transform_number.append(len(x))
-    if len(x) != len(y):
-        print('Unequal number of x and y coordinates')
-        return
-    xtrans, ytrans, dxpdx, dypdx, dxpdy, dypdy = mats
-    xints, dxs = get_pint_dp(x)
-    yints, dys = get_pint_dp(y)
-    xnew = xtrans[yints,xints] + dxs*dxpdx[yints,xints] + dys*dxpdy[yints,xints]
-    ynew = ytrans[yints,xints] + dxs*dypdx[yints,xints] + dys*dypdy[yints,xints] 
-    return np.array(xnew).astype(np.float32), np.array(ynew).astype(np.float32)
 
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety):
     dmodels, diff2s = [[],[]]
@@ -266,13 +256,8 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
             t4 = time.clock()
             xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
             #correcting for different band trimmings, hubble offset
-            # xp -= mean_dpos[b-1, 0]
-            # yp -= mean_dpos[b-1, 1]
             xp -= mean_dpos[b-1][0]
             yp -= mean_dpos[b-1][1]
-            #test
-            # xp += 0.5
-            # yp += 0.5
             dt_transf += time.clock()-t4
             dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
         else:    
@@ -330,13 +315,6 @@ def neighbours(x,y,neigh,i,generate=False):
         return neighbours, j
     else:
         return neighbours
-
-def adus_to_color(flux0, flux1, nm_2_cts):
-    colors = adu_to_magnitude(flux0, nm_2_cts[0]) - adu_to_magnitude(flux1, nm_2_cts[1])
-    return colors
-def adu_to_magnitude(flux, nm_2_cts):
-    mags = 22.5-2.5*np.log10((np.array(flux)*nm_2_cts))
-    return mags
 
 def get_region(x, offsetx, regsize):
     return np.floor(x + offsetx).astype(np.int) / regsize
@@ -542,29 +520,6 @@ class Model:
                 self.parity_x = 0
                 self.parity_y = 0
 
-            # #background peturbing, doesn't seem to work right now
-            # if rtype==3:
-            #     n_back_prop += 1
-            #     #save previous parameters and change them for background evaluation
-            #     self.region_params = [self.offsetx, self.offsety, self.regsize, self.nregx, self.nregy] #save previous values for next step
-            #     # print "self.region_params", self.region_params
-            #     self.offsetx = 0
-            #     self.offsety = 0
-            #     self.regsize = imsz[0]
-            #     self.nregx = 1
-            #     self.nregy = 1
-            #     #recalculate log likelihood over full region
-            #     models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
-            #         regsize=imsz[0], margin=margin, offsetx=0, offsety=0)
-            #     # logL = self.calculate_logL(diff2s)
-            #     if multiband:
-            #         diff2_total = np.sum(np.array(diff2s), axis=0)
-            #         # diff2_total = diff2s[2]
-            #     else:
-            #         diff2_total = diff2s[0]
-            #     logL = -0.5*diff2_total 
-            #     # print "logL at 507", logL
-
             movetypes = ['P *', 'BD *', 'MS *', 'BGD *']
             #proposal types
             movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.background_shift]
@@ -706,36 +661,10 @@ class Model:
         print '='*16
 
         tplot = time.clock()
-        # mock test
-        #if visual or savefig:
-        #    if datatype=='mock':
-        #        multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors,[], [], resids, weights, \
-        #            bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, labldata='mock')     
-        #    else:
-        #        multiband_sample_frame(data_array, self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], truex, truey, truef, truecolors, hubble_coords, hf[:,0], resids, weights, \
-        #            bands, nmgy_per_count, nstar, frame_dir, c, pixel_transfer_mats, mean_dpos, visual, savefig, labldata)
   
         dtplot = time.clock()-tplot
         othertimes.append(dtplot)
         return self.n, chi2, timestat_array, othertimes, accept_fracs
-
-    def calculate_logL(diff2s, len_diff20):
-        if multiband:
-            diff2_recon = []
-            a = 0
-            b = len_diff20-1
-            print diff2s[b]
-            while diff2s[b] is not None:
-                print diff2s[b]
-                diff2_recon.append(diff2s[a:b])
-                a+= len_diff20+1
-                b+= len_diff20+1
-            print diff2_recon
-            diff2_total = np.sum(np.array(diff2_recon), axis=0)
-        else:
-            diff2_total = diff2s[0]
-        logL = -0.5*diff2_total 
-        return logL
 
     def idx_parity_stars(self):
         return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, regsize)
@@ -998,14 +927,11 @@ class Model:
 
 libmmult = npct.load_library('pcat-lion', '.')
 initialize_c()
-#mock tests
-# truth = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-tru.txt')
 
 if datatype=='mock2':
     truth = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-tru.txt')
 else:
     truth = np.loadtxt('Data/'+dataname+'/truth/'+dataname+'-tru.txt')
-# truth = np.loadtxt('Data/'+dataname+'/'+dataname+'-tru.txt')
 truex = truth[:,0]
 truey = truth[:,1]
 truef = truth[:,2:]
@@ -1016,36 +942,30 @@ if multiband:
         truecolor = adus_to_color(truef[:,0], truef[:,b+1], nmpc) 
         truecolors.append(truecolor)
 
-if datatype == 'mock':    
-    labldata = 'Mock Truth'
+
+
+if include_hubble:
+    true_h = fits.open('Data/'+dataname+'/hubble_pixel_coords-2583-2-0136.fits')
+
+    xoff = 310
+    yoff = 630
+
+    hxr = true_h[0].data-xoff
+    hyr = true_h[1].data-yoff
+    hxi = true_h[2].data-xoff
+    hyi = true_h[3].data-yoff
+    hxg = true_h[4].data-xoff
+    hyg = true_h[5].data-yoff
+
+    hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
+
+    true_h = np.loadtxt('Data/'+dataname+'/HTcat-'+dataname+'.txt')
+    hx = true_h[:,0]
+    hy = true_h[:,1]
+    hf = true_h[:,2:]
+else:
     hx, hy, hf = [], [], []
     hubble_coords = [hx, hy, hf]
-    mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
-else:
-    labldata = datatype
-    # true_h = fits.open('Data/'+dataname+'/hubble_pixel_coords-2583-2-0136.fits')
-
-    # print 'true xr, ', np.min(true_h[0].data), np.std(true_h[0].data)
-    # print 'true yr, ', np.min(true_h[1].data), np.std(true_h[1].data)
-    # print 'true xi, ', np.min(true_h[2].data), np.std(true_h[2].data)
-    # print 'true yi, ', np.min(true_h[3].data), np.std(true_h[3].data)
-    # print 'true xg, ', np.min(true_h[4].data), np.std(true_h[4].data)
-    # print 'true yg, ', np.min(true_h[5].data), np.std(true_h[5].data)
-
-    # hxr = true_h[0].data-310
-    # hyr = true_h[1].data-630
-    # hxi = true_h[2].data-310
-    # hyi = true_h[3].data-630
-    # hxg = true_h[4].data-310
-    # hyg = true_h[5].data-630
-
-    # hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
-
-    # true_h = np.loadtxt('Data/'+dataname+'/HTcat-'+dataname+'.txt')
-    # hx = true_h[:,0]
-    # hy = true_h[:,1]
-    # hf = true_h[:,2:]
-
 
 
 
@@ -1072,8 +992,6 @@ frame_dir = create_directories(timestr)
 
 # signal.signal(signal.SIGINT, signal_handler)
 
-plt.ion()
-plt.figure(figsize=(15,10))
 # sampling loop
 for j in xrange(nsamp):
     # print np.mean(transform_number) # how many sources are being perturbed
@@ -1118,14 +1036,18 @@ if not multiband:
 print 'saving...'
 #mock test
 
-# np.savez(directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results/chain1x3.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
-np.savez(directory_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, accept=accept_stats)
-
-#mock test
-result_dir = directory_path + '/' + timestr
-# result_dir = directory_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
 
 
-#results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, plt_times, chi2sample, bkgsample, np.array(accept_stats), result_dir, nbands, bands, multiband, nmgy_per_count, labldata)
-dt_total = time.clock()-total_time
+if not multiband:
+    colorsample = []
+
+print 'saving...'
+
+if datatype=='mock2':
+    np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
+else:
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
+
+dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)
+print 'Time String:', str(timestr)
