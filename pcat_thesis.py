@@ -29,7 +29,6 @@ include_hubble = 0
 np.random.seed(20170501)
 
 trueback = [180., 314., 103., 140.] #r, i, g, z
-#trueback = [180., 315., 140.]
 #trueback = [314.]
 mean_dpos = np.array([[-1., 3.],[1.,7.]])
 
@@ -173,11 +172,11 @@ margin = 10
 
 
 if datatype =='mock2':
-    nsamp = 100
+    nsamp = 200
     if config_type=='rx3':
         trueback[0] *= 3
 else:
-    nsamp = 800
+    nsamp = 1000
 nloop = 1000
 
 
@@ -233,7 +232,8 @@ def flux_proposal(f0, nw, trueminf, b):
     err_f = np.sqrt(N_eff * pixel_variance)
     N_src = 1400.
     if multiple_regions:
-        lindf = np.float32(err_f/(np.sqrt(N_src*0.04*(2+nbands))))
+        lindf = np.float32(err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))
+        #lindf = np.float32(err_f/(np.sqrt(N_src*0.04*(2+nbands))))
     else:
         lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
@@ -256,8 +256,9 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
             t4 = time.clock()
             xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
             #correcting for different band trimmings, hubble offset
-            xp -= mean_dpos[b-1][0]
-            yp -= mean_dpos[b-1][1]
+            if datatype != 'mock' and datatype !='mock2':
+                xp -= mean_dpos[b-1][0]
+                yp -= mean_dpos[b-1][1]
             dt_transf += time.clock()-t4
             dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
         else:    
@@ -325,11 +326,6 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
     return np.flatnonzero(np.logical_and(match_x, match_y))
 
 def signal_handler(signal, frame):
-    # print('Saving plots now..')
-    # if multiband:
-    #     results(nsample,fsample, truef, colorsample, nsamp, timestats, tq_times, chi2sample, bkgsample, directory_path, timestr, nbands, bands, multiband, nmgy_per_count)
-    # else:
-    #     results(nsample,fsample, truef, [], nsamp, timestats, tq_times, chi2sample, bkgsample, directory_path, timestr, nbands, bands, multiband, nmgy_per_count)
     os._exit
 
 class Proposal:
@@ -425,14 +421,13 @@ class Proposal:
 class Model:
     #mock test
     nstar = 2000
+    if datatype=='mock2':
+        nstar = 20
     trueminf = np.float32(236) 
-    # trueminf = np.float32(236) 
     truealpha = np.float32(2)
-    penalty = 1+0.5*(nbands) #multiband 
+    penalty = 1+0.5*(nbands)
     kickrange = 1.
-    # color_sigs = [np.sqrt(0.75)] # r-i, 
     color_sigs = [0.5, 0.5] # r-i, r-z
-    # color_mus = [0.75]
     color_mus = [0.25, 0.1] # r-i, r-z
 
     _X = 0
@@ -465,7 +460,7 @@ class Model:
         dt2 = np.zeros(nloop)
         dt3 = np.zeros(nloop)
         dttq = np.zeros(nloop)
-        # single region
+
         if multiple_regions:
             self.offsetx = np.random.randint(self.regsize)
             self.offsety = np.random.randint(self.regsize)
@@ -477,7 +472,6 @@ class Model:
         self.nregy = imsz[1] / self.regsize + 1
 
         #used when background shift is proposed in multiple regions
-        self.region_params = [0, 0, 0, 0, 0] #offsetx, offsety, regsize, parity
 
         resids = []
         for b in xrange(nbands):
@@ -496,33 +490,42 @@ class Model:
         else:
             diff2_total = diff2s[0]
         logL = -0.5*diff2_total 
+
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40., 40., 0.])
+        moveweights = np.array([80., 40., 40.])
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
         n_back_acpt = 0
 
+
+        movetypes = ['P *', 'BD *', 'MS *']
+
+        if multiple_regions:
+            xparities = np.random.randint(2, size=nloop)
+            yparities = np.random.randint(2, size=nloop)
+        
+        rtype_array = np.random.choice(moveweights.size, p=moveweights, size=nloop)
+        dback = [np.float32(0.) for x in xrange(nbands)]
+
         for i in xrange(nloop):
             t1 = time.clock()
-            rtype = np.random.choice(moveweights.size, p=moveweights)
+            rtype = rtype_array[i]
             movetype[i] = rtype
-            # defaults
             dback = [np.float32(0.) for x in xrange(nbands)]
             pn = self.n
             # should regions be perturbed randomly or systematically?
-            if multiple_regions and rtype!=3: #don't do multiple regions if there is a background shift
-                self.parity_x = np.random.randint(2)
-                self.parity_y = np.random.randint(2)
+            if multiple_regions:
+                self.parity_x = xparities[i]
+                self.parity_y = yparities[i]
             else:
                 self.parity_x = 0
                 self.parity_y = 0
 
-            movetypes = ['P *', 'BD *', 'MS *', 'BGD *']
             #proposal types
-            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.background_shift]
+            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
             proposal = movefns[rtype]()
             dt1[i] = time.clock() - t1
             if proposal.goodmove:
@@ -534,10 +537,10 @@ class Model:
                     diff2_total = np.sum(np.array(diff2s), axis=0)
                 else:
                     diff2_total = diff2s[0]
+                
                 plogL = -0.5*diff2_total
-                if rtype != 3:
-                    plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
-                    plogL[:,(1-self.parity_x)::2] = float('-inf')
+                plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
+                plogL[:,(1-self.parity_x)::2] = float('-inf')
                 dlogP = (plogL - logL) / temperature
                 
                 dt2[i] = time.clock() - t2
@@ -553,12 +556,11 @@ class Model:
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
 
+                offx = self.offsetx
+                offy = self.offsety
                 for b in xrange(nbands):
                     dmodel_acpt = np.zeros_like(dmodels[b])
                     diff2s[b].fill(0)
-                    offx = self.offsetx
-                    offy = self.offsety
-          
                     libmmult.pcat_imag_acpt(imsz[0], imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, margin, offx, offy)
                     # using this dmodel containing only accepted moves, update logL
                     libmmult.pcat_like_eval(imsz[0], imsz[1], dmodel_acpt, resids[b], weights[b], diff2s[b], self.regsize, margin, offx, offy)   
@@ -591,58 +593,40 @@ class Model:
                         self.stars[:,self.n-1] = 0
                         self.n -= 1
 
-
-                if proposal.do_dback is not None:
-                    n_back_acpt += 1
-                    self.back += proposal.dback
-                    #reset parameters and calculate 
-                    self.offsetx = self.region_params[0]
-                    self.offsety = self.region_params[1]
-                    self.regsize = self.region_params[2]
-                    self.nregx = self.region_params[3]
-                    self.nregy = self.region_params[4]
-                    models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
-                        regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
-                    if multiband:
-                        diff2_total = np.sum(np.array(diff2s), axis=0)
-                    else:
-                        diff2_total = diff2s[0]
-                    logL = -0.5*diff2_total
-
                 dt3[i] = time.clock() - t3
 
-                if acceptprop.size > 0: 
-                    if rtype != 3:
-                        accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
-                    else:
-                        accept[i] = float(n_back_acpt)/float(n_back_prop)
+                if acceptprop.size > 0:
+                    accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
                 else:
                     accept[i] = 0
             else:
                 outbounds[i] = 1
         
         chi2 = []
+        #if datatype != 'mock':
+        #    xmin, xmax = 2, imsz[0]-2
+        #    ymin, ymax = 2, imsz[1]-2
+        #else:
+        #    xmin, xmax = 0, imsz[0]
+        #    ymin, ymax = 0, imsz[1]
+
         for b in xrange(nbands):
+            chi2.append(np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b])))
             #don't evaluate chi2 on outer periphery
-            if datatype != 'mock':
-                xmin, xmax = 2, imsz[0]-2
-                ymin, ymax = 2, imsz[1]-2
-            else:
-                xmin, xmax = 0, imsz[0]
-                ymin, ymax = 0, imsz[1]
-            chi2.append(np.sum(weights[b][xmin:xmax,ymin:ymax]*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])))        
+            #chi2.append(np.sum(weights[b][xmin:xmax,ymin:ymax]*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])))        
         
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
-        print 'Temperature', temperature, 'background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
+        print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
         dt1 *= 1000
         dt2 *= 1000
         dt3 *= 1000
+        dttq *= 1000
         accept_fracs = []
         othertimes = []
         othertimes.append(np.sum(dttq))
-        timestat_array = np.zeros((5, 1+len(moveweights)), dtype=np.float32)
-        statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)']
-        statarrays = [accept, outbounds, dt1, dt2, dt3]
+        timestat_array = np.zeros((6, 1+len(moveweights)), dtype=np.float32)
+        statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)', 'Coordinates (s)']
+        statarrays = [accept, outbounds, dt1, dt2, dt3, dttq]
         for j in xrange(len(statlabels)):
             timestat_array[j][0] = np.sum(statarrays[j])/1000
             if j==0:
@@ -660,11 +644,7 @@ class Model:
         print 'Total (s): %0.3f' % (np.sum(statarrays[2:])/1000)
         print '='*16
 
-        tplot = time.clock()
-  
-        dtplot = time.clock()-tplot
-        othertimes.append(dtplot)
-        return self.n, chi2, timestat_array, othertimes, accept_fracs
+        return self.n, chi2, timestat_array, accept_fracs
 
     def idx_parity_stars(self):
         return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, regsize)
@@ -720,12 +700,15 @@ class Model:
         N_eff = 17.5
         err_f = np.sqrt(N_eff * pixel_variance)
         N_src = 1400.
+        if datatype=='mock2':
+            N_src = 10.
  
         dlogf = np.log(pfs[0]/f0[0])
         factor = -self.truealpha*dlogf
 
         factor = np.array(factor) + np.sum(color_factors, axis=0)
         if multiple_regions:
+            #dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))/(np.maximum(f0[0], pfs[0]))
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
@@ -739,6 +722,8 @@ class Model:
 
         proposal = Proposal()
         proposal.add_move_stars(idx_move, stars0, starsp)
+        if np.isnan(factor).any():
+            print 'factor nan on move!!'
         proposal.set_factor(factor)
         return proposal
 
@@ -766,6 +751,8 @@ class Model:
             inbounds = self.in_bounds(starsb)
             starsb = starsb.compress(inbounds, axis=1)
             factor = np.full(starsb.shape[1], -self.penalty)
+ #           if np.isnan(factor).any():
+ #               print 'factor nan on birth'
             proposal.add_birth_stars(starsb)
             proposal.set_factor(factor)
         # death
@@ -779,6 +766,8 @@ class Model:
                 factor = np.full(nbd, self.penalty)
                 proposal.add_death_stars(idx_kill, starsk)
                 proposal.set_factor(factor)
+#            if np.isnan(factor).any():
+#                print 'factor nan on death'
         return proposal
 
 
@@ -934,7 +923,7 @@ else:
     truth = np.loadtxt('Data/'+dataname+'/truth/'+dataname+'-tru.txt')
 truex = truth[:,0]
 truey = truth[:,1]
-truef = truth[:,2:]
+truef = truth[:,2:2+nbands]
 truecolors = []
 if multiband:
     for b in xrange(nbands-1):
@@ -973,11 +962,9 @@ nstar = Model.nstar
 nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
 ysample = np.zeros((nsamp, nstar), dtype=np.float32)
-timestats = np.zeros((nsamp, 5, 5), dtype=np.float32)
-accept_stats = np.zeros((nsamp, 5), dtype=np.float32)
+timestats = np.zeros((nsamp, 6, 4), dtype=np.float32)
+accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
 tq_times = np.zeros(nsamp, dtype=np.float32)
-plt_times = np.zeros(nsamp, dtype=np.float32)
-bkgsample = np.zeros((nsamp, nbands), dtype=np.float32)
 if multiband:
     fsample = [np.zeros((nsamp, nstar), dtype=np.float32) for x in xrange(nbands)]
     colorsample = [[] for x in xrange(nbands-1)]
@@ -1008,14 +995,11 @@ for j in xrange(nsamp):
      
     temptemp = 1.
     for k in xrange(ntemps):
-        _, chi2_all[k], statarrays, othertimes, accept_fracs = models[k].run_sampler(temptemp, visual=(k==0)*visual, multiband=multiband, savefig=sf)
+        _, chi2_all[k], statarrays,  accept_fracs = models[k].run_sampler(temptemp, visual=(k==0)*visual, multiband=multiband, savefig=sf)
 
-    tq_times[j] = othertimes[0]
-    plt_times[j] = othertimes[1]
     nsample[j] = models[0].n
     xsample[j,:] = models[0].stars[Model._X, :]
     ysample[j,:] = models[0].stars[Model._Y, :]
-    bkgsample[j] = models[0].back
     accept_stats[j,:] = accept_fracs
     nmgy_sample = []
     if multiband:
@@ -1031,13 +1015,6 @@ for j in xrange(nsamp):
         fsample[j,:] = models[0].stars[Model._F, :]
     chi2sample[j] = chi2_all[0]
     timestats[j,:] = statarrays
-if not multiband:
-    colorsample = []
-print 'saving...'
-#mock test
-
-
-
 if not multiband:
     colorsample = []
 

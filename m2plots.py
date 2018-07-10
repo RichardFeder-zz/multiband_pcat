@@ -42,6 +42,7 @@ if sys.platform=='darwin':
     base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
 elif sys.platform=='linux2':
     base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+    result_path = '/n/home07/rfederstaehle/figures/'
 else:
     base_path = raw_input('Operating system not detected, please enter base_path directory (eg. /Users/.../pcat-lion-master):')
     if not os.path.isdir(base_path):
@@ -92,7 +93,7 @@ def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
             return goodmatch
 
 def hubble_cat_kd():
-    fitshubble = np.loadtxt(base_path+'/Data/hubble_catalog_2583-2-0136_astrans.txt')
+    fitshubble = np.loadtxt(base_path+'/Data/'+dataname+'/hubble_catalog_2583-2-0136_astrans.txt')
     HTx_fits = fitshubble[:,0] - bounds[0]
     HTy_fits = fitshubble[:,1] - bounds[2]
     fitsmask = np.logical_and(fitshubble[:,2]>0, fitshubble[:,3]>0)
@@ -100,11 +101,13 @@ def hubble_cat_kd():
     HTx_fits = HTx_fits[fitsmask]
     HTy_fits = HTy_fits[fitsmask]
 
+    HT606 = fitshubble[:,2]
+    HT814 = fitshubble[:,3]
 
     HTcat = np.loadtxt(base_path+'/Data/NGC7089R.RDVIQ.cal.adj.zpt', skiprows=1)
-    HT606= HTcat[:,3]
-    HT606err = HTcat[:,4]
-    HT814= HTcat[:,7]
+    #HT606= HTcat[:,3]
+    #HT606err = HTcat[:,4]
+    #HT814= HTcat[:,7]
     HT606 = HT606[fitsmask]
     HT814 = HT814[fitsmask]
 
@@ -115,7 +118,7 @@ def hubble_cat_kd():
 
     print np.sum(HT606 < 22), 'HST brighter than 22'
 
-    return HTkd, HT606
+    return HTkd, HT606, HTx_fits, HTy_fits
 
 
 def lion_cat_kd(path):
@@ -134,7 +137,7 @@ def lion_cat_kd(path):
     lion_r_all = lion_r[lion_mask].flatten()
     lion_kd = scipy.spatial.KDTree(lion_all)
 
-    return lion_kd, lion_r_all, lion_x, lion_y
+    return lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r
 
 def mock_cat_kd(path):
     mock_catalog = np.loadtxt(path)
@@ -169,7 +172,8 @@ def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd):
 #------------------- PORTILLO ET AL 2017 -----------------------
 
 if datatype != 'mock':
-    PCcat = np.loadtxt('run-alpha-20-new/posterior_sample.txt')
+    PCcat = np.loadtxt(base_path+'/Data/posterior_sample.txt')
+    #PCcat = np.loadtxt('run-alpha-20-new/posterior_sample.txt')
     maxn = 3000
     PCn = PCcat[-nsamp:,10003].astype(np.int)
     PCx = PCcat[-nsamp:,10004:10004+maxn]
@@ -194,10 +198,10 @@ if datatype == 'mock':
     mock_kd, mock_rmag = mock_cat_kd(base_path+'/Data/'+dataname+'/'+dataname+'-tru.txt')
 
 if include_hubble:
-    HTkd, HT606 = hubble_cat_kd()
+    HTkd, HT606, HTx_fits, HTy_fits = hubble_cat_kd()
 
 # load in chain
-lion_kd, lion_r_all, lion_x, lion_y = lion_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/chain.npz')
+lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r = lion_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/chain.npz')
 
 prec_portillo17, prec_lion = [np.zeros(nbins) for x in xrange(2)]
 
@@ -243,12 +247,14 @@ plt.ylabel('false discovery rate')
 plt.ylim((-0.05, 0.9))
 plt.xlim((15,24))
 plt.legend(prop={'size':12}, loc = 'best')
-plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+plt.savefig(result_path+'/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+#plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
 plt.close()
 # plt.show()
 
 fdr_lion = 1-prec_lion
-np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/fdr_'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.txt', fdr_lion)
+np.savetxt(result_path+'/'+run_name+'/fdr_'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.txt', fdr_lion)
+#np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/fdr_'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.txt', fdr_lion)
 
 
 
@@ -256,7 +262,7 @@ np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/fdr_'+str(run_name)+'_'+st
 
 
 if datatype != 'mock':
-    complete_lion = get_completeness(lion_x, lion_y, lion_r_all, lion_n, HTx_fits, HT606, HTkd)
+    complete_lion = get_completeness(lion_x, lion_y, lion_r, lion_n, HTx_fits, HT606, HTkd)
     complete_portillo17 = get_completeness(PCx, PCy, PCr, PCn, HTx_fits, HT606, HTkd)
 else:
     complete_lion = get_completeness(lion_x, lion_y, lion_r_all, lion_n, mock_x, mock_rmag, mock_kd)
@@ -291,11 +297,12 @@ plt.xlabel('HST F606W magnitude', fontsize='large')
 plt.ylabel('completeness', fontsize='large')
 plt.ylim((-0.1,1.1))
 plt.legend(loc='best', fontsize='large')
-plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+plt.savefig(result_path+'/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+#plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
 plt.close()
 
-
-np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/completeness_'+str(run_name)+'.txt', reclPC_lion)
+np.savetxt(result_path+'/'+run_name+'/completeness_'+str(run_name)+'.txt', reclPC_lion)
+#np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/completeness_'+str(run_name)+'.txt', reclPC_lion)
     
 
 

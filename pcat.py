@@ -184,7 +184,7 @@ if datatype=='mock2':
 if datatype =='mock2':
     nsamp = 100
 else:
-    nsamp = 800
+    nsamp = 500
 nloop = 1000
 
 def initialize_c():
@@ -507,11 +507,10 @@ class Model:
             diff2_total = diff2s[0]
 
         logL = -0.5*diff2_total
-        print 'logL:', logL
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40., 40.])
+        moveweights = np.array([80., 40., 0.])
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
@@ -572,7 +571,6 @@ class Model:
                 plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
                 plogL[:,(1-self.parity_x)::2] = float('-inf')
                 dlogP = plogL - logL
-                # print 'dlogP:', dlogP
                 
                 dt2[i] = time.clock() - t2
                 t3 = time.clock()
@@ -602,10 +600,10 @@ class Model:
                          nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
                         print 'Time String:', str(timestr)
                         print 'previous proposal:', rtype_array[i-1]
-                        raise
+                        raise 
 
-                    # print 'dlogP after:', dlogP
-
+                    if np.isnan(dlogP).any():
+                        print 'dlogP is nan!!!', dlogP
                     acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
@@ -784,23 +782,13 @@ class Model:
 
         # starsp[self._F:,:] = pfs
 
-        if starsp[self._X,:].any() < 0:
-            print 'x is less than zero here!!'
-        if starsp[self._Y,:].any() < 0:
-            print 'y is less than zero here!!'
-
         self.bounce_off_edges(starsp)
-
-        if starsp[self._X,:].any() < 0:
-            print 'x after bounce is less than zero here!!'
-        if starsp[self._Y,:].any() < 0:
-            print 'y after bounce is less than zero here!!'
-
-
 
         proposal = Proposal()
         proposal.add_move_stars(idx_move, stars0, starsp)
         proposal.set_factor(factor)
+        if np.isnan(factor).any():
+            print 'move factor is nan!!', factor
         return proposal
 
     def birth_death_stars(self):
@@ -867,11 +855,13 @@ class Model:
             idx_move = np.random.choice(idx_bright, size=nms, replace=False)
             stars0 = self.stars.take(idx_move, axis=1)
             fminratio = stars0[self._F,:] / self.trueminf
- 
-            fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
 
-            for b in xrange(nbands-1):
-                fracs.append(np.random.uniform(size=nms).astype(np.float32))
+            for b in xrange(nbands):
+                fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
+#            fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
+
+ #           for b in xrange(nbands-1):
+ #               fracs.append(np.random.uniform(size=nms).astype(np.float32))
 
             starsp = np.empty_like(stars0)
             starsb = np.empty_like(stars0)
@@ -999,24 +989,22 @@ class Model:
                     if splitsville:
                         starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                         factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-                        if np.isnan(factor[0]):
-                            print 'factor nan on split'
+                        if np.isnan(factor).any():
+                            print 'factor nan on split', factor
                     else:
                         starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                         factor += (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-                        if np.isnan(factor[0]):
+                        if np.isnan(factor).any():
                             print 'factor nan on merge'
 
             if not splitsville:
                 factor *= -1
                 factor += self.penalty
-                if np.isnan(self.penalty):
-                    print 'penalty is nan'
             else:
                 factor -= self.penalty
 
             proposal.set_factor(factor)
-            if np.isnan(factor[0]):
+            if np.isnan(factor).any():
                 print 'factor:', factor
         return proposal
 
