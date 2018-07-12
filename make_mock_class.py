@@ -1,10 +1,11 @@
 import numpy as np
 from image_eval import image_model_eval, psf_poly_fit
 import os
+import sys
 
-two_star_blend = 0
+two_star_blend = 1
 two_star_modes = ['r+i+g', 'rx3']
-dim=28
+dim=24
 
 offsets = np.array([0.5, 0.75, 1.0, 1.5], dtype=np.float32)
 flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
@@ -18,15 +19,20 @@ class Mock:
     nmgy_to_cts = 0.00546689
     gain = np.float32(4.62)
     n_realizations = 3
-    base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
+
+    if sys.platform=='darwin':
+        base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
+    elif sys.platform=='linux2':
+        base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+
     dir_name = 'mock'+str(imsz[0])
-    data_path = base_path+'/Data/'+dir_name
     if two_star_blend:
-        data_path = data_path.replace('mock', 'mock_2star_')
+    	dir_name = dir_name.replace('mock', 'mock_2star_')
         nstar = 2
     else:
     	n_realizations = 1
     	nstar = int(0.2*imsz[0]**2)
+    data_path = base_path+'/Data/'+dir_name
     r_i_colors = [0.3, 0.1]
     r_g_colors = [-0.5, -0.1]
     src_colors = [r_i_colors, r_g_colors]
@@ -103,6 +109,15 @@ class Mock:
             
         return mocks
 
+    def make_mock_image(self, truex, truey, b, fluxes, nc, cf, noise):
+        mocks = []
+        mock0 = image_model_eval(truex, truey, fluxes[b], self.truebacks[b], self.imsz, nc, cf)
+        mock0[mock0 < 1] = 1.
+        variance = mock0 / self.gain 
+        for n in xrange(self.n_realizations):
+            mock = mock0 + (np.sqrt(variance)*noise[b,n])
+            mocks.append(mock)
+        return mocks
 
 
 def make_mock(offsets, flux_ratios, r_fluxes, dim, two_star_blend, two_star_modes):
