@@ -32,6 +32,22 @@ def transform_q(x,y, mats):
         print xints, dxs, yints, dys
         raise ValueError('problem accessing elements')
 
+def best_fit_transform(mat): 
+    #generate random points to get best fit to be used for x and y vals
+    randx = np.random.uniform(1, 99, 1000000)
+    randy = np.random.uniform(1, 99, 1000000)
+    newx, newy = transform_q(randx, randy, mat)
+    diffx = newx - randx
+    diffy = newy - randy
+    fitx = np.poly1d(np.polyfit(randx, diffx, 1))
+    fity = np.poly1d(np.polyfit(randy, diffy, 1))
+    return fitx, fity
+
+def linear_transform_astrans(x, y, linex, liney):
+    xp = x+linex(x)
+    yp = y+liney(y)
+    return xp, yp
+
 def gaussian(x, mu, sig):
     return -np.power(x - mu, 2.) / (2 * np.power(sig, 2.))
 
