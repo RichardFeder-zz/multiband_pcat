@@ -21,7 +21,7 @@ from helpers import *
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 
-multiple_regions = 1
+multiple_regions = 0
 lin_astrans = 1
 
 #generate random seed for initialization
@@ -246,7 +246,7 @@ def flux_proposal(f0, nw, trueminf, b):
     if multiple_regions:
         lindf = np.float32(err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))
     else:
-        lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
+        lindf = np.float32(err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
     ff = np.log(logdf*logdf*f0 + logdf*np.sqrt(lindf*lindf + logdf*logdf*f0*f0)) / logdf
     ffmin = np.log(logdf*logdf*trueminf + logdf*np.sqrt(lindf*lindf + logdf*logdf*trueminf*trueminf)) / logdf
@@ -260,7 +260,6 @@ def flux_proposal(f0, nw, trueminf, b):
 
 
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety):
-    # dmodels, diff2s = [[],[]]
     dmodels = []
     dt_transf = 0
     for b in xrange(nbands):
@@ -287,7 +286,6 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
             dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
             diff2s = diff2
         dmodels.append(dmodel)
-        # diff2s.append(diff2)
 
     return dmodels, diff2s, dt_transf
 
@@ -327,7 +325,6 @@ def neighbours(x,y,neigh,i,generate=False):
     neighx = np.abs(x - x[i])
     neighy = np.abs(y - y[i])
     adjacency = np.exp(-(neighx*neighx + neighy*neighy)/(2.*neigh*neigh))
-    # oldadj = adjacency.copy()
     adjacency[i] = 0.
     neighbours = np.sum(adjacency)
     if generate:
@@ -346,9 +343,6 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
     match_x = (get_region(x[0:n], offsetx, regsize) % 2) == parity_x
     match_y = (get_region(y[0:n], offsety, regsize) % 2) == parity_y
     return np.flatnonzero(np.logical_and(match_x, match_y))
-
-def signal_handler(signal, frame):
-    os._exit
 
 class Proposal:
     _X = 0
@@ -395,7 +389,7 @@ class Proposal:
         self.goodmove = True
         inbounds = self.in_bounds(starsp)
         starsp = starsp.compress(inbounds, axis=1)
-        # stars0 = stars0.compress(inbounds, axis=1)
+        stars0 = stars0.compress(inbounds, axis=1)
         self.__add_phonions_stars(stars0, remove=True)
         self.__add_phonions_stars(starsp)
 
@@ -492,14 +486,6 @@ class Model:
         n_phon = evalx.size
         models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
             regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
- 
-
-        # if multiband:
-        #     diff2_total = np.sum(np.array(diff2s), axis=0)
-        # else:
-        #     diff2_total = diff2s[0]
-        # logL = -0.5*diff2_total 
-
         logL = -0.5*diff2s
 
         for b in xrange(nbands):
@@ -542,20 +528,14 @@ class Model:
                 t2 = time.clock()
                 dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
                 dttq[i] = dt_transf
-                #temporary fix
-                # if multiband:
-                #     diff2_total = np.sum(np.array(diff2s), axis=0)
-                # else:
-                #     diff2_total = diff2s[0]
 
                 plogL = -0.5*diff2s
                 
-                # plogL = -0.5*diff2_total
                 plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
                 plogL[:,(1-self.parity_x)::2] = float('-inf')
-                # dlogP = (plogL - logL) / temperature
                 dlogP = plogL - logL
-                
+                if np.isnan(dlogP).any():
+                    print 'nan dlogP!!'
                 dt2[i] = time.clock() - t2
                 t3 = time.clock()
                 refx, refy = proposal.get_ref_xy()
@@ -569,18 +549,11 @@ class Model:
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
 
-                # offx = self.offsetx
-                # offy = self.offsety
                 for b in xrange(nbands):
                     dmodel_acpt = np.zeros_like(dmodels[b])
                     diff2_acpt = np.zeros_like(diff2s)
-                    # diff2s[b].fill(0)
-
-                    # print 'diff2_acpt', diff2_acpt.shape
-                    # print 'diff2s.shape]', diff2s.shape
                     libmmult.pcat_imag_acpt(imsz[0], imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, margin, self.offsetx, self.offsety)
                     # using this dmodel containing only accepted moves, update logL
-                    # libmmult.pcat_like_eval(imsz[0], imsz[1], dmodel_acpt, resids[b], weights[b], diff2s[b], self.regsize, margin, offx, offy)   
                     libmmult.pcat_like_eval(imsz[0], imsz[1], dmodel_acpt, resids[b], weights[b], diff2_acpt, self.regsize, margin, self.offsetx, self.offsety)   
 
                     resids[b] -= dmodel_acpt
@@ -590,10 +563,7 @@ class Model:
                         diff2_total1 = diff2_acpt
                     else:
                         diff2_total1 += diff2_acpt
-                # if multiband:
-                #     diff2_total1 = np.sum(np.array(diff2s), axis=0)
-                # else:
-                #     diff2_total1 = np.array(diff2s[0])
+
                 logL = -0.5*diff2_total1
 
                 #implement accepted moves
@@ -624,7 +594,8 @@ class Model:
                     accept[i] = 0
             else:
                 outbounds[i] = 1
-        
+                
+            
         chi2 = np.zeros(nbands)
         for b in xrange(nbands):
             chi2[b] = np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
@@ -693,9 +664,18 @@ class Model:
             pf = flux_proposal(f0[b], nw, 0, b)
             pfs.append(pf)
  
+        
         dlogf = np.log(pfs[0]/f0[0])
+        
         factor = -self.truealpha*dlogf
 
+        if np.isnan(factor).any():
+            print 'factor nan from flux'
+            p= pfs[0]
+            #print 'p:', p
+            print 'number of zero elements:', len(p)-np.count_nonzero(p)
+            print 'number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0]))
+        factor[np.isnan(factor)]=0
         for b in xrange(nbands-1):
             nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
             colors = adus_to_color(pfs[0], pfs[b+1], nmpc)
@@ -711,6 +691,8 @@ class Model:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
+        
+        dpos_rms[dpos_rms < 1e-3] = 1e-3
         dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         starsp[self._X,:] = stars0[self._X,:] + dx
@@ -752,6 +734,8 @@ class Model:
             factor = np.full(starsb.shape[1], -self.penalty)
             proposal.add_birth_stars(starsb)
             proposal.set_factor(factor)
+            if np.isnan(factor).any():
+                print 'nan on birth'
         # death
         # does region based death obey detailed balance?
         elif not lifeordeath and self.n > 0: # need something to kill
@@ -763,6 +747,8 @@ class Model:
                 factor = np.full(nbd, self.penalty)
                 proposal.add_death_stars(idx_kill, starsk)
                 proposal.set_factor(factor)
+                if np.isnan(factor).any():
+                    print 'nan on death'
         return proposal
 
 
@@ -887,8 +873,13 @@ class Model:
             # turn bright_n into an array
                 bright_n = bright_n - (f0[0] > 2*self.trueminf) - (fk[0] > 2*self.trueminf) + (starsp[self._F,:] > 2*self.trueminf)
         if goodmove:
+            fminterm = np.log(1. - 2./fminratio)
+            fminterm[np.isnan(fminterm)] = 0.
+            #factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
+            #    np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + \
+            #    np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
             factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
-                np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + \
+                np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + fminterm + np.log(bright_n) + \
                 np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
             # if multiband:
             for b in xrange(nbands-1):
@@ -899,15 +890,27 @@ class Model:
                 if splitsville:
                     starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                     factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                    if np.isnan(factor).any():
+                        print 'nan on split'
                 else:
                     starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                     factor += (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                    if np.isnan(factor).any():
+                        print 'nan on merge'
             if not splitsville:
                 factor *= -1
                 factor += self.penalty
             else:
                 factor -= self.penalty
             proposal.set_factor(factor)
+            if np.isnan(factor).any():
+                print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange)
+                print 'imsz factor', np.log(imsz[0]*imsz[1]) 
+                print 'fminratio:', fminratio
+                print 'sumfs[0], self.trueminf', sum_fs[0], self.trueminf
+                print 'fmin factor', np.log(1. - 2./fminratio)
+                print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio)
+                print 'factor nan on merge/split'
         return proposal
 
 libmmult = npct.load_library('pcat-lion', '.')
@@ -948,11 +951,8 @@ models = [Model() for k in xrange(ntemps)]
 
 frame_dir = create_directories(timestr)
 
-# signal.signal(signal.SIGINT, signal_handler)
-
 # sampling loop
 for j in xrange(nsamp):
-    # signal.signal(signal.SIGINT, signal_handler)
     chi2_all = np.zeros((ntemps,nbands))
     print 'Loop', j
      
