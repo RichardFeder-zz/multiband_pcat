@@ -21,8 +21,9 @@ from helpers import *
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 
-multiple_regions = 0
+multiple_regions = 1
 lin_astrans = 1
+psf_sampling = 0 
 
 #generate random seed for initialization
 np.random.seed(20170501)
@@ -259,7 +260,7 @@ def flux_proposal(f0, nw, trueminf, b):
     return pf
 
 
-def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety):
+def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety, eps=None):
     dmodels = []
     dt_transf = 0
     for b in xrange(nbands):
@@ -276,6 +277,10 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
             if datatype != 'mock' and datatype !='mock2':             #correcting for different band trimmings, hubble offset
                 xp -= mean_dpos[b-1][0]
                 yp -= mean_dpos[b-1][1]
+
+            if eps is not None:
+                xp += eps[b-1][0]
+                yp += eps[b-1][1]
 
             dt_transf += time.clock()-t4
             dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
@@ -354,6 +359,7 @@ class Proposal:
         self.do_birth = False
         self.idx_kill = None
         self.factor = None
+        self.eps_shift = None
         self.goodmove = False
         self.dback = np.zeros(nbands, dtype=np.float32)
         self.xphon = np.array([], dtype=np.float32)
@@ -361,6 +367,7 @@ class Proposal:
         self.fphon = []
         for x in xrange(nbands):
             self.fphon.append(np.array([], dtype=np.float32))
+        self.eps = np.zeros((nbands-1, 2), dtype=np.float32)
 
     def set_factor(self, factor):
         self.factor = factor
@@ -409,6 +416,11 @@ class Proposal:
             starsk = starsk.reshape((starsk.shape[0], starsk.shape[1]*starsk.shape[2]))
         self.__add_phonions_stars(starsk, remove=True)
 
+    def add_eps_shift(self):
+        self.goodmove = True
+        self.eps_shift = True
+
+
     def get_ref_xy(self):
         if self.idx_move is not None:
             return self.stars0[self._X,:], self.stars0[self._Y,:]
@@ -422,6 +434,10 @@ class Proposal:
             refx = xk if xk.ndim == 1 else xk[:,0]
             refy = yk if yk.ndim == 1 else yk[:,0]
             return refx, refy
+        elif self.eps_shift is not None:
+            return self.stars0[self._X,:], self.stars0[self._Y,:]
+
+
 
 class Model:
     nstar = 2000
@@ -446,6 +462,7 @@ class Model:
         self.stars[:,0:self.n] = np.random.uniform(size=(2+nbands,self.n))  # refactor into some sort of prior function?
         self.stars[self._X,0:self.n] *= imsz[0]-1
         self.stars[self._Y,0:self.n] *= imsz[1]-1
+        self.eps = np.zeros((nbands-1, 2), dtype=np.float32)
         for b in xrange(nbands):
             self.back[b] = trueback[b]
             if b==0:
@@ -484,21 +501,34 @@ class Model:
         evaly = self.stars[self._Y,0:self.n]
         evalf = self.stars[self._F:,0:self.n]
         n_phon = evalx.size
+        # models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
+        #     regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
         models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
-            regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+           regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps = self.eps)
         logL = -0.5*diff2s
 
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40., 40.])
+        if psf_sampling:
+            moveweights = np.array([80., 40., 40., 2.]) # last weight for cross-template PSF sampling
+            movetypes = ['P *', 'BD *', 'MS *', 'PSF *'] # psf sampling
+            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.peturb_psf] # psf sampling
+
+        else:
+            # moveweights = np.array([80., 40., 40.])
+            # movetypes = ['P *', 'BD *', 'MS *']
+            # movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
+            moveweights = np.array([80., 40., 40., 10.])
+            movetypes = ['P *', 'BD *', 'MS *', 'EPS *']
+            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_astrometry]
+
+
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
         n_back_acpt = 0
 
-
-        movetypes = ['P *', 'BD *', 'MS *']
 
         if multiple_regions:
             xparities = np.random.randint(2, size=nloop)
@@ -506,9 +536,6 @@ class Model:
         
         rtype_array = np.random.choice(moveweights.size, p=moveweights, size=nloop)
         movetype = rtype_array
-
-        movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
-
 
         for i in xrange(nloop):
             t1 = time.clock()
@@ -526,7 +553,10 @@ class Model:
             dt1[i] = time.clock() - t1
             if proposal.goodmove:
                 t2 = time.clock()
-                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+                # dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, \
+                                            lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps=proposal.eps)
+
                 dttq[i] = dt_transf
 
                 plogL = -0.5*diff2s
@@ -585,6 +615,8 @@ class Model:
                         self.stars[:,idx] = self.stars[:,self.n-1]
                         self.stars[:,self.n-1] = 0
                         self.n -= 1
+                if proposal.eps_shift is not None:
+                    self.eps = proposal.eps
 
                 dt3[i] = time.clock() - t3
 
@@ -601,7 +633,8 @@ class Model:
             chi2[b] = np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
         
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
-        print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', list(chi2)
+        print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'eps:', self.eps, 'chi^2', list(chi2)
+        # print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', list(chi2)
         dt1 *= 1000
         dt2 *= 1000
         dt3 *= 1000
@@ -650,6 +683,17 @@ class Model:
                 np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < imsz[1] - 1))
 
 
+    def perturb_astrometry(self):
+        proposal = Proposal()
+        proposal.stars0 = self.stars
+
+        proposal.eps = self.eps
+        for b in xrange(nbands-1):
+            for p in xrange(2):
+                proposal.eps[b,p] += np.random.normal(loc=0, scale=0.001)
+        proposal.add_eps_shift()
+        proposal.set_factor(0)
+        return proposal
 
     def move_stars(self): 
         idx_move = self.idx_parity_stars()
@@ -936,8 +980,12 @@ nstar = Model.nstar
 nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
 ysample = np.zeros((nsamp, nstar), dtype=np.float32)
-timestats = np.zeros((nsamp, 6, 4), dtype=np.float32)
-accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
+# timestats = np.zeros((nsamp, 6, 4), dtype=np.float32)
+timestats = np.zeros((nsamp, 6, 5), dtype=np.float32)
+
+# accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
+accept_stats = np.zeros((nsamp, 5), dtype=np.float32)
+
 tq_times = np.zeros(nsamp, dtype=np.float32)
 if multiband:
     fsample = [np.zeros((nsamp, nstar), dtype=np.float32) for x in xrange(nbands)]
@@ -945,6 +993,7 @@ if multiband:
 else:
     fsample = np.zeros((nsamp, nstar), dtype=np.float32)
 chi2sample = np.zeros((nsamp, nbands), dtype=np.int32)
+eps_sample = np.zeros((nsamp, nbands-1, 2), dtype=np.float32)
 models = [Model() for k in xrange(ntemps)]
 #create directory for results
 
@@ -977,6 +1026,7 @@ for j in xrange(nsamp):
         fsample[j,:] = models[0].stars[Model._F, :]
     chi2sample[j] = chi2_all[0]
     timestats[j,:] = statarrays
+    eps_sample[j,:,:] = models[0].eps
 if not multiband:
     colorsample = []
 
@@ -985,7 +1035,7 @@ print 'saving...'
 if datatype=='mock2':
     np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
 else:
-    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, eps=eps_sample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
 
 dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)
