@@ -5,7 +5,7 @@ import sys
 
 two_star_blend = 1
 two_star_modes = ['r+i+g', 'rx3']
-dim=24
+dim=25
 
 offsets = np.array([0.5, 0.75, 1.0, 1.5], dtype=np.float32)
 flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
@@ -18,7 +18,7 @@ class Mock:
     imsz = (dim, dim)
     nmgy_to_cts = 0.00546689
     gain = np.float32(4.62)
-    n_realizations = 3
+    n_realizations = 10
 
     if sys.platform=='darwin':
         base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
@@ -96,26 +96,20 @@ class Mock:
         truex = [self.imsz[0]/2, self.imsz[0]/2 + offset]
         truey = [self.imsz[1]/2, self.imsz[1]/2]
         return np.array(truex, dtype=np.float32), np.array(truey, dtype=np.float32)
-    
-    def make_mock_image(self, truex, truey, b, fluxes, nc, cf, noise):
-        mocks = []
-        mock = image_model_eval(truex, truey, fluxes[b], self.truebacks[b], self.imsz, nc, cf)
-        mock[mock < 1] = 1.
-        variance = mock / self.gain
-        
-        for n in xrange(self.n_realizations):
-            mock += (np.sqrt(variance)*noise[b,n])
-            mocks.append(mock)
-            
-        return mocks
 
-    def make_mock_image(self, truex, truey, b, fluxes, nc, cf, noise):
+    def make_mock_image(self, truex, truey, b, fluxes, nc, cf, noise, two_star_mode):
         mocks = []
         mock0 = image_model_eval(truex, truey, fluxes[b], self.truebacks[b], self.imsz, nc, cf)
         mock0[mock0 < 1] = 1.
         variance = mock0 / self.gain 
         for n in xrange(self.n_realizations):
-            mock = mock0 + (np.sqrt(variance)*noise[b,n])
+            if two_star_mode=='rx3':
+                mockr0 = mock0
+                for x in xrange(self.nbands):
+                    mockr0 += (np.sqrt(variance)*noise[x,n])
+                mock = mockr0
+            else:
+                mock = mock0 + (np.sqrt(variance)*noise[b,n])
             mocks.append(mock)
         return mocks
 
@@ -157,7 +151,7 @@ def make_mock(offsets, flux_ratios, r_fluxes, dim, two_star_blend, two_star_mode
 							os.makedirs(subdir)
 						truth = [truex, truey]
 						for b in xrange(nb):
-							mocks = x.make_mock_image(truex, truey, b, truefs, nc, cf, noise)
+							mocks = x.make_mock_image(truex, truey, b, truefs, nc, cf, noise, two_star_mode)
 							for n in xrange(x.n_realizations):
 								np.savetxt(subdir+'/'+x.dir_name+'-'+str(offset)+'-'+str(f)+'-'+str(flux_ratio)+'-nr'+str(n+1)+'-cts'+x.bands[b]+'.txt', mocks[n])
 							truth.append(truefs[b])
