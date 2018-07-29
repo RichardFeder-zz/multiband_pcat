@@ -1,8 +1,7 @@
 import numpy as np
-import sys
-import os
 import numpy.ctypeslib as npct
 from ctypes import c_int, c_double
+import h5py
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
 matplotlib.use('TkAgg')
@@ -11,6 +10,8 @@ import signal
 import time
 import astropy.wcs
 import astropy.io.fits
+import sys
+import os
 import warnings
 from astropy.io import fits
 import random
@@ -18,28 +19,22 @@ import math
 from image_eval import psf_poly_fit, image_model_eval
 from helpers import *
 
-# Run, rerun, CamCol, DAOPHOTID, RA, DEC, xu, yu, u (mag), uErr, chi, sharp, flag, xg, yg, g, gErr, chi, sharp, flag, 
-# xr, yr, r, rerr, chi, sharp, flag, xi, yi, i, ierr, chi, sharp, flag, xz, yz, z, zerr, chi, sharp, flag
-
-
 timestr = time.strftime("%Y%m%d-%H%M%S")
-c = 0
 
 multiple_regions = 1
-include_hubble = 0
+lin_astrans = 1
+psf_sampling = 0 
 
 #generate random seed for initialization
 np.random.seed(20170501)
 
-trueback = [180., 314., 103., 140.] #r, i, g, z
-#trueback = [180., 315., 140.]
-#trueback = [314.]
+trueback_dict = dict({"r":180., "i":314., "g":103., "z":140.})
 
 np.seterr(divide='ignore', invalid='ignore')
 
 # script arguments
 dataname = str(sys.argv[1])
-visual = int(sys.argv[2]) > 0
+visual = int(sys.argv[2]) > 0 #not using anymore
 # 1 to test, 0 not to test
 testpsfn = int(sys.argv[3]) > 0
 # 'mock' for simulated, 'mock2' for two source blended mock
@@ -50,13 +45,14 @@ multiband = int(sys.argv[5]) > 0
 if datatype=='mock2':
     config_type = str(sys.argv[6])
     nrealization = int(sys.argv[7])
+    multiple_regions = 0
 if datatype=='mock' or datatype=='mock2':
     trueback = []
-
-mock_test_name = 'mock_2star_18'
+    lin_astrans = 0
+mock_test_name = 'mock_2star_25'
 
 bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
-    data_array, data_hdrs, weights, nmgy_per_count, mean_dpos = [[] for x in xrange(13)]
+    data_array, data_hdrs, weights, nmgy_per_count, best_fit_astrans, mean_dpos = [[] for x in xrange(14)]
 
 
 if sys.platform=='darwin':
@@ -91,6 +87,12 @@ if multiband:
 else:
     nbands = 1
     bands = ['']
+
+
+trueback = []
+if datatype != 'mock' and datatype != 'mock2':
+    for band in bands:
+        trueback.append(trueback_dict[band])
 
 print 'datatype:', datatype
 
@@ -146,12 +148,21 @@ for b in xrange(nbands):
         #data-specific
         pathname = 'Data/'+dataname+'/asGrid/asGrid002583-2-0136-100x100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms0_0.fits'
         if os.path.isfile(pathname):
-            pixel_transfer_mats.append(read_astrans_mats(pathname))
+            mats = read_astrans_mats(pathname)
+            pixel_transfer_mats.append(mats)
             dx, dy = find_mean_offset(pathname, dim=imsz[0])
             dpos = [int(round(dx)), int(round(dy))]
             mean_dpos.append(dpos)
+
         else:
-            pixel_transfer_mats.append(generate_default_astrans([imsz[0], imsz[1]]))
+            if bands[b]==bands[b-1]:
+                mean_dpos.append([0, 0])
+
+            mats = generate_default_astrans([imsz[0], imsz[1]])
+            pixel_transfer_mats.append(mats)
+        if lin_astrans:
+            linex, liney = best_fit_transform(mats)
+            best_fit_astrans.append([linex, liney])
         assert w==w0 and h==h0
 
     if testpsfn:
@@ -163,8 +174,8 @@ print 'biases:', biases
 print 'gains:', gains
 print 'nmgy_per_count:', nmgy_per_count
 print 'backgrounds:', trueback
-
-
+if lin_astrans:
+    print 'Using linear approximation to asTrans linear interpolation'
 
 if multiple_regions:
     regsize = imsz[0]/2
@@ -175,17 +186,24 @@ assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 margin = 10
 
+pixel_variance = trueback[0]/gains[0]
+N_eff = 17.5
+err_f = np.sqrt(N_eff * pixel_variance)
+N_src = 1400.
 if datatype=='mock2':
+    N_src = 10.
+
+
+if datatype =='mock2':
+    nsamp = 200
     if config_type=='rx3':
         trueback[0] *= 3
-
-
-#mock test
-if datatype =='mock2':
-    nsamp = 100
 else:
-    nsamp = 500
+    nsamp = 800
 nloop = 1000
+
+ntemps = 1
+temps = np.sqrt(2) ** np.arange(ntemps)
 
 def initialize_c():
     if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
@@ -201,7 +219,6 @@ def initialize_c():
     libmmult.pcat_like_eval.restype = None
     libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
-
 def create_directories(time_string):
     if datatype=='mock2':
         new_dir_name = result_path+'/'+mock_test_name+'/' + str(dataname) + '/results'
@@ -211,7 +228,6 @@ def create_directories(time_string):
     if not os.path.isdir(frame_dir_name):
         os.makedirs(frame_dir_name)
     return frame_dir_name
-
 
 def log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety, xint=None, yint=None, dx=None, dy=None):
     cat = zip(x,y,f)
@@ -224,80 +240,68 @@ def log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offset
         np.savetxt(name.replace('log.txt', 'log_yint.txt'), yint)
         np.savetxt(name.replace('log.txt', 'log_dx.txt'), dx)
         np.savetxt(name.replace('log.txt', 'log_dy.txt'), dy)
-
-    # np.savetxt(name.replace('log.txt', 'log_weights.txt'), weights)
-
     with open(name.replace('log.txt', 'log_main.txt'), 'w') as f:
         f.write('bkg is %s\n\n' % str(bkg))
         f.write('imsz is %s\n\n' % str(imsz))
         f.write('regsize is %s\n' % str(regsize))
         f.write('margin is %s, offsetx is %s, offsety is %s' % (str(margin), str(offsetx), str(offsety)))
-
     sys.exit()
 
-
 def flux_proposal(f0, nw, trueminf, b):
-    pixel_variance = trueback[b]/gains[b]
-    N_eff = 17.5
-    err_f = np.sqrt(N_eff * pixel_variance)
-    #data specific
-    N_src = 1400.
-    if datatype=='mock2':
-        N_src = 10.
     if multiple_regions:
-        lindf = np.float32(err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))
-        #lindf = np.float32(5*err_f/(np.sqrt(N_src*0.04*(2+nbands))))
+        lindf = np.float32(2*err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))
     else:
         lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
     ff = np.log(logdf*logdf*f0 + logdf*np.sqrt(lindf*lindf + logdf*logdf*f0*f0)) / logdf
     ffmin = np.log(logdf*logdf*trueminf + logdf*np.sqrt(lindf*lindf + logdf*logdf*trueminf*trueminf)) / logdf
-    dff = np.random.normal(size=nw)
+    dff = np.random.normal(size=nw).astype(np.float32)
     aboveffmin = ff - ffmin
     oob_flux = (-dff > aboveffmin)
     dff[oob_flux] = -2*aboveffmin[oob_flux] - dff[oob_flux]
     pff = ff + dff
     pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
-    # print 'std difference is', np.std(f0-pf), np.mean(np.abs(f0-pf))
     return pf
 
-def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cfs, weights, ref, lib, regsize, margin, offsetx, offsety):
-    diff2s = []
+
+def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety, eps=None):
     dmodels = []
     dt_transf = 0
     for b in xrange(nbands):
         if b>0:
             t4 = time.clock()
-            try:
+            if bands[b]==bands[b-1]:
+                xp = x
+                yp = y
+            elif lin_astrans:
+                xp = x + best_fit_astrans[b-1][0](x)
+                yp = y + best_fit_astrans[b-1][1](y)
+            else:
                 xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
-            except:
-                print 'band', b
-                xint, dx = get_pint_dp(x)
-                yint, dy = get_pint_dp(y)
-                print np.amax(xint), np.amin(xint), np.amax(dx), np.amin(dx)
-                print np.amax(yint), np.amin(yint), np.amax(dy), np.amin(dy)
-                print np.amax(x), np.amin(x), np.amax(y), np.amax(x)
-                print np.amax(f), np.amin(f)
-                log_parameters(x, y, f, bkg, imsz, nc, cfs, weights, regsize, margin, offsetx, offsety, xint=xint, yint=yint, dx=dx, dy=dy)
-                raise
-            #correcting for different band trimmings, hubble offset
-            xp -= mean_dpos[b-1, 0]
-            yp -= mean_dpos[b-1, 1]
+            
+            if datatype != 'mock' and datatype !='mock2':             #correcting for different band trimmings, hubble offset
+                xp -= mean_dpos[b-1][0]
+                yp -= mean_dpos[b-1][1]
+
+            if eps is not None:
+                xp += eps[b-1][0]
+                yp += eps[b-1][1]
+
             dt_transf += time.clock()-t4
+            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+            diff2s += diff2
         else:    
             xp=x
             yp=y
-
-        dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cfs[b]).astype(np.float32()), \
-            weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+            dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
+            diff2s = diff2
         dmodels.append(dmodel)
-        diff2s.append(diff2)
+
     return dmodels, diff2s, dt_transf
 
 # ix, iy = 0. to 3.999
 def testpsf(nc, cf, psf, ix, iy, lib=None):
-    psf0 = image_model_eval(np.array([12.-ix/5.], dtype=np.float32), np.array([12.-iy/5.], \
-        dtype=np.float32), np.array([1.], dtype=np.float32), 0., (25,25), nc, cf, lib=lib)
+    psf0 = image_model_eval(np.array([12.-ix/5.], dtype=np.float32), np.array([12.-iy/5.], dtype=np.float32), np.array([1.], dtype=np.float32), 0., (25,25), nc, cf, lib=lib)
     plt.subplot(2,2,1)
     plt.imshow(psf0, interpolation='none', origin='lower')
     plt.title('matrix multiply PSF')
@@ -331,7 +335,6 @@ def neighbours(x,y,neigh,i,generate=False):
     neighx = np.abs(x - x[i])
     neighy = np.abs(y - y[i])
     adjacency = np.exp(-(neighx*neighx + neighy*neighy)/(2.*neigh*neigh))
-    oldadj = adjacency.copy()
     adjacency[i] = 0.
     neighbours = np.sum(adjacency)
     if generate:
@@ -361,18 +364,15 @@ class Proposal:
         self.do_birth = False
         self.idx_kill = None
         self.factor = None
+        self.eps_shift = None
         self.goodmove = False
-        self.do_dback = None
-        self.dx = np.zeros([], dtype=np.float32)
-        self.dy = np.zeros([], dtype=np.float32)
         self.dback = np.zeros(nbands, dtype=np.float32)
         self.xphon = np.array([], dtype=np.float32)
         self.yphon = np.array([], dtype=np.float32)
-        # self.fphon = np.array([[] for x in xrange(nbands)], dtype=np.float32)
         self.fphon = []
-        self.inbounds = np.array([])
         for x in xrange(nbands):
             self.fphon.append(np.array([], dtype=np.float32))
+        self.eps = np.zeros((nbands-1, 2), dtype=np.float32)
 
     def set_factor(self, factor):
         self.factor = factor
@@ -384,7 +384,6 @@ class Proposal:
     def assert_types(self):
         assert self.xphon.dtype == np.float32
         assert self.yphon.dtype == np.float32
-        # assert self.fphon.dtype == np.float32
         assert self.fphon[0].dtype == np.float32
 
     def __add_phonions_stars(self, stars, remove=False):
@@ -393,7 +392,6 @@ class Proposal:
         self.yphon = np.append(self.yphon, stars[self._Y,:])
         for b in xrange(nbands):
             self.fphon[b] = np.append(self.fphon[b], np.array(fluxmult*stars[self._F+b,:], dtype=np.float32))
-        # self.fphon = np.concatenate((self.fphon, np.array(fluxmult*stars[self._F:,:], dtype=np.float32)), axis=1)
         self.assert_types()
 
     def add_move_stars(self, idx_move, stars0, starsp):
@@ -402,8 +400,9 @@ class Proposal:
         self.starsp = starsp
         self.goodmove = True
         inbounds = self.in_bounds(starsp)
-        starsp = starsp.compress(inbounds, axis=1)
-        stars0 = stars0.compress(inbounds, axis=1)
+        if np.sum(~inbounds)>0:
+            #print np.sum(~inbounds), 'stars out of bounds!'
+            starsp[:,~inbounds] = stars0[:,~inbounds]
         self.__add_phonions_stars(stars0, remove=True)
         self.__add_phonions_stars(starsp)
 
@@ -423,6 +422,10 @@ class Proposal:
             starsk = starsk.reshape((starsk.shape[0], starsk.shape[1]*starsk.shape[2]))
         self.__add_phonions_stars(starsk, remove=True)
 
+    def add_eps_shift(self):
+        self.goodmove = True
+        self.eps_shift = True
+
     def get_ref_xy(self):
         if self.idx_move is not None:
             return self.stars0[self._X,:], self.stars0[self._Y,:]
@@ -436,17 +439,23 @@ class Proposal:
             refx = xk if xk.ndim == 1 else xk[:,0]
             refy = yk if yk.ndim == 1 else yk[:,0]
             return refx, refy
+        elif self.eps_shift is not None:
+            return self.stars0[self._X,:], self.stars0[self._Y,:]
+
+
+
 class Model:
     nstar = 2000
     if datatype=='mock2':
         nstar = 20
     trueminf = np.float32(236) 
     truealpha = np.float32(2)
-    penalty = 1+0.5*(nbands) #multiband 
+    penalty = 1+0.5*(nbands)
     kickrange = 1.
     color_sigs = [0.5, 0.5] # r-i, r-z
     color_mus = [0.25, 0.1] # r-i, r-z
 
+    #color_mus = [0, 0]
     _X = 0
     _Y = 1
     _F = 2
@@ -459,6 +468,7 @@ class Model:
         self.stars[:,0:self.n] = np.random.uniform(size=(2+nbands,self.n))  # refactor into some sort of prior function?
         self.stars[self._X,0:self.n] *= imsz[0]-1
         self.stars[self._Y,0:self.n] *= imsz[1]-1
+        self.eps = np.zeros((nbands-1, 2), dtype=np.float32)
         for b in xrange(nbands):
             self.back[b] = trueback[b]
             if b==0:
@@ -467,7 +477,7 @@ class Model:
             else:
                 new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
                 self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
-    def run_sampler(self, nloop=1000, multiband=False):
+    def run_sampler(self, temperature, nloop=1000, multiband=False):
         t0 = time.clock()
         nmov = np.zeros(nloop)
         movetype = np.zeros(nloop)
@@ -477,7 +487,8 @@ class Model:
         dt2 = np.zeros(nloop)
         dt3 = np.zeros(nloop)
         dttq = np.zeros(nloop)
-        
+        diff2_list = np.zeros(nloop)
+
         if multiple_regions:
             self.offsetx = np.random.randint(self.regsize)
             self.offsety = np.random.randint(self.regsize)
@@ -498,80 +509,63 @@ class Model:
         evalf = self.stars[self._F:,0:self.n]
         n_phon = evalx.size
         models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
-            regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety)
+           regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps = self.eps)
+        logL = -0.5*diff2s
 
-
-        if multiband:
-            diff2_total = np.sum(np.array(diff2s), axis=0)
-        else:
-            diff2_total = diff2s[0]
-
-        logL = -0.5*diff2_total
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        moveweights = np.array([80., 40., 0.])
+        #if psf_sampling:
+        #    moveweights = np.array([80., 40., 40., 2.]) # last weight for cross-template PSF sampling
+        #    movetypes = ['P *', 'BD *', 'MS *', 'PSF *'] # psf sampling
+        #    movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.peturb_psf] # psf sampling
+
+        
+        moveweights = np.array([80., 40., 40., 5.])
+        movetypes = ['P *', 'BD *', 'MS *', 'EPS *']
+        movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_astrometry]
+
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
         n_back_acpt = 0
 
-        movetypes = ['P *', 'BD *', 'MS *']
-
         if multiple_regions:
             xparities = np.random.randint(2, size=nloop)
             yparities = np.random.randint(2, size=nloop)
-
+        
         rtype_array = np.random.choice(moveweights.size, p=moveweights, size=nloop)
-        # movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
-
-        dback = [np.float32(0.) for x in xrange(nbands)]
+        movetype = rtype_array
 
         for i in xrange(nloop):
             t1 = time.clock()
             rtype = rtype_array[i]
-            movetype[i] = rtype
-            pn = self.n
-            # should regions be perturbed randomly or systematically?
-            if multiple_regions: #don't do multiple regions if there is a background shift
-                self.parity_x = xparities[i]
+
+            if multiple_regions:
+                self.parity_x = xparities[i] # should regions be perturbed randomly or systematically?
                 self.parity_y = yparities[i]
             else:
                 self.parity_x = 0
                 self.parity_y = 0
 
-            movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
-
             #proposal types
             proposal = movefns[rtype]()
-            # dt1[i] = tmove
             dt1[i] = time.clock() - t1
             if proposal.goodmove:
                 t2 = time.clock()
-                try:
-                    dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, \
-                                                imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, \
-                                                margin=margin, offsetx=self.offsetx, offsety=self.offsety)
-                except:
-                    print 'rtype:', rtype
-                    print 'loop', i
-                    name = 'pcat-lion-results/'+timestr+'/log.txt'
-                    np.savetxt(name.replace('log.txt', 'log_xphon.txt'), proposal.xphon)
-                    np.savetxt(name.replace('log.txt', 'log_yphon.txt'), proposal.yphon)
-                    np.savetxt(name.replace('log.txt', 'log_fphon.txt'), proposal.fphon)
 
-                    raise
+                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, \
+                                                                 lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps=proposal.eps)
+
                 dttq[i] = dt_transf
-                if multiband:
-                    diff2_total = np.sum(np.array(diff2s), axis=0)
-                else:
-                    diff2_total = diff2s[0]
-                plogL = -0.5*diff2_total
-                #background
+
+                plogL = -0.5*diff2s
+                
                 plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
                 plogL[:,(1-self.parity_x)::2] = float('-inf')
                 dlogP = plogL - logL
-                
+                if np.isnan(dlogP).any():
+                    print 'nan dlogP!!'
                 dt2[i] = time.clock() - t2
                 t3 = time.clock()
                 refx, refy = proposal.get_ref_xy()
@@ -579,54 +573,28 @@ class Model:
                 regiony = get_region(refy, self.offsety, self.regsize)
                 
                 if proposal.factor is not None:
-                    try:
-                        dlogP[regiony, regionx] += proposal.factor
-                    except:
-                        print 'rtype:', rtype
-                        print 'regsize:', self.regsize
-                        print 'offsetx, offsety', self.offsetx, self.offsety
-                        print 'refx, refy', np.amax(refx), np.amin(refx), np.amax(refy), np.amin(refy)
-                        print 'regionx, regiony', regionx, regiony
-                        print np.amax(self.stars[self._X,:]), np.amin(self.stars[self._X,:]), np.amax(self.stars[self._Y,:]), np.amin(self.stars[self._Y,:])
-                        print 'maximum x, maximum y', np.amax(proposal.xphon), np.amax(proposal.yphon)
-                        print 'minimum x, minimum y', np.amin(proposal.xphon), np.amin(proposal.yphon)
-                        print 'max f, minf', np.amax(proposal.fphon), np.amin(proposal.fphon)
-                        print 'max factor, min factor', np.amax(proposal.factor), np.amin(proposal.factor)
-                        print np.sum(np.isnan(proposal.factor)), np.sum(np.isinf(proposal.factor))
-                        print np.sum(np.isnan(proposal.xphon)), np.sum(np.isinf(proposal.xphon))
-                        print np.sum(np.isnan(proposal.xphon)), np.sum(np.isinf(proposal.xphon))
-                        print 'max regionx,regiony, min regionx, regiony', np.amax(regionx), np.amax(regiony), np.amin(regionx), np.amin(regiony)
-                        np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, \
-                         nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
-                        print 'Time String:', str(timestr)
-                        print 'previous proposal:', rtype_array[i-1]
-                        raise 
+                    dlogP[regiony, regionx] += proposal.factor
 
-                    if np.isnan(dlogP).any():
-                        print 'dlogP is nan!!!', dlogP
                     acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                     acceptprop = acceptreg[regiony, regionx]
                     numaccept = np.count_nonzero(acceptprop)
 
-
-                offx = self.offsetx
-                offy = self.offsety
                 for b in xrange(nbands):
                     dmodel_acpt = np.zeros_like(dmodels[b])
-                    diff2s[b].fill(0)
-                    libmmult.pcat_imag_acpt(imsz[0], imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, margin, offx, offy)
+                    diff2_acpt = np.zeros_like(diff2s)
+                    libmmult.pcat_imag_acpt(imsz[0], imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, margin, self.offsetx, self.offsety)
                     # using this dmodel containing only accepted moves, update logL
-                    libmmult.pcat_like_eval(imsz[0], imsz[1], dmodel_acpt, resids[b], weights[b], diff2s[b], self.regsize, margin, offx, offy)   
+                    libmmult.pcat_like_eval(imsz[0], imsz[1], dmodel_acpt, resids[b], weights[b], diff2_acpt, self.regsize, margin, self.offsetx, self.offsety)   
+
                     resids[b] -= dmodel_acpt
                     models[b] += dmodel_acpt
 
-                if multiband:
-                    diff2_total1 = np.sum(np.array(diff2s), axis=0)
-                    # diff2_total1 = np.sum(diff2s, axis=0)
-                else:
-                    diff2_total1 = np.array(diff2s[0])
-                logL = -0.5*diff2_total1
+                    if b==0:
+                        diff2_total1 = diff2_acpt
+                    else:
+                        diff2_total1 += diff2_acpt
 
+                logL = -0.5*diff2_total1
 
                 #implement accepted moves
                 if proposal.idx_move is not None:
@@ -647,49 +615,39 @@ class Model:
                         self.stars[:,idx] = self.stars[:,self.n-1]
                         self.stars[:,self.n-1] = 0
                         self.n -= 1
+                if proposal.eps_shift is not None:
+                    self.eps = proposal.eps
 
                 dt3[i] = time.clock() - t3
 
-                if acceptprop.size > 0: 
-                    #background
+                if acceptprop.size > 0:
                     accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
                 else:
                     accept[i] = 0
             else:
                 outbounds[i] = 1
-        
-        chi2 = []
-
-        if datatype != 'mock' and datatype != 'mock2' and multiband:
-            xmin, xmax = 2, imsz[0]-2
-            ymin, ymax = 2, imsz[1]-2
-        else:
-            xmin, xmax = 0, imsz[0]
-            ymin, ymax = 0, imsz[1]
-
+            
+            
+            for b in xrange(nbands):
+                diff2_list[i] += np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
+            
+                
+        chi2 = np.zeros(nbands)
         for b in xrange(nbands):
-            #don't evaluate chi2 on outer periphery, though this is mainly important for edge effects in multiband case
-            # could be 'if multiband:'
-            chi2.append(np.sum(weights[b][xmin:xmax,ymin:ymax]*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])))        
+            chi2[b] = np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
         
-        
-        # ---------------- Printing diagnostics here ---------------------
-
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
-        print 'Background', self.back, 'N_star', self.n, 'N_phon', n_phon, 'chi^2', chi2
+        print 'Background', self.back, 'N_star', self.n, 'eps:', self.eps, 'chi^2', list(chi2)
+        
+        #print 'Background', self.back, 'N_star', self.n, 'chi^2', list(chi2)
         dt1 *= 1000
         dt2 *= 1000
         dt3 *= 1000
-        dttq *= 1000 #coordinate transfer times
+        dttq *= 1000
         accept_fracs = []
-
         timestat_array = np.zeros((6, 1+len(moveweights)), dtype=np.float32)
-
         statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)', 'Coordinates (s)']
-
         statarrays = [accept, outbounds, dt1, dt2, dt3, dttq]
-        # print statarrays
-
         for j in xrange(len(statlabels)):
             timestat_array[j][0] = np.sum(statarrays[j])/1000
             if j==0:
@@ -707,11 +665,7 @@ class Model:
         print 'Total (s): %0.3f' % (np.sum(statarrays[2:])/1000)
         print '='*16
 
-
-        # ------------------------------------------------------------------
-
-
-        return self.n, chi2, timestat_array, accept_fracs, resids
+        return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array
 
     def idx_parity_stars(self):
         return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, regsize)
@@ -733,6 +687,19 @@ class Model:
         return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (imsz[0] -1)), \
                 np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < imsz[1] - 1))
 
+    def perturb_astrometry(self):
+        proposal = Proposal()
+        N_src = 1500
+        proposal.stars0 = self.stars
+        factor = 0
+        proposal.eps = self.eps
+        for b in xrange(nbands-1):
+            for p in xrange(2):
+                proposal.eps[b,p] += np.random.normal(loc=0, scale=0.0001)
+                #factor -= proposal.eps[b,p]**2/(2*0.005**2)
+        proposal.add_eps_shift()
+        proposal.set_factor(factor)
+        return proposal
 
     def move_stars(self): 
         idx_move = self.idx_parity_stars()
@@ -741,54 +708,53 @@ class Model:
         starsp = np.empty_like(stars0)
         f0 = stars0[self._F:,:]
         pfs = []
-        #color_factors = np.zeros((nbands-1, nw)).astype(np.float32)
+        color_factors = np.zeros((nbands-1, nw)).astype(np.float32)
 
         for b in xrange(nbands):
             pf = flux_proposal(f0[b], nw, 0, b)
             pfs.append(pf)
-
-        pixel_variance = trueback[0]/gains[0]
-        N_eff = 17.5
-        err_f = np.sqrt(N_eff * pixel_variance)
-        N_src = 1400.
-        if datatype=='mock2':
-            N_src = 10.
  
-
-        #for b in xrange(nbands):
-        #    dlogf = np.log(pfs[b]/f0[b])
-        #    if b==0:
-        #        factor = -self.truealpha*dlogf
-        #    else:
-        #        factor += -self.truealpha*dlogf
         dlogf = np.log(pfs[0]/f0[0])
+        
         factor = -self.truealpha*dlogf
 
+        if np.isnan(factor).any():
+            print 'factor nan from flux'
+            p= pfs[0]
+            #print 'p:', p
+            print 'number of zero elements:', len(p)-np.count_nonzero(p)
+            print 'number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0]))
+            factor[np.isnan(factor)]=0
+        for b in xrange(nbands-1):
+            nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
+            colors = adus_to_color(pfs[0], pfs[b+1], nmpc)
+            colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
+            color_factors[b] += (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+
+        #print 'color_factors:', np.average(np.abs(color_factors))
+        #print 'flux factor:', np.average(np.abs(factor))
+        #factor = np.array(factor) + np.sum(color_factors, axis=0)
         if multiple_regions:
-            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))/(np.maximum(f0[0], pfs[0])) 
+            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0]))  # could also use regions_factor
         else:
-            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
- 
+            dpos_rms = np.float32(5*np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
+        
         dpos_rms[dpos_rms < 1e-3] = 1e-3
-        dpos_rms[dpos_rms > 1] = 1e-2
         dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
-
         starsp[self._X,:] = stars0[self._X,:] + dx
         starsp[self._Y,:] = stars0[self._Y,:] + dy
-
         for b in xrange(nbands):
             starsp[self._F+b,:] = pfs[b]
-
-        # starsp[self._F:,:] = pfs
-
         self.bounce_off_edges(starsp)
 
         proposal = Proposal()
         proposal.add_move_stars(idx_move, stars0, starsp)
-        proposal.set_factor(factor)
         if np.isnan(factor).any():
-            print 'move factor is nan!!', factor
+            print 'factor nan on move!!'
+        if np.isinf(factor).any():
+            print 'factor inf on move!'
+        proposal.set_factor(factor)
         return proposal
 
     def birth_death_stars(self):
@@ -816,9 +782,9 @@ class Model:
             starsb = starsb.compress(inbounds, axis=1)
             factor = np.full(starsb.shape[1], -self.penalty)
             proposal.add_birth_stars(starsb)
-            if np.isnan(factor).any():
-                print 'factor nan on birth death'
             proposal.set_factor(factor)
+            if np.isnan(factor).any():
+                print 'nan on birth'
         # death
         # does region based death obey detailed balance?
         elif not lifeordeath and self.n > 0: # need something to kill
@@ -830,16 +796,14 @@ class Model:
                 factor = np.full(nbd, self.penalty)
                 proposal.add_death_stars(idx_kill, starsk)
                 proposal.set_factor(factor)
-            if np.isnan(factor).any():
-                print 'factor nan on not lifeordeath'
+                if np.isnan(factor).any():
+                    print 'nan on death'
         return proposal
 
 
     def merge_split_stars(self):
         splitsville = np.random.randint(2)
         idx_reg = self.idx_parity_stars()
-        sum_f = 0
-        low_n = 0
         fracs, sum_fs = [],[]
 
         idx_bright = idx_reg.take(np.flatnonzero(self.stars[self._F, :].take(idx_reg) > 2*self.trueminf)) # in region!
@@ -855,13 +819,10 @@ class Model:
             idx_move = np.random.choice(idx_bright, size=nms, replace=False)
             stars0 = self.stars.take(idx_move, axis=1)
             fminratio = stars0[self._F,:] / self.trueminf
-
-            for b in xrange(nbands):
-                fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
-#            fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
-
- #           for b in xrange(nbands-1):
- #               fracs.append(np.random.uniform(size=nms).astype(np.float32))
+ 
+            fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
+            for b in xrange(nbands-1):
+                fracs.append(np.random.uniform(size=nms).astype(np.float32))
 
             starsp = np.empty_like(stars0)
             starsb = np.empty_like(stars0)
@@ -875,10 +836,6 @@ class Model:
             for b in xrange(nbands):
                 starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
                 starsb[self._F+b,:] = stars0[self._F+b,:] * (1-fracs[b])
-
-            # starsp[self._F:,:] = stars0[self._F:,:]*fracs
-            # starsb[self._F:,:] = stars0[self._F:,:] * (1-np.array(fracs))
-
             # don't want to think about how to bounce split-merge
             # don't need to check if above fmin, because of how frac is decided
             inbounds = np.logical_and(self.in_bounds(starsp), self.in_bounds(starsb))
@@ -888,7 +845,6 @@ class Model:
             idx_move = idx_move.compress(inbounds)
             fminratio = fminratio.compress(inbounds)
 
-
             for b in xrange(nbands):
                 fracs[b] = fracs[b].compress(inbounds)
                 sum_fs.append(stars0[self._F+b,:])
@@ -897,19 +853,19 @@ class Model:
             if goodmove:
                 proposal.add_move_stars(idx_move, stars0, starsp)
                 proposal.add_birth_stars(starsb)
+                # can this go nested in if statement? 
+                invpairs = np.empty(nms)
+                for k in xrange(nms):
+                    xtemp = self.stars[self._X, 0:self.n].copy()
+                    ytemp = self.stars[self._Y, 0:self.n].copy()
+                    xtemp[idx_move[k]] = starsp[self._X, k]
+                    ytemp[idx_move[k]] = starsp[self._Y, k]
+                    xtemp = np.concatenate([xtemp, starsb[self._X, k:k+1]])
+                    ytemp = np.concatenate([ytemp, starsb[self._Y, k:k+1]])
 
-            invpairs = np.empty(nms)
-            for k in xrange(nms):
-                xtemp = self.stars[self._X, 0:self.n].copy()
-                ytemp = self.stars[self._Y, 0:self.n].copy()
-                xtemp[idx_move[k]] = starsp[self._X, k]
-                ytemp[idx_move[k]] = starsp[self._Y, k]
-                xtemp = np.concatenate([xtemp, starsb[self._X, k:k+1]])
-                ytemp = np.concatenate([ytemp, starsb[self._Y, k:k+1]])
-
-                invpairs[k] =  1./neighbours(xtemp, ytemp, self.kickrange, idx_move[k]) #divide by zero
-                invpairs[k] += 1./neighbours(xtemp, ytemp, self.kickrange, self.n)
-            invpairs *= 0.5
+                    invpairs[k] =  1./neighbours(xtemp, ytemp, self.kickrange, idx_move[k]) #divide by zero
+                    invpairs[k] += 1./neighbours(xtemp, ytemp, self.kickrange, self.n)
+                invpairs *= 0.5
         # merge
         elif not splitsville and idx_reg.size > 1: # need two things to merge!
             nms = min(nms, idx_reg.size/2)
@@ -941,36 +897,61 @@ class Model:
             invpairs = invpairs.compress(inbounds)
             nms = idx_move.size
             goodmove = nms > 0
+            # can this go nested in if statement? 
 
-            stars0 = self.stars.take(idx_move, axis=1)
-            starsk = self.stars.take(idx_kill, axis=1)
-            f0 = stars0[self._F:,:]
-            fk = starsk[self._F:,:]
+            if goodmove:
 
-            for b in xrange(nbands):
-                sum_fs.append(f0[b,:] + fk[b,:])
-                fracs.append(f0[b,:] / sum_fs[b])
-            fminratio = sum_fs[0] / self.trueminf
+                stars0 = self.stars.take(idx_move, axis=1)
+                starsk = self.stars.take(idx_kill, axis=1)
+                f0 = stars0[self._F:,:]
+                fk = starsk[self._F:,:]
 
-            starsp = np.empty_like(stars0)
-            starsp[self._X,:] = fracs[0]*stars0[self._X,:] + (1-fracs[0])*starsk[self._X,:]
-            starsp[self._Y,:] = fracs[0]*stars0[self._Y,:] + (1-fracs[0])*starsk[self._Y,:]
-            for b in xrange(nbands):
-                starsp[self._F+b,:] = f0[b] + fk[b]
+                for b in xrange(nbands):
+                    sum_fs.append(f0[b,:] + fk[b,:])
+                    fracs.append(f0[b,:] / sum_fs[b])
+                fminratio = sum_fs[0] / self.trueminf
+
+                starsp = np.empty_like(stars0)
+                starsp[self._X,:] = fracs[0]*stars0[self._X,:] + (1-fracs[0])*starsk[self._X,:]
+                starsp[self._Y,:] = fracs[0]*stars0[self._Y,:] + (1-fracs[0])*starsk[self._Y,:]
+                for b in xrange(nbands):
+                    starsp[self._F+b,:] = f0[b] + fk[b]
             if goodmove:
                 proposal.add_move_stars(idx_move, stars0, starsp)
                 proposal.add_death_stars(idx_kill, starsk)
             # turn bright_n into an array
-            bright_n = bright_n - (f0[0] > 2*self.trueminf) - (fk[0] > 2*self.trueminf) + (starsp[self._F,:] > 2*self.trueminf)
+                bright_n = bright_n - (f0[0] > 2*self.trueminf) - (fk[0] > 2*self.trueminf) + (starsp[self._F,:] > 2*self.trueminf)
         if goodmove:
+            fminterm = np.log(1. - 2./fminratio)
+            fminterm[np.isnan(fminterm)] = 0.
             #factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
             #    np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + \
             #    np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
-
             factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
-                np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(bright_n) + \
+                np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + fminterm + np.log(bright_n) + \
                 np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
+            # if multiband:
+            for b in xrange(nbands-1):
+                stars0_color = adus_to_color(stars0[self._F,:], stars0[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+                starsp_color = adus_to_color(starsp[self._F,:], starsp[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+                factor += np.log(2.5/np.log(10)) - np.log(fracs[b+1]*(1-fracs[b+1])) 
 
+                if splitsville:
+                    starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+                    factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                    if np.isnan(factor).any():
+                        print 'nan on split'
+                else:
+                    starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+                    factor += (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                    if np.isnan(factor).any():
+                        print 'nan on merge'
+            if not splitsville:
+                factor *= -1
+                factor += self.penalty
+            else:
+                factor -= self.penalty
+            proposal.set_factor(factor)
             if np.isnan(factor).any():
                 print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange)
                 print 'imsz factor', np.log(imsz[0]*imsz[1]) 
@@ -978,37 +959,8 @@ class Model:
                 print 'sumfs[0], self.trueminf', sum_fs[0], self.trueminf
                 print 'fmin factor', np.log(1. - 2./fminratio)
                 print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio)
-
-
-            if multiband:
-                for b in xrange(nbands-1):
-                    stars0_color = adus_to_color(stars0[self._F,:], stars0[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
-                    starsp_color = adus_to_color(starsp[self._F,:], starsp[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
-                    factor += np.log(2.5/np.log(10)) - np.log(fracs[b+1]*(1-fracs[b+1])) 
-
-                    if splitsville:
-                        starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
-                        factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-                        if np.isnan(factor).any():
-                            print 'factor nan on split', factor
-                    else:
-                        starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
-                        factor += (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-                        if np.isnan(factor).any():
-                            print 'factor nan on merge'
-
-            if not splitsville:
-                factor *= -1
-                factor += self.penalty
-            else:
-                factor -= self.penalty
-
-            proposal.set_factor(factor)
-            if np.isnan(factor).any():
-                print 'factor:', factor
+                print 'factor nan on merge/split'
         return proposal
-
-# --------------------------------- start executing the program now ---------------------------------------------
 
 libmmult = npct.load_library('pcat-lion', '.')
 initialize_c()
@@ -1021,88 +973,70 @@ truex = truth[:,0]
 truey = truth[:,1]
 truef = truth[:,2:2+nbands]
 truecolors = []
-if multiband:
-    for b in xrange(nbands-1):
-        nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
-        truecolor = adus_to_color(truef[:,0], truef[:,b+1], nmpc) 
-        truecolors.append(truecolor)
+# if multiband:
+for b in xrange(nbands-1):
+    nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
+    truecolor = adus_to_color(truef[:,0], truef[:,b+1], nmpc) 
+    truecolors.append(truecolor)
 
-if include_hubble:
-    true_h = fits.open('Data/'+dataname+'/hubble_pixel_coords-2583-2-0136.fits')
-
-    xoff = 310
-    yoff = 630
-
-    hxr = true_h[0].data-xoff
-    hyr = true_h[1].data-yoff
-    hxi = true_h[2].data-xoff
-    hyi = true_h[3].data-yoff
-    hxg = true_h[4].data-xoff
-    hyg = true_h[5].data-yoff
-
-    hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
-
-    true_h = np.loadtxt('Data/'+dataname+'/HTcat-'+dataname+'.txt')
-    hx = true_h[:,0]
-    hy = true_h[:,1]
-    hf = true_h[:,2:]
-else:
-    hx, hy, hf = [], [], []
-    hubble_coords = [hx, hy, hf]
-    mean_dpos = np.zeros((nbands, 2), dtype=np.float32)
 
 
 nstar = Model.nstar
 nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
 ysample = np.zeros((nsamp, nstar), dtype=np.float32)
-dt2s = np.zeros(nsamp, dtype=np.float32)
-timestats = np.zeros((nsamp, 6, 4), dtype=np.float32)
-accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
+# timestats = np.zeros((nsamp, 6, 4), dtype=np.float32)
+timestats = np.zeros((nsamp, 6, 5), dtype=np.float32)
+
+diff2_all = np.zeros((nsamp, nloop), dtype=np.float32)
+rtypes = np.zeros((nsamp, nloop), dtype=np.float32)
+# accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
+accept_stats = np.zeros((nsamp, 5), dtype=np.float32)
+
 tq_times = np.zeros(nsamp, dtype=np.float32)
-plt_times = np.zeros(nsamp, dtype=np.float32)
-bkgsample = np.zeros((nsamp, nbands), dtype=np.float32)
-#residuals = np.zeros((10, nbands, imsz[0], imsz[1]), dtype=np.float32)
 if multiband:
     fsample = [np.zeros((nsamp, nstar), dtype=np.float32) for x in xrange(nbands)]
     colorsample = [[] for x in xrange(nbands-1)]
 else:
     fsample = np.zeros((nsamp, nstar), dtype=np.float32)
 chi2sample = np.zeros((nsamp, nbands), dtype=np.int32)
-model = Model()
+eps_sample = np.zeros((nsamp, nbands-1, 2), dtype=np.float32)
+models = [Model() for k in xrange(ntemps)]
 
 #create directory for results
+
+
 frame_dir = create_directories(timestr)
 
 # sampling loop
 for j in xrange(nsamp):
-    chi2_all = np.zeros(nbands)
+    chi2_all = np.zeros((ntemps,nbands))
     print 'Loop', j
-    _, chi2_all, statarrays, accept_fracs, resids = model.run_sampler(multiband=multiband)
+     
+    temptemp = 1.
+    for k in xrange(ntemps):
+        _, chi2_all[k], statarrays,  accept_fracs, diff2_list, rtype_array = models[k].run_sampler(temptemp, multiband=multiband)
 
-    nsample[j] = model.n
-    xsample[j,:] = model.stars[Model._X, :]
-    ysample[j,:] = model.stars[Model._Y, :]
-    bkgsample[j] = model.back
-    chi2sample[j] = chi2_all
-    timestats[j,:] = statarrays
+    nsample[j] = models[0].n
+    xsample[j,:] = models[0].stars[Model._X, :]
+    ysample[j,:] = models[0].stars[Model._Y, :]
+    diff2_all[j,:] = diff2_list
+    rtypes[j,:] = rtype_array
     accept_stats[j,:] = accept_fracs
     nmgy_sample = []
     if multiband:
         for b in xrange(nbands):
-            fsample[b][j,:] = model.stars[Model._F+b,:]
+            fsample[b][j,:] = models[0].stars[Model._F+b,:]
             if b>0:
                 nmpc = [nmgy_per_count[0], nmgy_per_count[b]]
-                csample = adus_to_color(model.stars[Model._F,:], model.stars[Model._F+b,:], nmpc)
+                csample = adus_to_color(models[0].stars[Model._F,:], models[0].stars[Model._F+b,:], nmpc)
                 csample = np.array([value for value in csample if not math.isnan(value)])
                 colorsample[b-1].append(csample)
-
     else:
-        fsample[j,:] = model.stars[Model._F, :]
-
-    # log_parameters(model.stars[Model._X,:], model.stars[Model._Y,:], model.stars[Model._F:,:], model.back, imsz, nc, cfs, weights, regsize, margin, model.offsetx, model.offsety)
-
-
+        fsample[j,:] = models[0].stars[Model._F, :]
+    chi2sample[j] = chi2_all[0]
+    timestats[j,:] = statarrays
+    eps_sample[j,:,:] = models[0].eps
 if not multiband:
     colorsample = []
 
@@ -1110,10 +1044,8 @@ print 'saving...'
 
 if datatype=='mock2':
     np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
-    result_dir = result_path + '/'+mock_test_name+'/' + str(dataname) + '/results'
 else:
-    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats)
-    result_dir = result_path + '/' + timestr
+    np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, eps=eps_sample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats, diff2s=diff2_all, rtypes=rtypes)
 
 dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)
