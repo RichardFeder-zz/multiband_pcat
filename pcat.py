@@ -17,13 +17,12 @@ from astropy.io import fits
 import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
-from helpers import *
+from helpers import * 
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 
-multiple_regions = 1
-lin_astrans = 1
-psf_sampling = 0 
+multiple_regions = 0
+lin_astrans = 0
 
 #generate random seed for initialization
 np.random.seed(20170501)
@@ -34,7 +33,8 @@ np.seterr(divide='ignore', invalid='ignore')
 
 # script arguments
 dataname = str(sys.argv[1])
-visual = int(sys.argv[2]) > 0 #not using anymore
+# visual = int(sys.argv[2]) > 0 #not using anymore
+verbtype = int(sys.argv[2])
 # 1 to test, 0 not to test
 testpsfn = int(sys.argv[3]) > 0
 # 'mock' for simulated, 'mock2' for two source blended mock
@@ -49,7 +49,8 @@ if datatype=='mock2':
 if datatype=='mock' or datatype=='mock2':
     trueback = []
     lin_astrans = 0
-mock_test_name = 'mock_2star_25'
+
+mock_test_name = 'mock_2star_24'
 
 bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
     data_array, data_hdrs, weights, nmgy_per_count, best_fit_astrans, mean_dpos = [[] for x in xrange(14)]
@@ -88,10 +89,9 @@ else:
     nbands = 1
     bands = ['']
 
-
-trueback = []
-if datatype != 'mock' and datatype != 'mock2':
-    for band in bands:
+trueback = []       
+if datatype != 'mock' and datatype != 'mock2':      
+    for band in bands:      
         trueback.append(trueback_dict[band])
 
 print 'datatype:', datatype
@@ -150,6 +150,7 @@ for b in xrange(nbands):
         if os.path.isfile(pathname):
             mats = read_astrans_mats(pathname)
             pixel_transfer_mats.append(mats)
+
             dx, dy = find_mean_offset(pathname, dim=imsz[0])
             dpos = [int(round(dx)), int(round(dy))]
             mean_dpos.append(dpos)
@@ -160,6 +161,7 @@ for b in xrange(nbands):
 
             mats = generate_default_astrans([imsz[0], imsz[1]])
             pixel_transfer_mats.append(mats)
+
         if lin_astrans:
             linex, liney = best_fit_transform(mats)
             best_fit_astrans.append([linex, liney])
@@ -169,11 +171,13 @@ for b in xrange(nbands):
         testpsf(ncs[b], cf, psfs[b], np.float32(np.random.uniform()*4), np.float32(np.random.uniform()*4), lib=libmmult.pcat_model_eval)
 
 
+
 print 'mean_dpos:', mean_dpos
 print 'biases:', biases
 print 'gains:', gains
 print 'nmgy_per_count:', nmgy_per_count
 print 'backgrounds:', trueback
+
 if lin_astrans:
     print 'Using linear approximation to asTrans linear interpolation'
 
@@ -199,13 +203,15 @@ if datatype =='mock2':
     if config_type=='rx3':
         trueback[0] *= 3
 else:
-    nsamp = 800
+    nsamp = 200
 nloop = 1000
 
 ntemps = 1
 temps = np.sqrt(2) ** np.arange(ntemps)
 
 def initialize_c():
+    if verbtype > 1:
+        print 'initializing c routines and data structs'
     if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
         warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
     array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
@@ -270,6 +276,7 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
     for b in xrange(nbands):
         if b>0:
             t4 = time.clock()
+
             if bands[b]==bands[b-1]:
                 xp = x
                 yp = y
@@ -426,6 +433,7 @@ class Proposal:
         self.goodmove = True
         self.eps_shift = True
 
+
     def get_ref_xy(self):
         if self.idx_move is not None:
             return self.stars0[self._X,:], self.stars0[self._Y,:]
@@ -452,10 +460,20 @@ class Model:
     truealpha = np.float32(2)
     penalty = 1+0.5*(nbands)
     kickrange = 1.
-    color_sigs = [0.5, 0.5] # r-i, r-z
-    color_mus = [0.25, 0.1] # r-i, r-z
 
-    #color_mus = [0, 0]
+    mus = dict({'r-i':0.25, 'r-g':-0.25, 'r-z':0.0})
+    sigs = dict({'r-i':0.5, 'r-g':0.5, 'r-z':1.0})
+
+    color_mus, color_sigs = [], []
+    for b in xrange(nbands-1):
+        col_string = bands[0]+'-'+bands[b+1]
+        color_mus.append(mus[col_string])
+        color_sigs.append(sigs[col_string])
+
+    if verbtype > 1:
+        print 'color_mus:', color_mus
+        print 'color_sigs:', color_sigs
+
     _X = 0
     _Y = 1
     _F = 2
@@ -477,6 +495,7 @@ class Model:
             else:
                 new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
                 self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
+    
     def run_sampler(self, temperature, nloop=1000, multiband=False):
         t0 = time.clock()
         nmov = np.zeros(nloop)
@@ -488,6 +507,7 @@ class Model:
         dt3 = np.zeros(nloop)
         dttq = np.zeros(nloop)
         diff2_list = np.zeros(nloop)
+
 
         if multiple_regions:
             self.offsetx = np.random.randint(self.regsize)
@@ -508,6 +528,7 @@ class Model:
         evaly = self.stars[self._Y,0:self.n]
         evalf = self.stars[self._F:,0:self.n]
         n_phon = evalx.size
+
         models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
            regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps = self.eps)
         logL = -0.5*diff2s
@@ -515,20 +536,18 @@ class Model:
         for b in xrange(nbands):
             resids[b] -= models[b]
         # proposal types
-        #if psf_sampling:
-        #    moveweights = np.array([80., 40., 40., 2.]) # last weight for cross-template PSF sampling
-        #    movetypes = ['P *', 'BD *', 'MS *', 'PSF *'] # psf sampling
-        #    movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.peturb_psf] # psf sampling
 
-        
-        moveweights = np.array([80., 40., 40., 5.])
+
+        moveweights = np.array([80., 40., 40., 0.])
         movetypes = ['P *', 'BD *', 'MS *', 'EPS *']
         movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_astrometry]
+
 
         moveweights /= np.sum(moveweights)
 
         n_back_prop = 0
         n_back_acpt = 0
+
 
         if multiple_regions:
             xparities = np.random.randint(2, size=nloop)
@@ -553,9 +572,8 @@ class Model:
             dt1[i] = time.clock() - t1
             if proposal.goodmove:
                 t2 = time.clock()
-
                 dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, \
-                                                                 lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps=proposal.eps)
+                                            lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps=proposal.eps)
 
                 dttq[i] = dt_transf
 
@@ -564,8 +582,13 @@ class Model:
                 plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
                 plogL[:,(1-self.parity_x)::2] = float('-inf')
                 dlogP = plogL - logL
+                
                 if np.isnan(dlogP).any():
                     print 'nan dlogP!!'
+                    if verbtype > 1:
+                        print 'dlogP'
+                        print dlogP
+
                 dt2[i] = time.clock() - t2
                 t3 = time.clock()
                 refx, refy = proposal.get_ref_xy()
@@ -626,20 +649,17 @@ class Model:
                     accept[i] = 0
             else:
                 outbounds[i] = 1
-            
-            
+
             for b in xrange(nbands):
                 diff2_list[i] += np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
-            
                 
+            
         chi2 = np.zeros(nbands)
         for b in xrange(nbands):
             chi2[b] = np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
         
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
         print 'Background', self.back, 'N_star', self.n, 'eps:', self.eps, 'chi^2', list(chi2)
-        
-        #print 'Background', self.back, 'N_star', self.n, 'chi^2', list(chi2)
         dt1 *= 1000
         dt2 *= 1000
         dt3 *= 1000
@@ -667,6 +687,7 @@ class Model:
 
         return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array
 
+
     def idx_parity_stars(self):
         return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, regsize)
 
@@ -689,16 +710,13 @@ class Model:
 
     def perturb_astrometry(self):
         proposal = Proposal()
-        N_src = 1500
         proposal.stars0 = self.stars
-        factor = 0
         proposal.eps = self.eps
         for b in xrange(nbands-1):
             for p in xrange(2):
                 proposal.eps[b,p] += np.random.normal(loc=0, scale=0.0001)
-                #factor -= proposal.eps[b,p]**2/(2*0.005**2)
         proposal.add_eps_shift()
-        proposal.set_factor(factor)
+        proposal.set_factor(0)
         return proposal
 
     def move_stars(self): 
@@ -714,28 +732,40 @@ class Model:
             pf = flux_proposal(f0[b], nw, 0, b)
             pfs.append(pf)
  
+        
         dlogf = np.log(pfs[0]/f0[0])
         
         factor = -self.truealpha*dlogf
 
         if np.isnan(factor).any():
             print 'factor nan from flux'
-            p= pfs[0]
-            #print 'p:', p
             print 'number of zero elements:', len(p)-np.count_nonzero(p)
             print 'number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0]))
+            if verbtype > 1:
+                print 'factor'
+                print factor
+                print 'f0[0]'
+                print f0[0]
             factor[np.isnan(factor)]=0
+
         for b in xrange(nbands-1):
             nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
             colors = adus_to_color(pfs[0], pfs[b+1], nmpc)
             colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
             color_factors[b] += (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
 
-        #print 'color_factors:', np.average(np.abs(color_factors))
-        #print 'flux factor:', np.average(np.abs(factor))
-        #factor = np.array(factor) + np.sum(color_factors, axis=0)
+        if np.isnan(color_factors).any():
+            print 'color factors nan!!!'                
+
+        if verbtype > 1:
+            print 'color factors'
+            print color_factors
+            print 'color_factors:', np.average(np.abs(color_factors))
+            print 'flux factor:', np.average(np.abs(factor))
+
+        # factor = np.array(factor) + np.sum(color_factors, axis=0)
         if multiple_regions:
-            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0]))  # could also use regions_factor
+            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) #could also use regions factor
         else:
             dpos_rms = np.float32(5*np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
         
@@ -750,10 +780,15 @@ class Model:
 
         proposal = Proposal()
         proposal.add_move_stars(idx_move, stars0, starsp)
-        if np.isnan(factor).any():
-            print 'factor nan on move!!'
+        
         if np.isinf(factor).any():
             print 'factor inf on move!'
+        if np.isnan(factor).any():
+            print 'factor nan on move!!'
+            if verbtype > 1:
+                print 'factor'
+                print factor
+
         proposal.set_factor(factor)
         return proposal
 
@@ -776,7 +811,13 @@ class Model:
                     starsb[self._F+b,:] = self.trueminf * np.exp(np.random.exponential(scale=1./(self.truealpha-1.),size=nbd))
                 else:
                     new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=nbd)
+                    if verbtype > 1:
+
+                        print 'new_colors'
+                        print new_colors
+
                     starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
+            
             # some sources might be generated outside image
             inbounds = self.in_bounds(starsb)
             starsb = starsb.compress(inbounds, axis=1)
@@ -785,6 +826,7 @@ class Model:
             proposal.set_factor(factor)
             if np.isnan(factor).any():
                 print 'nan on birth'
+        
         # death
         # does region based death obey detailed balance?
         elif not lifeordeath and self.n > 0: # need something to kill
@@ -821,8 +863,17 @@ class Model:
             fminratio = stars0[self._F,:] / self.trueminf
  
             fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
+            
             for b in xrange(nbands-1):
-                fracs.append(np.random.uniform(size=nms).astype(np.float32))
+                # changed to split similar fluxes 
+
+                frac_sim = fracs[0]*(1+np.random.uniform(size=nms).astype(np.float32)*1e-3)
+                idx_low = np.where(frac_sim<0)
+                frac_sim[idx_low] += 2. * frac_sim[idx_low]
+                idx_high = np.where(frac_sim > 0)
+                frac_sim[idx_high] -= 2. * (frac_sim[idx_high] - 1.)
+                fracs.append(frac_sim)
+                # fracs.append(np.random.uniform(size=nms).astype(np.float32))
 
             starsp = np.empty_like(stars0)
             starsb = np.empty_like(stars0)
@@ -831,7 +882,6 @@ class Model:
             starsp[self._Y,:] = stars0[self._Y,:] + ((1-fracs[0])*dy)
             starsb[self._X,:] = stars0[self._X,:] - fracs[0]*dx
             starsb[self._Y,:] = stars0[self._Y,:] - fracs[0]*dy
-
 
             for b in xrange(nbands):
                 starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
@@ -985,12 +1035,9 @@ nstar = Model.nstar
 nsample = np.zeros(nsamp, dtype=np.int32)
 xsample = np.zeros((nsamp, nstar), dtype=np.float32)
 ysample = np.zeros((nsamp, nstar), dtype=np.float32)
-# timestats = np.zeros((nsamp, 6, 4), dtype=np.float32)
 timestats = np.zeros((nsamp, 6, 5), dtype=np.float32)
-
 diff2_all = np.zeros((nsamp, nloop), dtype=np.float32)
 rtypes = np.zeros((nsamp, nloop), dtype=np.float32)
-# accept_stats = np.zeros((nsamp, 4), dtype=np.float32)
 accept_stats = np.zeros((nsamp, 5), dtype=np.float32)
 
 tq_times = np.zeros(nsamp, dtype=np.float32)
@@ -1002,7 +1049,6 @@ else:
 chi2sample = np.zeros((nsamp, nbands), dtype=np.int32)
 eps_sample = np.zeros((nsamp, nbands-1, 2), dtype=np.float32)
 models = [Model() for k in xrange(ntemps)]
-
 #create directory for results
 
 
