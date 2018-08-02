@@ -35,14 +35,19 @@ dmag = 0.5
 nbins = 16
 minr, maxr = 15.5, 23.5
 binw = (maxr - minr) / float(nbins)
+
 include_hubble = 1
+if datatype=='mock':
+    include_hubble = 0
 daophot = 1
 
 if sys.platform=='darwin':
     base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
 elif sys.platform=='linux2':
-    base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+    #base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+    base_path = '/n/home07/rfederstaehle/'
     result_path = '/n/home07/rfederstaehle/figures/'
+    data_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
 else:
     base_path = raw_input('Operating system not detected, please enter base_path directory (eg. /Users/.../pcat-lion-master):')
     if not os.path.isdir(base_path):
@@ -56,7 +61,6 @@ def err_mag(mag):
         return 1.08573620476 * np.sqrt((err_f(f) / f)**2 + 0.01**2)
 def adutomag(adu):
         return 22.5 - 2.5 * np.log10(r_nmgy * adu)
-
 
 
 def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
@@ -93,7 +97,7 @@ def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
             return goodmatch
 
 def hubble_cat_kd():
-    fitshubble = np.loadtxt(base_path+'/Data/'+dataname+'/hubble_catalog_2583-2-0136_astrans.txt')
+    fitshubble = np.loadtxt(data_path+'/Data/'+dataname+'/hubble_catalog_2583-2-0136_astrans.txt')
     HTx_fits = fitshubble[:,0] - bounds[0]
     HTy_fits = fitshubble[:,1] - bounds[2]
     fitsmask = np.logical_and(fitshubble[:,2]>0, fitshubble[:,3]>0)
@@ -104,7 +108,7 @@ def hubble_cat_kd():
     HT606 = fitshubble[:,2]
     HT814 = fitshubble[:,3]
 
-    HTcat = np.loadtxt(base_path+'/Data/NGC7089R.RDVIQ.cal.adj.zpt', skiprows=1)
+    HTcat = np.loadtxt(data_path+'/Data/NGC7089R.RDVIQ.cal.adj.zpt', skiprows=1)
     #HT606= HTcat[:,3]
     #HT606err = HTcat[:,4]
     #HT814= HTcat[:,7]
@@ -149,9 +153,10 @@ def mock_cat_kd(path):
     mock_coords[:, 1] = mock_y
     mock_kd = scipy.spatial.KDTree(mock_coords)
     mock_rmag = adutomag(mock_f[:,0])
+    print mock_rmag
     print np.sum(mock_rmag < 22), 'Mock Truth Brighter than 22'
 
-    return mock_kd, mock_rmag
+    return mock_x, mock_kd, mock_rmag
 
 
 def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd):
@@ -172,7 +177,7 @@ def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd):
 #------------------- PORTILLO ET AL 2017 -----------------------
 
 if datatype != 'mock':
-    PCcat = np.loadtxt(base_path+'/Data/posterior_sample.txt')
+    PCcat = np.loadtxt(data_path+'/Data/posterior_sample.txt')
     #PCcat = np.loadtxt('run-alpha-20-new/posterior_sample.txt')
     maxn = 3000
     PCn = PCcat[-nsamp:,10003].astype(np.int)
@@ -195,7 +200,7 @@ if datatype != 'mock':
 #----------------- READ IN CATALOGS AND CREATE KD TREES ------------------
 
 if datatype == 'mock':
-    mock_kd, mock_rmag = mock_cat_kd(base_path+'/Data/'+dataname+'/'+dataname+'-tru.txt')
+    mock_x, mock_kd, mock_rmag = mock_cat_kd(data_path+'/Data/'+dataname+'/truth/'+dataname+'-tru.txt')
 
 if include_hubble:
     HTkd, HT606, HTx_fits, HTy_fits = hubble_cat_kd()
@@ -248,16 +253,10 @@ plt.ylim((-0.05, 0.9))
 plt.xlim((15,24))
 plt.legend(prop={'size':12}, loc = 'best')
 plt.savefig(result_path+'/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
-#plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
 plt.close()
-# plt.show()
 
 fdr_lion = 1-prec_lion
 np.savetxt(result_path+'/'+run_name+'/fdr_'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.txt', fdr_lion)
-#np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/fdr_'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.txt', fdr_lion)
-
-
-
 
 
 
@@ -265,7 +264,8 @@ if datatype != 'mock':
     complete_lion = get_completeness(lion_x, lion_y, lion_r, lion_n, HTx_fits, HT606, HTkd)
     complete_portillo17 = get_completeness(PCx, PCy, PCr, PCn, HTx_fits, HT606, HTkd)
 else:
-    complete_lion = get_completeness(lion_x, lion_y, lion_r_all, lion_n, mock_x, mock_rmag, mock_kd)
+    print mock_rmag.shape
+    complete_lion = get_completeness(lion_x, lion_y, lion_r, lion_n, mock_x, mock_rmag, mock_kd)
 
 
 reclPC_portillo17 = np.zeros(nbins)
@@ -298,11 +298,9 @@ plt.ylabel('completeness', fontsize='large')
 plt.ylim((-0.1,1.1))
 plt.legend(loc='best', fontsize='large')
 plt.savefig(result_path+'/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
-#plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
 plt.close()
 
 np.savetxt(result_path+'/'+run_name+'/completeness_'+str(run_name)+'.txt', reclPC_lion)
-#np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/completeness_'+str(run_name)+'.txt', reclPC_lion)
     
 
 
