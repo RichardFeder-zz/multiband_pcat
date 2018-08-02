@@ -3,9 +3,10 @@ from image_eval import image_model_eval, psf_poly_fit
 import os
 import sys
 
-two_star_blend = 1
+two_star_blend = 0
 two_star_modes = ['r+i+g', 'rx3']
-dim=25
+dim=100
+
 
 offsets = np.array([0.5, 0.75, 1.0, 1.5], dtype=np.float32)
 flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
@@ -76,6 +77,10 @@ class Mock:
         for n in xrange(self.n_realizations):
             for b in xrange(self.nbands):
                 noise[b,n] = np.random.normal(size=self.imsz).astype(np.float32)
+                noise_path = self.data_path+'/noise'
+                if not os.path.isdir(noise_path):
+                    os.makedirs(noise_path)
+                np.savetxt(noise_path+'/noise_band'+str(b)+'_nr'+str(n)+'.txt', noise[b,n])
         return noise
     
 
@@ -97,17 +102,17 @@ class Mock:
         truey = [self.imsz[1]/2, self.imsz[1]/2]
         return np.array(truex, dtype=np.float32), np.array(truey, dtype=np.float32)
 
-    def make_mock_image(self, truex, truey, b, fluxes, nc, cf, noise, two_star_mode):
+    def make_mock_image(self, truex, truey, b, fluxes, nc, cf, noise, two_star_mode=None):
         mocks = []
-        mock0 = image_model_eval(truex, truey, fluxes[b], self.truebacks[b], self.imsz, nc, cf)
+        if two_star_mode is not None:
+            mock0 = image_model_eval(truex, truey, fluxes[b], self.truebacks[b], self.imsz, nc, cf)
+        else:
+            mock0 = image_model_eval(truex, truey, fluxes[b], self.normal_backs[b], self.imsz, nc, cf)
         mock0[mock0 < 1] = 1.
         variance = mock0 / self.gain 
         for n in xrange(self.n_realizations):
             if two_star_mode=='rx3':
-                mockr0 = mock0
-                for x in xrange(self.nbands):
-                    mockr0 += (np.sqrt(variance)*noise[x,n])
-                mock = mockr0
+                mock = mock0 + (np.sqrt(3*variance)*noise[b,n])
             else:
                 mock = mock0 + (np.sqrt(variance)*noise[b,n])
             mocks.append(mock)
@@ -120,9 +125,9 @@ def make_mock(offsets, flux_ratios, r_fluxes, dim, two_star_blend, two_star_mode
 	print 'two_star_blend =', two_star_blend
 	if two_star_blend:
 		print 'two_star_modes:', two_star_modes
-	print 'offsets:', offsets
-	print 'flux_ratios:', flux_ratios
-	print 'r_fluxes:', r_fluxes
+                print 'offsets:', offsets
+                print 'flux_ratios:', flux_ratios
+                print 'r_fluxes:', r_fluxes
 
 	x = Mock()
 	x.make_mock_directories()
