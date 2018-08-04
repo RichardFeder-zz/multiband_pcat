@@ -5,13 +5,14 @@ import numpy as np
 import sys
 import os
 
-offsets = np.array([0.5,0.75, 1.0, 1.5], dtype=np.float32)
-flux_ratios = np.array([1.0], dtype=np.float32)
-r_fluxes = np.array([1000.0], dtype=np.float32)
+offsets = np.array([0.5,0.6, 0.75, 1.0, 1.2, 1.5], dtype=np.float32)
+#flux_ratios = np.array([1.0], dtype=np.float32)
+#r_fluxes = np.array([1000.0], dtype=np.float32)
 
-#flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
-#r_fluxes = np.array([250.0, 500.0, 1000.0], dtype=np.float32)
-imsz = 18
+flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
+r_fluxes = np.array([500.0, 1000.0], dtype=np.float32)
+#r_fluxes = np.array([250.0], dtype=np.float32)
+imsz = 30
 nsamp = 100
 tol = 2
 pdf_or_png = 'png'
@@ -28,6 +29,7 @@ r_g_colors = [-0.5, -0.1]
 src_colors = [r_i_colors, r_g_colors]
 
 
+
 flux_fac = [1+10**(0.4*src_colors[0][0])+10**(0.4*src_colors[1][0]), 1+10**(0.4*src_colors[0][1])+10**(0.4*src_colors[1][1])]
 
 
@@ -36,9 +38,9 @@ if sys.platform=='darwin':
     directory_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
     result_path = '/Users/richardfeder/Documents/multiband_pcat/two_star_blend'
 elif sys.platform=='linux2':
-        directory_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
-        result_path = '/n/home07/rfederstaehle/figures'
-
+    directory_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+    result_path = '/n/home07/rfederstaehle/figures/mock_2star_'+str(imsz)
+    print 'result_path:', result_path
 
 if not os.path.isdir(result_path+'/'+mock_test_name):
 	os.makedirs(result_path+'/'+mock_test_name)
@@ -106,7 +108,7 @@ def load_arrays(a, b, c, nrealization=0):
 	return all_x, all_y, all_f, ns
 
 
-def fp_error(imsz, nsam, a, b, c, nrealization, case, all_x, all_y, all_f):
+def fp_error(imsz, nsam, a, b, c, nrealization, case, all_x, all_y, all_f, ns, src1, src2):
 
 	dss1, dss2, dfs1, dfs2 = [[] for x in xrange(4)]
 
@@ -180,7 +182,7 @@ def flux_position_errors(imsz, nsam, nrealization=0):
 				
 				for case in xrange(len(cases)):
 
-					dss1, dss2, dfs1, dfs2 = fp_error(imsz, nsam,a,b,c, nrealization, case, all_x, all_y, all_f)
+					dss1, dss2, dfs1, dfs2 = fp_error(imsz, nsam,a,b,c, nrealization, case, all_x, all_y, all_f, ns, src1, src2)
 
 					pos_error_list.append([offsets[a], r_fluxes[b], flux_ratios[c], case, nrealization, np.mean(dss1), np.mean(dss2), np.mean(dfs1), np.mean(dfs2)])
 
@@ -212,38 +214,37 @@ def get_prevalence(nrealization=0):
 
 
 def make_error_plots(error_types, full_plist, error_indices, source, realizations):
-	for err_type in xrange(len(error_types)):
-		c=1
-		plt.figure(figsize=(10,10), dpi=200)
-		for flux in r_fluxes:
-			for ratio in flux_ratios:
-				plt.subplot(3,3,c)
-				plt.title('$f_1$ = '+str(flux)+', $f_2/f_1$ = '+str(ratio))
-
-				for case in xrange(ncases):
-					off, mean_err, std_err = find_offsets_errs(flux, ratio, full_plist, offsets, error_indices[err_type]+source, case)
-					plt.plot(off, mean_err)
-
-					if len(realizations) > 1:
-						plt.errorbar(off, mean_err, yerr=std_err, label=cases[case])
-					else:
-						plt.scatter(off, mean_err, label=cases[case])
+    marker_colors = ['g', 'r', 'b']
+    for err_type in xrange(len(error_types)):
+        c=1
+        plt.figure(figsize=(10,10), dpi=200)
+        for flux in r_fluxes:
+            for ratio in flux_ratios:
+                plt.subplot(3,3,c)
+                plt.title('$f_1$ = '+str(flux)+', $f_2/f_1$ = '+str(ratio))
+                for case in xrange(ncases):
+                    off, mean_err, std_err = find_offsets_errs(flux, ratio, full_plist, offsets, error_indices[err_type]+source, case)
+                    plt.plot(off, mean_err, color=marker_colors[case])
+                    if len(realizations) > 1:
+                        plt.errorbar(off, mean_err, yerr=std_err, label=cases[case], fmt='o', color=marker_colors[case], capsize=5, markeredgewidth=2 )
+                    else:
+                        plt.scatter(off, mean_err, label=cases[case])
 				
-				if c==3:
-					plt.legend(loc=1)
-				if c%3==1:
-					plt.ylabel(error_types[err_type])
-				if c > 6:
-					plt.xlabel('Source Separation (pixels)')
+                    if c==3:
+                        plt.legend(loc=1)
+                    if c%3==1:
+                        plt.ylabel(error_types[err_type])
+                    if c > 6:
+                        plt.xlabel('Source Separation (pixels)')
 				
-				plt.ylim(0, y_lim_types[err_type])
-				c+=1
-		plt.tight_layout()
-                plt.legend()
-                if sys.platform =='linux2':
-                    plt.savefig(result_path+'/'+mock_test_name+'_'+figure_labels[err_type]+str(source+1)+'_py.'+pdf_or_png, bbox_inches='tight')
-                else:
-                    plt.savefig(directory_path+'/Data/'+mock_test_name+'/'+figure_labels[err_type]+str(source+1)+'_py.'+pdf_or_png, bbox_inches='tight')
+                    plt.ylim(0, y_lim_types[err_type])
+                c+=1
+            plt.tight_layout()
+            plt.legend()
+        if sys.platform =='linux2':
+            plt.savefig(result_path+'/'+mock_test_name+'_'+figure_labels[err_type]+str(source+1)+'_py.'+pdf_or_png, bbox_inches='tight')
+        else:
+            plt.savefig(directory_path+'/Data/'+mock_test_name+'/'+figure_labels[err_type]+str(source+1)+'_py.'+pdf_or_png, bbox_inches='tight')
 
 def get_plist(realizations):
 	full_plist = []
@@ -261,48 +262,50 @@ def get_full_nstar(realizations):
 	return full_nstar_vals
 
 def plot_prevalences(full_nstar_vals, realizations):
-	for flux in r_fluxes:
-		c = 1
-		plt.figure(figsize=(10,10), dpi=200) 
-		for ratio in flux_ratios:
-			for numcase in xrange(3):
-				plt.subplot(3,3,c)
-				plt.title('($f_1$ = '+str(flux)+', $f_2/f_1$ = ' +str(ratio)+')')
-				plt.ylim(-0.1,1.1)
-				for case in xrange(ncases):
-					off, prev, err = find_offsets_errs(flux, ratio, full_nstar_vals, offsets, 5+numcase, case) 
-					plt.plot(off, prev)
-					if len(realizations) > 1:
-						plt.errorbar(off, prev, yerr=err, label=cases[case])
-					else:
-						plt.scatter(off, prev, label=cases[case])
-				if c==3:
-					plt.legend(loc=1)
-				if c%3 ==1:
-					plt.ylabel('2-Source Prevalence')
-				elif c%3 ==2:
-					plt.ylabel('1-Source Prevalence')
-					plt.tick_params(labelleft=False)
-				elif c%3 == 0:
-					plt.ylabel('> 2-Source Prevalence')
-					plt.tick_params(labelleft=False)
-				if c > 6:
-					plt.xlabel('Source Separation (pixels)')
-				else:
-					plt.tick_params(labelbottom=False)
-				c += 1
-		plt.tight_layout()
-	        plt.legend()
-	        if sys.platform =='linux2':
-	            plt.savefig(result_path+'/'+mock_test_name+'_prevalence_panels_'+str(flux)+'_py.'+pdf_or_png, bbox_inches='tight')
-	        else:
-	            plt.savefig(directory_path+'/Data/'+mock_test_name+'/prevalence_panels_'+str(flux)+'_py.'+pdf_or_png, bbox_inches='tight')
+    marker_colors  = ['g', 'r', 'b']
+    for flux in r_fluxes:
+        c = 1
+        plt.figure(figsize=(10,10), dpi=200)
+        for ratio in flux_ratios:
+            for numcase in xrange(3):
+                plt.subplot(3,3,c)
+                plt.title('($f_1$ = '+str(flux)+', $f_2/f_1$ = ' +str(ratio)+')')
+                plt.ylim(-0.1,1.1)
+                print 'ncases:', ncases
+                for case in xrange(ncases):
+                    off, prev, err = find_offsets_errs(flux, ratio, full_nstar_vals, offsets, 5+numcase, case) 
+                    plt.plot(off, prev, color=marker_colors[case])
+                    if len(realizations) > 1:
+                        plt.errorbar(off, prev, yerr=err, label=cases[case], fmt='o', color=marker_colors[case], capsize=5, markeredgewidth=2)
+                    else:
+                        plt.scatter(off, prev, label=cases[case])
+                    if c==3:
+                        plt.legend(loc=1)
+                    if c%3 ==1:
+                        plt.ylabel('2-Source Prevalence')
+                    elif c%3 ==2:
+                        plt.ylabel('1-Source Prevalence')
+                        plt.tick_params(labelleft=False)
+                    elif c%3 == 0:
+                        plt.ylabel('> 2-Source Prevalence')
+                        plt.tick_params(labelleft=False)
+                    if c > 6:
+                        plt.xlabel('Source Separation (pixels)')
+                    else:
+                        plt.tick_params(labelbottom=False)
+                c += 1
+            plt.tight_layout()
+            plt.legend()
+            if sys.platform =='linux2':
+                plt.savefig(result_path+'/'+mock_test_name+'_prevalence_panels_'+str(flux)+'_py.'+pdf_or_png, bbox_inches='tight')
+            else:
+                plt.savefig(directory_path+'/Data/'+mock_test_name+'/prevalence_panels_'+str(flux)+'_py.'+pdf_or_png, bbox_inches='tight')
 
 
 
 # ------------------ POSITION AND FLUX ERRORS, PREVALENCE PLOTS  ----------------------
 
-def all_plots(realizations)
+def all_plots(realizations):
 
 	full_plist = get_plist(realizations)
 
@@ -310,12 +313,12 @@ def all_plots(realizations)
 		print 'Source:', source
 		make_error_plots(error_types, full_plist, error_indices, source, realizations)
 
-	full_nstar_vals = get_full_nstar()
+	full_nstar_vals = get_full_nstar(realizations)
 	plot_prevalences(full_nstar_vals, realizations)
 
 
 
-num_realizations = 10
+num_realizations = 3
 spec_realizations = [1, 2, 3]
 individual = 0
 

@@ -3,12 +3,15 @@ from image_eval import image_model_eval, psf_poly_fit
 import os
 import sys
 
-two_star_blend = 0
+two_star_blend = 1
 two_star_modes = ['r+i+g', 'rx3']
-dim=100
+dim=30
 
 
-offsets = np.array([0.5, 0.75, 1.0, 1.5], dtype=np.float32)
+np.random.seed(20170501)
+
+offsets = np.array([1.2], dtype=np.float32)
+#offsets = np.array([0.5, 0.75, 1.0, 1.5], dtype=np.float32)
 flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
 r_fluxes = np.array([250., 500., 1000.], dtype=np.float32)
 
@@ -39,7 +42,7 @@ class Mock:
     src_colors = [r_i_colors, r_g_colors]
     # normal mock dataset params
     truealpha = np.float32(2.0)
-    trueminf = np.float32(250.)
+    trueminf = np.float32(236.)
     truelogf = np.random.exponential(scale=1./(truealpha-1.), size=nstar).astype(np.float32)
     normal_backs = np.array([179., 310., 115.], dtype=np.float32)
     n_second_pop = 0
@@ -111,10 +114,7 @@ class Mock:
         mock0[mock0 < 1] = 1.
         variance = mock0 / self.gain 
         for n in xrange(self.n_realizations):
-            if two_star_mode=='rx3':
-                mock = mock0 + (np.sqrt(3*variance)*noise[b,n])
-            else:
-                mock = mock0 + (np.sqrt(variance)*noise[b,n])
+            mock = mock0 + (np.sqrt(variance)*noise[b,n])
             mocks.append(mock)
         return mocks
 
@@ -165,8 +165,8 @@ def make_mock(offsets, flux_ratios, r_fluxes, dim, two_star_blend, two_star_mode
 		print 'Files saved to ', x.data_path
 
 	else:
-		color_mus = [1, -0.5]
-		color_sigs = [0.3, 0.2]
+		color_mus = [0.25, -0.25]
+		color_sigs = [0.5, 0.5]
 
 		true_params = np.zeros(shape=(x.nstar, 2+x.nbands),dtype=np.float32)
 		true_params[:,0] = np.random.uniform(size=x.nstar)*(x.imsz[0]-1) # x coordinate
