@@ -1,36 +1,35 @@
-from astropy.io import fits
+from __future__ import division
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-import random
 import astropy
-import math
-import astropy.io.fits
-import astropy.wcs
-from matplotlib.colors import LogNorm 
-from scipy.optimize import curve_fit
-import pandas as pd
-from copy import deepcopy
-from __future__ import division
-import scipy.signal
+from astropy.io import fits
+import astropy.wcs 
 import pyfits as pyf
-from scipy.spatial import cKDTree
-
-xmin = 310
-xmax = 409
-ymin = 630+1361
-ymax = 729+1361
-imdim = 100
-
-coords = [xmin, xmax, ymin, ymax]
+import sys
+import scipy.signal
 
 
-base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/'
-run = '002583'
-camcol = '2'
-field = '0136'
+idr_offset = 1361
+imdim = 500
+xmin = 100
+xmax = xmin+imdim-1
+ymin = 100
+ymax = ymin+imdim-1
+bounds = [xmin, xmax, ymin, ymax]
+print 'Bounds:', bounds
+
+if sys.platform=='darwin':
+    base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
+elif sys.platform=='linux2':
+    base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+
+run = '008151'
+camcol = '4'
+field = '0063'
 rerun = '301'
-bands = ['r', 'i', 'g']
-
+bands = ['r', 'i', 'g', 'z']
 
 run_cam_field = run + '-'+camcol+'-'+field
 dataname = 'idR-'+run_cam_field
@@ -49,10 +48,9 @@ def magnitudes_to_counts(frame_file, mags):
     return source_counts
 
 def extract_sdss_catalog(catalog_file, bands, outfile, bounds):
-
-	band_idx = dict('r'=22, 'i'=29, 'g'=15, 'z'=36)
-
-	with open(catalog_file, 'r') as p:
+    
+    band_idx = dict({'r':22, 'i':29, 'g':15, 'z':36})
+    with open(catalog_file, 'r') as p:
         lines = p.read().splitlines()
     sources = []
     for line in lines:
@@ -73,6 +71,28 @@ def extract_sdss_catalog(catalog_file, bands, outfile, bounds):
     with open(outfile, 'w') as file:
     	file.writelines(' '.join(str(j) for j in source) + '\n' for source in catalog_sources)
 
+
+def extract_photoobj_cat(catalog_file, bands, outfile, bounds):
+    b_dict = dict({'r':2,'i':3,'u':0,'g':1,'z':4})
+    p = fits.open(catalog_file)
+    catalog = p[1].data
+
+    star_cat = [c for c in catalog if c['objc_rowc']>bounds[0] and c['objc_rowc']<bounds[1] \
+        and c['objc_colc']>bounds[2] and c['objc_colc']<bounds[3] and c['Type'][0]==6 and c['psfflux'][4]>0\
+               and c['psfflux'][1]>0 and c['psfflux'][2]>0 and c['psfflux'][3]>0]
+    
+    print len(star_cat)
+    star_ref_cat = [[c['objc_rowc']-bounds[0]-1, c['objc_colc']-1-bounds[2]] for c in star_cat]
+    nmgys_per_count = star_cat[0]['NMGYPERCOUNT']
+    print 'nmgy per count for bands:', nmgys_per_count
+    star_fluxes = np.array([c['psfflux'] for c in star_cat])
+    for band in bands:
+        star_counts = [x[b_dict[band]]/nmgys_per_count[b_dict[band]] for x in star_fluxes]        
+        for s in xrange(len(star_ref_cat)):
+            star_ref_cat[s].append(star_counts[s])
+        
+    with open(outfile, 'w') as file:
+        file.writelines(' '.join(str(j) for j in source) + '\n' for source in star_ref_cat)
         
 def get_hubble_catalog(filename, outfile,save='no'):
     with open(filename, 'r') as f:
@@ -109,10 +129,16 @@ def get_hubble_catalog(filename, outfile,save='no'):
         return hubble_catalog
 
 
-def save_cts(infile, outfile, vmin=0, vmax=0, save=0, colorbar=0):
+def save_cts(infile, outfile, band):
     counts = pyf.getdata(infile)
+    print 'saving cts file as .txt file'
+    plt.figure()
+    plt.imshow(counts, cmap='Greys')
+    plt.colorbar()
+    plt.savefig(data_path+'/cts-'+band+'.png')
+    plt.close()
     np.savetxt(outfile, counts)
-        
+
 def save_psf_resampled(data_path, band):
     filename = data_path + '/psfs/sdss-'+run_cam_field+'-psf-'+band+'.fits'
     sdss_psf = pyf.getdata(filename)
@@ -121,9 +147,18 @@ def save_psf_resampled(data_path, band):
     psf = scipy.misc.imresize(psf, (250, 250), interp='lanczos', mode='F')
     psfnew = np.array(psf[0:125, 0:125])
     psfnew[0:123,0:123] = psf[2:125,2:125]  # shift due to lanczos kernel
-    outfile = data_path+'/psfs/'+dataname+'-psf'+band+'.txt'
-	np.savetxt(outfile, psfnew, header='25\t5')
     
+
+    plt.figure()
+    plt.imshow(psfnew, interpolation='none')
+    plt.colorbar()
+    plt.savefig(data_path+'/psfs/'+dataname+'-psf'+band+'.png')
+    plt.close()
+
+    outfile = data_path+'/psfs/'+dataname+'-psf'+band+'.txt'
+    np.savetxt(outfile, psfnew, header='25\t5')
+    np.savetxt('/n/home07/rfederstaehle/Data/'+dataname+'/psfs/'+dataname+'-psf'+band+'.txt', psfnew, header='25\t5')
+
 def get_nanomaggy_per_count(frame_path):
     fits_frame = fits.open(frame_path)
     frame_header = fits_frame[0].header
@@ -136,9 +171,18 @@ def make_pix_file(data_path, band):
 
 	bias, gain = get_bias_gain(data_path)
 
+        bias = float(bias)
+        gain = float(gain)
+        
+
 	f = open(data_path+'/pixs/'+dataname+'-pix'+band+'.txt', 'w')
-	f.write('%1d\t%1d\t1\n0.\t%0.3f\n%0.8f' % (imdim, imdim, bias, gain, nmgy_to_cts))
+        f.write('%1d\t%1d\t1\n%0.3f\t%0.3f\n%0.8f' % (imdim, imdim, bias, gain, nmgy_to_cts))
 	f.close()
+        
+        g = open('/n/home07/rfederstaehle/Data/'+dataname+'/pixs/'+dataname+'-pix'+band+'.txt', 'w')
+        g.write('%1d\t%1d\t1\n%0.3f\t%0.3f\n%0.8f' % (imdim, imdim, bias, gain, nmgy_to_cts))
+        g.close()
+
 
 def get_bias_gain(data_path):
     ecalib_lines = []
@@ -163,12 +207,15 @@ def get_bias_gain(data_path):
 
 # sdss catalog extraction
 
-extract_sdss_catalog(data_path+'/m2_2583.phot', bands, data_path+'/'+dataname+'-tru.txt', coords)
+#extract_sdss_catalog(data_path+'/m2_2583.phot', bands, data_path+'/'+dataname+'-tru.txt', coords)
+
+extract_photoobj_cat(data_path+'/truth/photoObj-'+run_cam_field+'.fits', bands, data_path+'/truth/'+dataname+'-tru.txt', bounds)                                
 
 for band in bands:
-	save_cts(data_path+'/cts/idR-'+run+'-'+band+camcol+'-'+field+'_subregion_cts.fits', data_path+'/cts/'+dataname+'-cts'+band+'.txt')
-	save_psf_resampled(data_path, band)
-	make_pix_file(data_path, band)
+    save_cts(data_path+'/cts/idR-'+run+'-'+band+camcol+'-'+field+'_subregion_500_cts.fits', data_path+'/cts/'+dataname+'-cts'+band+'.txt', band)
+    save_cts(data_path+'/cts/idR-'+run+'-'+band+camcol+'-'+field+'_subregion_500_cts.fits', '/n/home07/rfederstaehle/Data/'+dataname+'/cts/'+dataname+'-cts'+band+'.txt', band)
+    save_psf_resampled(data_path, band)
+    make_pix_file(data_path, band)
 
 
 
