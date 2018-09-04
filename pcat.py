@@ -6,14 +6,10 @@ from ctypes import c_int, c_double
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-#import signal
 import time
-#import astropy.wcs
-#import astropy.io.fits
 import sys
 import os
 import warnings
-#from astropy.io import fits
 import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
@@ -29,11 +25,14 @@ np.random.seed(20170501)
 
 trueback_dict = dict({"r":180., "i":314., "g":103., "z":140.})
 
+#trueback_dict = dict({"r":135., "i":215., "g":234., "z":140.})
+
+
+
 np.seterr(divide='ignore', invalid='ignore')
 
 # script arguments
 dataname = str(sys.argv[1])
-# visual = int(sys.argv[2]) > 0 #not using anymore
 verbtype = int(sys.argv[2])
 # 1 to test, 0 not to test
 testpsfn = int(sys.argv[3]) > 0
@@ -50,7 +49,7 @@ if datatype=='mock' or datatype=='mock2':
     trueback = []
     lin_astrans = 0
 
-mock_test_name = 'mock_2star_24'
+mock_test_name = 'mock_2star_30'
 
 bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
     data_array, data_hdrs, weights, nmgy_per_count, best_fit_astrans, mean_dpos = [[] for x in xrange(14)]
@@ -69,7 +68,10 @@ else:
 if datatype=='mock2':
     result_path = base_path + '/Data'
 else:
-    result_path = base_path + '/pcat-lion-results'
+    if sys.platform=='linux2':
+        result_path = '/n/home07/rfederstaehle/pcat-lion-results'
+    else:
+        result_path = base_path + '/pcat-lion-results'
 print 'Results will go in', result_path
 
 if multiband:
@@ -107,11 +109,16 @@ for b in xrange(nbands):
                  base_path+'/pixs/'+mock_test_name+'-pix'+str(bands[b])+'.txt']
         paths.append(base_path+'/'+dataname+'/'+dataname+'-nr'+str(nrealization)+'-cts'+ bands[b]+'.txt')
     else:
-        paths = ['Data/'+dataname+'/psfs/'+dataname+'-psf.txt', 'Data/'+dataname+'/pixs/'+dataname+'-pix.txt', \
-                    'Data/'+dataname+'/cts/'+dataname+'-cts.txt']
+        #paths = ['Data/'+dataname+'/psfs/'+dataname+'-psf-refit.txt', 'Data/'+dataname+'/pixs/'+dataname+'-pix.txt', \
+        #            'Data/'+dataname+'/cts/'+dataname+'-cts.txt']
+        paths = ['Data/'+dataname+'/psfs/'+dataname+'-psf.txt', 'Data/'+dataname+'/pixs/'+dataname+'-pix.txt', 'Data/'+dataname+'/cts/'+dataname+'-cts.txt']    
         if multiband:
             for p in xrange(len(paths)):
-                paths[p] = paths[p][:-4]+str(bands[b])+paths[p][-4:]
+                if p == 5: # set this to something > 3 if not using psf-refit.txt, just a file name thing
+                    paths[p] = paths[p][:-10]+str(bands[b])+paths[p][-10:]
+                    print paths[p]
+                else:
+                    paths[p] = paths[p][:-4]+str(bands[b])+paths[p][-4:]
 
     psf, nc, cf = get_psf_and_vals(paths[0])
     ncs.append(nc)
@@ -147,6 +154,7 @@ for b in xrange(nbands):
     if b > 0:
         #data-specific
         pathname = 'Data/'+dataname+'/asGrid/asGrid002583-2-0136-100x100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms0_0.fits'
+        #pathname = 'Data/'+dataname+'/asGrid/asGrid002583-2-0136-0500x0500-'+bands[0]+'-'+bands[b]+'-0100-0100_cterms0_0.fits'
         if os.path.isfile(pathname):
             mats = read_astrans_mats(pathname)
             pixel_transfer_mats.append(mats)
@@ -183,6 +191,9 @@ print 'backgrounds:', trueback
 if lin_astrans:
     print 'Using linear approximation to asTrans linear interpolation'
 
+if imsz[0] < 50:
+    multiple_regions = 0
+
 if multiple_regions:
     regsize = imsz[0]/2
     regions_factor = (float(regsize)/float(imsz[0]))**2
@@ -196,6 +207,7 @@ pixel_variance = trueback[0]/gains[0]
 N_eff = 17.5
 err_f = np.sqrt(N_eff * pixel_variance)
 N_src = 1400.
+#N_src = 100.
 if datatype=='mock2':
     N_src = 10.
 
@@ -205,7 +217,7 @@ if datatype =='mock2':
     if config_type=='rx3':
         trueback[0] *= 3
 else:
-    nsamp = 1200
+    nsamp = 1500
 nloop = 1000
 
 ntemps = 1
@@ -460,12 +472,13 @@ class Model:
         nstar = 20
     trueminf = np.float32(236) 
     truealpha = np.float32(2)
-    penalty = 1+0.5*(nbands)
+    alph = 1.0
+    penalty = 1+0.5*alph*(nbands)
     kickrange = 1.
 
-    mus = dict({'r-i':0.25, 'r-g':-0.25, 'r-z':0.0})
-    sigs = dict({'r-i':0.5, 'r-g':0.5, 'r-z':1.0})
-
+    mus = dict({'r-i':0.1, 'r-g':-0.3, 'r-z':0.0})
+    sigs = dict({'r-i':0.25, 'r-g':0.5, 'r-z':1.0})
+    #sigs = dict({'r-i':3, 'r-g':3, 'r-z':3}) #basically flat color prior
     color_mus, color_sigs = [], []
     for b in xrange(nbands-1):
         col_string = bands[0]+'-'+bands[b+1]
@@ -757,8 +770,6 @@ class Model:
                 print self.n
                 print 'diff2'
                 print diff2_list[i]
-            #for s in xrange(len(self.stars[0])):
-               # print self.stars[:,s]
             
         chi2 = np.zeros(nbands)
         for b in xrange(nbands):
@@ -859,8 +870,7 @@ class Model:
             if b==0:
                 pf = flux_proposal(f0[b], nw, self.trueminf, b)
             else:
-                pf = flux_proposal(f0[b], nw, self.trueminf/2, b)
-            #pf = flux_proposal(f0[b], nw, 0, b)
+                pf = flux_proposal(f0[b], nw, 0, b)
             pfs.append(pf)
  
         
@@ -889,7 +899,7 @@ class Model:
             nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
             colors = adus_to_color(pfs[0], pfs[b+1], nmpc)
             colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
-            color_factors[b] += (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+            color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
 
         if np.isnan(color_factors).any():
             print 'color factors nan!!!'                
@@ -902,7 +912,8 @@ class Model:
 
         factor = np.array(factor) + np.sum(color_factors, axis=0)
         if multiple_regions:
-            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) #could also use regions factor
+            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.5*(2+nbands))))/(np.maximum(f0[0],pfs[0]))
+            #dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) #could also use regions factor
         else:
             dpos_rms = np.float32(5*np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
         
@@ -1120,12 +1131,13 @@ class Model:
 
                 if splitsville:
                     starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
-                    factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                    factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
+                    #factor -= 0.5*np.log(2*np.pi*self.color_sigs[b]**2)
                     if np.isnan(factor).any():
                         print 'nan on split'
                 else:
                     starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
-                    factor += (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+                    factor += (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
                     if np.isnan(factor).any():
                         print 'nan on merge'
             if not splitsville:
@@ -1155,13 +1167,10 @@ truex = truth[:,0]
 truey = truth[:,1]
 truef = truth[:,2:2+nbands]
 truecolors = []
-# if multiband:
 for b in xrange(nbands-1):
     nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
     truecolor = adus_to_color(truef[:,0], truef[:,b+1], nmpc) 
     truecolors.append(truecolor)
-
-
 
 nstar = Model.nstar
 nsample = np.zeros(nsamp, dtype=np.int32)
@@ -1226,7 +1235,7 @@ if not multiband:
 print 'saving...'
 
 if datatype=='mock2':
-    np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
+    np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'-alph=1.2.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats)
 else:
     np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, eps=eps_sample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats, diff2s=diff2_all, rtypes=rtypes, accepts=accept_all)
 
