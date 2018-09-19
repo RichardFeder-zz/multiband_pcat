@@ -5,13 +5,13 @@ import sys
 
 two_star_blend = 1
 two_star_modes = ['r+i+g', 'rx3']
-dim=30
+dim=34
 
 
 np.random.seed(20170501)
 
-offsets = np.array([1.2], dtype=np.float32)
-#offsets = np.array([0.5, 0.75, 1.0, 1.5], dtype=np.float32)
+#offsets = np.array([1.2], dtype=np.float32)
+offsets = np.array([0.5,0.6, 0.75, 1.0, 1.2,1.5], dtype=np.float32)
 flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
 r_fluxes = np.array([250., 500., 1000.], dtype=np.float32)
 
@@ -35,10 +35,16 @@ class Mock:
         nstar = 2
     else:
     	n_realizations = 1
-    	nstar = int(0.2*imsz[0]**2)
+    	#nstar = int(0.2*imsz[0]**2)
+        nstar = 200
+        print 'nstar:', nstar
     data_path = base_path+'/Data/'+dir_name
-    r_i_colors = [0.3, 0.1]
-    r_g_colors = [-0.5, -0.1]
+    #test for two sources of the same color
+    r_i_colors = [0.3, 0.3]
+    r_g_colors = [-0.1, -0.1]
+
+    #r_i_colors = [0.3, 0.1]
+    #r_g_colors = [-0.5, -0.1]
     src_colors = [r_i_colors, r_g_colors]
     # normal mock dataset params
     truealpha = np.float32(2.0)
@@ -50,6 +56,7 @@ class Mock:
     
     def make_mock_directories(self):
         dir_types = ['psfs', 'pixs', 'truth', 'cts']
+        print self.data_path
         if not os.path.isdir(self.data_path):
             os.makedirs(self.data_path)
             for dir_type in dir_types:
@@ -96,8 +103,8 @@ class Mock:
             else:
                 truefs[b][0] = flux*10**(0.4*self.src_colors[b-1][0])
                 truefs[b][1] = flux*flux_ratio*10**(0.4*self.src_colors[b-1][1])
-        if two_star_mode=='rx3':
-            truefs = [np.sum(np.array(truefs), axis=0)]
+        #if two_star_mode=='rx3':
+            #truefs = [np.sum(np.array(truefs), axis=0)]
         return truefs
     
     def get_positions(self, offset):
@@ -139,8 +146,8 @@ def make_mock(offsets, flux_ratios, r_fluxes, dim, two_star_blend, two_star_mode
 			nc, nbin, psf, cf = x.mock_pix_psf_files(two_star_blend, two_star_mode)
 
 			if two_star_mode=='rx3':
-				x.truebacks = [x.truebacks[0]*3]
-			
+				#x.truebacks = [x.truebacks[0]*3]
+                                x.truebacks = [x.truebacks[0]/3]
 			for offset in offsets:
 				truex, truey = x.get_positions(offset)
 				for flux in r_fluxes:
