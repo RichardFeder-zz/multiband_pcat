@@ -30,7 +30,7 @@ else:
 chain_label = 'Two Band Catalog Ensemble'
 
 ########################## SET CONSTANTS ###################################
-max_num_sources = 2500
+max_num_sources = 2000
 bounds = [310.0, 410.0, 630.0, 730.0]
 
 back = 180
@@ -62,6 +62,8 @@ daophot = 1
 
 if sys.platform=='darwin':
     base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
+    data_path = base_path
+    result_path = base_path+'/pcat-lion-results'
 elif sys.platform=='linux2':
     #base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
     base_path = '/n/home07/rfederstaehle/'
@@ -191,6 +193,7 @@ def lion_cat_kd(path):
     lion_r = adutomag(lion_f)
     print 'lion r-band magnitudes:', lion_r
 
+
     lion_mask = (lion_f > 0) * (lion_x > 0+hwhm) * (lion_x < imdim-1-hwhm) * (lion_y > 0+hwhm) * (lion_y < imdim-1-hwhm)
     lion_all = np.zeros((np.sum(lion_mask), 2))
     lion_all[:,0] = lion_x[lion_mask].flatten()
@@ -198,7 +201,10 @@ def lion_cat_kd(path):
     lion_r_all = lion_r[lion_mask].flatten()
     lion_kd = scipy.spatial.KDTree(lion_all)
 
-    return lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r
+    PCi,junk = np.mgrid[0:nsamp,0:max_num_sources]
+    PCi = PCi[lion_mask].flatten()
+
+    return lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r, lion_all, PCi, lion_f
 
 def mock_cat_kd(path):
     mock_catalog = np.loadtxt(path)
@@ -215,6 +221,27 @@ def mock_cat_kd(path):
 
     return mock_x, mock_kd, mock_rmag
 
+def condensed_cat_kd(path):
+    cond_cat = np.loadtxt(path)
+    cond_x = cond_cat[:,0]
+    cond_y = cond_cat[:,2]
+    cond_r = adutomag(cond_cat[:,4])
+    cond_rerr = 1.086*cond_cat[:,5]/cond_cat[:,4]
+    cond_conf = cond_cat[:,8]
+    # cond_s = cond_cat[:,11]
+    mask = (cond_x > 0+hwhm) * (cond_x < imdim-1-hwhm) * (cond_y > 0+hwhm) * (cond_y < imdim-1-hwhm) * (cond_r > 0)
+
+    cond_x = cond_x[mask]
+    cond_y = cond_y[mask]
+    cond_r = cond_r[mask]
+    cond_rerr = cond_rerr[mask]
+    cond_conf = cond_conf[mask]
+    cond_c = np.zeros((cond_x.shape[0], 2))
+    cond_c[:,0] = cond_x
+    cond_c[:,1] = cond_y
+    cond_kd = scipy.spatial.KDTree(cond_c)
+
+    return cond_kd, cond_x, cond_y, cond_r
 
 
 #######################################################################################
@@ -234,7 +261,8 @@ def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd):
     return complete
 
 
-def generate_seed_catalog(path, kd, cat_all, cat_r_all):
+def generate_seed_catalog(kd, cat_all, cat_r_all, PCi):
+
 
     matches = kd.query_ball_tree(kd, matching_dist)
 
@@ -248,15 +276,17 @@ def generate_seed_catalog(path, kd, cat_all, cat_r_all):
 
     current_catalogue = 0
 
+
+
     for i in xrange(cat_all.shape[0]):
         matches[i].sort()
-        bincount = np.bincount(cat_r_all[matches[i]]).astype(np.int)
+        bincount = np.bincount(PCi[matches[i]]).astype(np.int)
         ending = np.cumsum(bincount).astype(np.int)
         starting = np.zeros(bincount.size).astype(np.int)
         starting[1:bincount.size] = ending[0:bincount.size-1]
 
         for j in xrange(bincount.size):
-            if j == cat_r_all[i]: # do not match to same catalogue
+            if j == PCi[i]: # do not match to same catalogue
                 continue
             if bincount[j] == 0: # no match to catalog j
                 continue
@@ -279,7 +309,7 @@ def generate_seed_catalog(path, kd, cat_all, cat_r_all):
                     if m != l:
                         if G.has_edge(i, m):
                             G.remove_edge(i, m)
-                            print "killed", i, m
+                            # print "killed", i, m
 
     seeds = []
 
@@ -294,12 +324,35 @@ def generate_seed_catalog(path, kd, cat_all, cat_r_all):
 
     seeds = np.array(seeds)
     print seeds
-    #np.savetxt(data_path+'/Data/'+)
+    np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/seeds.txt', seeds)
     return seeds
 
 
 
-def clusterize(seed_cat, cat_n, stack, colors):
+def clusterize(seed_cat, cat_x, cat_y, cat_n, cat_r):
+
+    sorted_posterior_sample = np.zeros((nsamp, max_num_sources, 3))
+    print cat_x.shape, cat_r.shape
+
+    for i in xrange(nsamp):
+        cat = np.zeros((max_num_sources, 3))
+        cat[:,0] = cat_x[i,:]
+        cat[:,1] = cat_y[i,:]
+        cat[:,2] = cat_r[i,:]
+        cat = np.flipud(cat[cat[:,2].argsort()])
+        sorted_posterior_sample[i] = cat
+
+    PCx = sorted_posterior_sample[:,:,0]
+    PCy = sorted_posterior_sample[:,:,1]
+    PCf = sorted_posterior_sample[:,:,2]
+
+    stack = np.zeros((np.sum(cat_n), 2))
+    j = 0
+    for i in xrange(cat_n.size): # don't have to for loop to stack but oh well
+        n = cat_n[i]
+        stack[j:j+n, 0] = PCx[i, 0:n]
+        stack[j:j+n, 1] = PCy[i, 0:n]
+        j += n
 
     #creates tree, where tree is Pcc_stack
     tree = scipy.spatial.KDTree(stack)
@@ -332,22 +385,22 @@ def clusterize(seed_cat, cat_n, stack, colors):
                 #cut according to mask
                 culled_matches = culled_matches[mask[culled_matches] == 0]
                     #if there are matches remaining, we then find the brightest and update
-                    if culled_matches.size > 0:
+                if culled_matches.size > 0:
                         #find brightest
-                        match = np.min(culled_matches)
+                    match = np.min(culled_matches)
 
-                        #flag it in the mask
-                        mask[match] += 1
+                    #flag it in the mask
+                    mask[match] += 1
 
-                        #find x, y, flux of match
-                        x = PCx[i][match-cat_lo_ndx]
-                        y = PCy[i][match-cat_lo_ndx]
-                        f = PCf[i][match-cat_lo_ndx]
+                    #find x, y, flux of match
+                    x = PCx[i][match-cat_lo_ndx]
+                    y = PCy[i][match-cat_lo_ndx]
+                    f = PCf[i][match-cat_lo_ndx]
 
-                        #add information to cluster array
-                        clusters[i][ct] = x
-                        clusters[i][len(seed_cat)+ct] = y
-                        clusters[i][2*len(seed_cat)+ct] = f
+                    #add information to cluster array
+                    clusters[i][ct] = x
+                    clusters[i][len(seed_cat)+ct] = y
+                    clusters[i][2*len(seed_cat)+ct] = f
 
     #we now generate a CLASSICAL CATALOG from clusters
     cat_len = len(seed_cat)
@@ -374,7 +427,7 @@ def clusterize(seed_cat, cat_n, stack, colors):
 
         assert x.size == y.size
         assert x.size == f.size
-            confidence[i] = x.size/300.0
+        confidence[i] = x.size/300.0
 
         mean_x[i] = np.mean(x)
         mean_y[i] = np.mean(y)
@@ -401,7 +454,7 @@ def clusterize(seed_cat, cat_n, stack, colors):
     classical_catalog[:,8] = confidence
 
     #saves catalog
-    np.savetxt('/n/home12/blee/code/stephen/pcat-dnest/Data/classical_catalog_iter_', classical_catalog)
+    np.savetxt(base_path+'/pcat-lion-results/'+run_name+'/classical_catalog.txt', classical_catalog)
     pix_offset = 0.5
 
     return classical_catalog
@@ -412,7 +465,7 @@ def clusterize(seed_cat, cat_n, stack, colors):
 #------------------- PORTILLO ET AL 2017 -----------------------
 
 if datatype != 'mock':
-    PCcat = np.loadtxt(data_path+'/Data/posterior_sample.txt')
+    PCcat = np.loadtxt(base_path+'/Data/'+dataname+'/posterior_sample.txt')
     maxn = 3000
     PCn = PCcat[-nsamp:,10003].astype(np.int)
     PCx = PCcat[-nsamp:,10004:10004+maxn]
@@ -441,11 +494,78 @@ if include_hubble:
 
 
 # load in chain
-lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r, lion_all = lion_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/chain.npz')
+lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r, lion_all, PCi, lion_f = lion_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/chain.npz')
 
-#seed_cat = generate_seed_catalog(path, lion_kd, lion_all, lion_r_all)
+# dat = generate_seed_catalog(lion_kd, lion_all, lion_r_all, PCi)
 
-prec_portillo17, prec_lion = [np.zeros(nbins) for x in xrange(2)]
+dat = np.loadtxt(base_path+'/pcat-lion-results/'+run_name+'/seeds.txt')
+
+cut = 0.1
+
+# plots histogram of confidence
+
+fig = plt.gcf()
+fig.set_size_inches(10, 5)
+plt.subplots_adjust(wspace=0.5)
+plt.subplot(1,2,2)
+plt.hist(dat[:,2], bins=50)
+plt.xlabel("Number of Samples")
+plt.ylim([0, 1250])
+plt.title("Seed Catalog")
+plt.subplot(1,2,1)
+plt.hist(dat[:,2]/nsamp, bins=50)
+plt.xlabel("Prevalence")
+plt.ylim([0, 1250])
+plt.title("Seed Catalog")
+plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/hist_seed_cat.pdf')
+
+#performs confidence cut
+x = dat[:,0][dat[:,2] > cut*nsamp]
+y = dat[:,1][dat[:,2] > cut*nsamp]
+n = dat[:,2][dat[:,2] > cut*nsamp]
+
+assert x.size == y.size
+assert x.size == n.size
+
+seed_cat = np.zeros((x.size, 2))
+seed_cat[:,0] = x
+seed_cat[:,1] = y
+cat_len = x.size
+
+condensed_cat = clusterize(seed_cat, lion_x, lion_y, lion_n, lion_f)
+condensed_x = condensed_cat[:,0]
+condensed_y = condensed_cat[:,1]
+
+print 'min, max of x and y:'
+print np.amin(condensed_x), np.amax(condensed_x)
+print np.amin(condensed_y), np.amax(condensed_y)
+
+cond_kd, cond_x, cond_y, cond_r = condensed_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/classical_catalog.txt')
+
+print np.amin(cond_x), np.amax(cond_x)
+print np.amax(cond_y), np.amax(cond_y)
+
+# # plots histogram of confidence
+
+fig = plt.gcf()
+fig.set_size_inches(10, 5)
+plt.subplots_adjust(wspace=0.5)
+plt.subplot(1,2,2)
+plt.hist(condensed_cat[:,8], bins=50)
+plt.xlabel("Number of Samples")
+plt.ylim([0, 1250])
+plt.title("Condensed Catalog")
+plt.subplot(1,2,1)
+plt.hist(condensed_cat[:,8]/nsamp, bins=50)
+plt.xlabel("Prevalence")
+plt.ylim([0, 1250])
+plt.title("Condensed Catalog")
+plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/hist_classical_cat.pdf')
+
+
+
+
+prec_portillo17, prec_lion, prec_condensed = [np.zeros(nbins) for x in xrange(3)]
 
 
 
@@ -454,7 +574,7 @@ if datatype == 'mock':
 else:
     goodmatch_portillo17 = associate(PCkd, PCr_all, HTkd, HT606, dr, dmag)
     goodmatch_lion = associate(lion_kd, lion_r_all, HTkd, HT606, dr, dmag)
-
+    goodmatch_condensed = associate(cond_kd, cond_r, HTkd, HT606, dr, dmag)
 
 for i in xrange(nbins):
     rlo = minr + i * binw
@@ -465,9 +585,12 @@ for i in xrange(nbins):
 
     if datatype != 'mock':
         inbin = np.logical_and(PCr_all >= rlo, PCr_all < rhi)
+        inbin_cond = np.logical_and(cond_r >= rlo, cond_r < rhi)
         prec_portillo17[i] = np.sum(np.logical_and(inbin, goodmatch_portillo17)) / float(np.sum(inbin))
+        prec_condensed[i] = np.sum(np.logical_and(inbin_cond, goodmatch_condensed)) / float(np.sum(inbin_cond))
 
 print 'prec_lion', prec_lion
+print 'prec_condensed', prec_condensed
 
 
 plt.figure()
@@ -477,6 +600,7 @@ if datatype != 'mock':
 else:
     label = 'Mock'
 plt.plot(minr + (np.arange(nbins)+0.5)*binw, 1-prec_lion, c='b', label=chain_label, marker='+', markersize=10, mew=2)
+plt.plot(minr + (np.arange(nbins)+0.5)*binw, 1-prec_condensed, c='y', label='Condensed Catalog', marker='+', markersize=10, mew=2)
 plt.xlabel('SDSS r magnitude')
 plt.ylabel('false discovery rate')
 plt.ylim((-0.05, 0.9))
@@ -493,6 +617,8 @@ np.savetxt(result_path+'/'+run_name+'/fdr_'+str(run_name)+'_'+str(dr)+'_'+str(dm
 if datatype != 'mock':
     complete_lion = get_completeness(lion_x, lion_y, lion_r, lion_n, HTx_fits, HT606, HTkd)
     complete_portillo17 = get_completeness(PCx, PCy, PCr, PCn, HTx_fits, HT606, HTkd)
+    complete_condensed = associate(HTkd, HT606, cond_kd, cond_r, dr, dmag)
+    # complete_daophot = associate(HTkd, HT606, daophot_kd, daophot_r, dr, dmag)
 else:
     print mock_rmag.shape
     complete_lion = get_completeness(lion_x, lion_y, lion_r, lion_n, mock_x, mock_rmag, mock_kd)
@@ -500,6 +626,8 @@ else:
 
 reclPC_portillo17 = np.zeros(nbins)
 reclPC_lion= np.zeros(nbins)
+recl_cond = np.zeros(nbins)
+recl_daophot = np.zeros(nbins)
 
 
 
@@ -512,6 +640,7 @@ for i in xrange(nbins):
     else:
         inbin = np.logical_and(mock_rmag >= rlo, mock_rmag< rhi)
     reclPC_lion[i] = np.sum(complete_lion[inbin]) / float(np.sum(inbin))
+    recl_cond[i] = np.sum(complete_condensed[inbin])/float(np.sum(inbin))
 
 
 
@@ -519,6 +648,7 @@ plt.figure()
 plt.plot(minr + (np.arange(nbins)+0.5)*binw, reclPC_lion, c='b', label=chain_label, marker='+', markersize=10, mew=2)
 if datatype != 'mock':
     plt.plot(minr + (np.arange(nbins)+0.5)*binw, reclPC_portillo17, c='r', label=label, marker='x', markersize=10, mew=2)
+    plt.plot(minr + (np.arange(nbins)+0.5)*binw, recl_cond, c='y', label='Condensed Catalog', marker='x', markersize=10, mew=2)
 plt.xlabel('HST F606W magnitude', fontsize='large')
 plt.ylabel('completeness', fontsize='large')
 plt.ylim((-0.1,1.1))
@@ -530,145 +660,3 @@ np.savetxt(result_path+'/'+run_name+'/completeness_'+str(run_name)+'.txt', reclP
 
 
 
-
-
-# sorted_posterior_sample = np.zeros( (len(posterior_sample), max_num_sources, 3) )
-
-# #first, we must sort each sample in decreasing order of brightness
-# for i in range(0, len(posterior_sample)):
-
-#     cat = np.zeros( (max_num_sources, 3) )
-#     cat[:,0] = posterior_x_vals[i]
-#     cat[:,1] = posterior_y_vals[i]
-#     cat[:,2] = posterior_r_flux_vals[i] 
-
-#     cat = np.flipud( cat[cat[:,2].argsort()] )
-
-#     sorted_posterior_sample[i] = cat
-
-# print "time, sorting: " + str(time.clock() - start_time)
-
-
-# lion_stack = np.zeros((np.sum(lion_n), 2))
-# j = 0
-# for i in xrange(PCn.size): # don't have to for loop to stack but oh well
-#     n = lion_n[i]
-#     lion_stack[j:j+n, 0] = lion_x[i, 0:n]
-#     lion_stack[j:j+n, 1] = lion_y[i, 0:n]
-#     j += n
-
-
-# # plots histogram of confidence
-
-# fig = plt.gcf()
-# fig.set_size_inches(10, 5)
-# plt.subplots_adjust(wspace=0.5)
-
-
-# plt.subplot(1,2,2)
-# plt.hist(dat[:,2], bins=50)
-# plt.xlabel("Number of Samples")
-# plt.ylim([0, 1250])
-# plt.title("Seed Catalog")
-
-# plt.subplot(1,2,1)
-# plt.hist(dat[:,2]/nsamp, bins=50)
-# plt.xlabel("Prevalence")
-# plt.ylim([0, 1250])
-# plt.title("Seed Catalog")
-
-# plt.savefig('/n/home12/blee/output/m2/iter/hist_seed_cat.pdf')
-
-# print np.sum(dat[:,2] == 2.0) 
-
-
-# #performs confidence cut
-# x = dat[:,0][dat[:,2] > cut*nsamp]
-# y = dat[:,1][dat[:,2] > cut*nsamp]
-# n = dat[:,2][dat[:,2] > cut*nsamp]
-
-# assert x.size == y.size
-# assert x.size == n.size
-
-# seed_cat = np.zeros((x.size, 2))
-# seed_cat[:,0] = x
-# seed_cat[:,1] = y
-# cat_len = x.size
-
-# print "HIT1"
-
-# colors = []
-# for i in range(0, len(seed_cat)):
-#     colors.append(np.random.rand(3,1))
-
-# classical_catalog = clusterize(seed_cat, colors, 0)
-
-
-# print "HIT"
-
-
-# # plots histogram of confidence
-
-# fig = plt.gcf()
-# fig.set_size_inches(10, 5)
-# plt.subplots_adjust(wspace=0.5)
-
-
-# plt.subplot(1,2,2)
-# plt.hist(classical_catalog[:,8], bins=50)
-# plt.xlabel("Number of Samples")
-# plt.ylim([0, 1250])
-# plt.title("Condensed Catalog")
-
-# plt.subplot(1,2,1)
-# plt.hist(classical_catalog[:,8]/nsamp, bins=50)
-# plt.xlabel("Prevalence")
-# plt.ylim([0, 1250])
-# plt.title("Condensed Catalog")
-
-
-# plt.savefig('/n/home12/blee/output/m2/iter/hist_classical_cat.pdf')
-
-
-# sys.exit()
-
-
-
-# #
-# plt.clf()
-# plt.scatter(classical_catalog[:,6], classical_catalog[:,8], marker='x')
-# plt.title("Search Radius: " + str(search_radius) + ", Iteration: 1")
-# plt.savefig('/n/home12/blee/output/m2/iter/classical_scatter_0')
-# #
-
-# #stores confidence sum for each iteration
-# confidence_sum_ra = np.zeros(iteration_number)
-
-# print "time elapsed, 0: " + str(time.clock() - start_time)
-# print "Confidence sum: " + str(np.sum(classical_catalog[:,8])) #str(np.sum(classical_catalog[:,6][classical_catalog[:8] > 0.5))
-# confidence_sum_ra[0] = str(np.sum(classical_catalog[:,8]))
-
-# for i in range(0, iteration_number - 1):
-
-#     thinned_cat = np.zeros((cat_len, 2))
-#     thinned_cat[:,0] = classical_catalog[:,0]
-#     thinned_cat[:,1] = classical_catalog[:,2]
-
-#     classical_catalog = clusterize(thinned_cat, colors, i+1)
-
-#     #
-#     plt.clf()
-#     plt.scatter(classical_catalog[:,6], classical_catalog[:,8], marker='x')
-#     plt.title("Search Radius: " + str(search_radius) + ", Iteration: " + str(i+2))
-#     plt.savefig('/n/home12/blee/output/m2/iter/classical_scatter_' + str(i+1))
-#     #
-
-#         print "time elapsed, " + str(i+1) + ": " + str(time.clock() - start_time)
-#     print "Confidence sum: " + str(np.sum(classical_catalog[:,8])) #str(np.sum(classical_catalog[:,6][classical_catalog[:8] > 0.5))
-#     confidence_sum_ra[i+1] = str(np.sum(classical_catalog[:,8]))
-
-# np.savetxt('/n/home12/blee/code/stephen/pcat-dnest/Data/classical_catalog_iter', classical_catalog)
-
-
-
-    
