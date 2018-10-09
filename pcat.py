@@ -15,7 +15,7 @@ from image_eval import psf_poly_fit, image_model_eval
 from helpers import * 
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
-
+print 'timestr:', timestr
 multiple_regions = 1
 lin_astrans = 1
 
@@ -216,7 +216,7 @@ if datatype=='mock2':
         trueback[0] *= 3
 else:
     N_src = 1400.
-    nsamp = 1500
+    nsamp = int(1000*np.sqrt(nbands))
 
 nloop = 1000 # factor by which sample chain is thinned
 
@@ -253,7 +253,7 @@ def flux_proposal(f0, nw, trueminf, b):
     if multiple_regions:
         lindf = np.float32(2*err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))
     else:
-        lindf = np.float32(5*err_f/np.sqrt(N_src*(2+nbands)))
+        lindf = np.float32(2*err_f/np.sqrt(N_src*(2+nbands)))
     logdf = np.float32(0.01/np.sqrt(N_src))
     ff = np.log(logdf*logdf*f0 + logdf*np.sqrt(lindf*lindf + logdf*logdf*f0*f0)) / logdf
     ffmin = np.log(logdf*logdf*trueminf + logdf*np.sqrt(lindf*lindf + logdf*logdf*trueminf*trueminf)) / logdf
@@ -288,6 +288,9 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
             if eps is not None: # absolute astrometry proposal perturbs positions
                 xp += eps[b-1][0]
                 yp += eps[b-1][1]
+            
+            if verbtype > 1 and len(xp)>0:
+                print b, np.amin(xp), np.amax(xp), np.amin(yp), np.amax(yp)
 
             dt_transf += time.clock()-t4
             dmodel, diff2 = image_model_eval(xp, yp, f[b], bkg[b], imsz, nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], ref=ref[b], lib=libmmult.pcat_model_eval, regsize=regsize, margin=margin, offsetx=offsetx, offsety=offsety)
@@ -450,15 +453,19 @@ class Model:
     nstar = 2000
     if datatype=='mock2':
         nstar = 20
-    trueminf = np.float32(236) 
+    trueminf = np.float32(250) 
     truealpha = np.float32(2)
     alph = 1.0
     penalty = 1+0.5*alph*(nbands)
     kickrange = 1.
-
-    mus = dict({'r-i':0.1, 'r-g':-0.3, 'r-z':0.0})
-    sigs = dict({'r-i':0.25, 'r-g':0.5, 'r-z':1.0})
+    #kickrange = 1/np.sqrt(nbands)
+    
+    mus = dict({'r-i':0.1, 'r-g':-0.3, 'r-z':0.0, 'r-r':0.0})
+    sigs = dict({'r-i':0.25, 'r-g':0.5, 'r-z':1.0, 'r-r':0.05})
     #sigs = dict({'r-i':3, 'r-g':3, 'r-z':3}) #very broad color prior
+    #if nbands > 1 and bands[0]==bands[1]:
+    #mus = dict({'r-i':0.0, 'r-g':0.0}) # for same flux different noise tests, r, i, g are all different realizations of r band
+    #sigs = dict({'r-i':0.1, 'r-g':0.1})
     color_mus, color_sigs = [], []
     
     for b in xrange(nbands-1):
@@ -665,7 +672,8 @@ class Model:
                         print idx_move_a
                         print 'size of idx_move_a'
                         print len(idx_move_a), np.count_nonzero(idx_move_a)
-                
+                        print 'starsp'
+                        print starsp
                 if proposal.do_birth:
                     if verbtype> 1:
                         print 'implementing birth proposal'
@@ -674,7 +682,11 @@ class Model:
                     num_born = starsb.shape[1]
                     self.stars[:, self.n:self.n+num_born] = starsb
                     self.n += num_born
-                
+                    if verbtype > 1:
+                        print 'num_born'
+                        print num_born
+                        print 'starsb'
+                        print starsb 
 
                 if proposal.idx_kill is not None:
                     idx_kill_a = proposal.idx_kill.compress(acceptprop, axis=0).flatten()
@@ -684,6 +696,8 @@ class Model:
                         print 'implementing idx_kill proposal'    
                         print 'num kill'
                         print num_kill
+                        print 'stars killed'
+                        print self.stars[:,idx_kill_a]
 
                     # nstar is correct, not n, because x,y,f are full nstar arrays
                     self.stars[:, 0:self.nstar-num_kill] = np.delete(self.stars, idx_kill_a, axis=1)
@@ -720,7 +734,14 @@ class Model:
         chi2 = np.zeros(nbands)
         for b in xrange(nbands):
             chi2[b] = np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
-        
+            #if datatype != 'mock':
+            #    xmin, xmax = 2, imsz[0]-2
+            #    ymin, ymax = 2, imsz[1]-2
+            #else:
+            #    xmin, xmax = 0, imsz[0]
+            #    ymin, ymax = 0, imsz[1]
+
+            #chi2[b] = np.sum(weights[b][xmin:xmax,ymin:ymax]*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax])*(data_array[b][xmin:xmax,ymin:ymax]-models[b][xmin:xmax,ymin:ymax]))
 
         if verbtype > 1:
             print 'end of sample'
@@ -827,8 +848,8 @@ class Model:
             print pfs[0]
             print 'f0[0]'
             print f0[0]
-            print 'factor'
-            print factor
+            #print 'factor'
+            #print factor
             print len([f for f in f0[0] if f < 0]), 'fluxes less than zero from f0'
             print len([f for f in pfs[0] if f < 0]), 'fluxes less than zero from pfs[0]'
             print 'number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0]))
@@ -843,6 +864,7 @@ class Model:
             colors = adus_to_color(pfs[0], pfs[b+1], nmpc)
             orig_colors = adus_to_color(f0[0], f0[b+1], nmpc)
             colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
+            orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
             color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
             color_factors[b] += (orig_colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
         
@@ -852,8 +874,8 @@ class Model:
             print 'color factors nan'                
 
         if verbtype > 1:
-            print 'color factors'
-            print color_factors
+            #print 'color factors'
+            #print color_factors
             print 'avg abs color_factors:', np.average(np.abs(color_factors))
             print 'avg abs flux factor:', np.average(np.abs(factor))
 
@@ -862,8 +884,8 @@ class Model:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.5*(2+nbands))))/(np.maximum(f0[0],pfs[0]))
             #dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) #could also use regions factor
         else:
-            dpos_rms = np.float32(5*np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
-        
+            dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*40*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
+            
         dpos_rms[dpos_rms < 1e-3] = 1e-3
         dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
@@ -880,9 +902,9 @@ class Model:
         assert np.isinf(factor).any()==False
         assert np.isnan(factor).any()==False
 
-        if verbtype > 1:
-            print 'factor'
-            print factor
+        #if verbtype > 1:
+            #print 'factor'
+            #print factor
         
         proposal.set_factor(factor)
         return proposal
@@ -1053,6 +1075,9 @@ class Model:
                 sum_fs.append(f0[b,:] + fk[b,:])
                 fracs.append(f0[b,:] / sum_fs[b])
             fminratio = sum_fs[0] / self.trueminf
+            if verbtype > 1:
+                print 'fminratio'
+                print fminratio
 
             starsp = np.empty_like(stars0)
             starsp[self._X,:] = fracs[0]*stars0[self._X,:] + (1-fracs[0])*starsk[self._X,:]
@@ -1068,7 +1093,11 @@ class Model:
             factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
                 np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + \
                 np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
-
+            if verbtype > 1:
+                print 'factor before colors'
+                print factor
+                print 'sum of factor before colors'
+                print np.sum(factor)
             for b in xrange(nbands-1):
                 stars0_color = adus_to_color(stars0[self._F,:], stars0[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                 starsp_color = adus_to_color(starsp[self._F,:], starsp[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
@@ -1077,7 +1106,6 @@ class Model:
                 if splitsville:
                     starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                     factor += (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
-                    #factor -= 0.5*np.log(2*np.pi*self.color_sigs[b]**2)
                     if np.isnan(factor).any():
                         print 'nan on split'
                 else:
@@ -1090,18 +1118,20 @@ class Model:
                 factor += self.penalty
             else:
                 factor -= self.penalty
+
             proposal.set_factor(factor)
 
             assert np.isnan(factor).any()==False
 
-            if verbtype > 1
+            if verbtype > 1:
                 print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange)
                 print 'imsz factor', np.log(imsz[0]*imsz[1]) 
                 print 'fminratio:', fminratio
                 print 'sumfs[0], self.trueminf', sum_fs[0], self.trueminf
                 print 'fmin factor', np.log(1. - 2./fminratio)
                 print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio)
-                print 'factor nan on merge/split'
+                print 'factor after colors'
+                print factor
         return proposal
 
 
@@ -1150,7 +1180,7 @@ frame_dir = create_directories(timestr)
 for j in xrange(nsamp):
     chi2_all = np.zeros((ntemps,nbands))
     print 'Sample', j
-    #if j < 357 or j > 375:
+    #if j < 800 or j > 810:
     #    verbtype = 0
     #else:
     #    verbtype = 2
