@@ -27,9 +27,9 @@ else:
 np.seterr(divide='ignore', invalid='ignore')
 
 
-run = '002583'
-camcol = '2'
-field = '0136'
+run = '008151'
+camcol = '4'
+field = '0063'
 mag_bins = np.linspace(15, 23, 15)
 
 run_cam_field = run+'-'+camcol+'-'+field
@@ -51,7 +51,9 @@ chain_path += result_dir_name
 print 'result_path: ', result_path
 if not os.path.isdir(result_path):
     os.makedirs(result_path)
-
+    os.makedirs(result_path+'/color_histogram')
+    os.makedirs(result_path+'/frames')
+    os.makedirs(result_path+'/residuals')
 
 def look_at_chi2(filepath, figpath, nstart, nstop=None):
     chain = np.load(filepath)
@@ -76,7 +78,7 @@ def result_plots(result_path, ref_cat_path, \
                     boolplotsave=1, \
                     boolplotshow=0, \
                     plttype='pdf', \
-                    bright_n=300, \
+                    bright_n=50, \
                     burn_in_frac=0.3, \
                     bands=['r']):
 
@@ -122,7 +124,7 @@ def result_plots(result_path, ref_cat_path, \
 
     ref_colors = []
     for b in xrange(nbands-1):
-        ref_color = ref_mags[b]-ref_mags[b+1]
+        ref_color = ref_mags[0]-ref_mags[b+1]
         ref_colors.append(ref_color)
 
         
@@ -227,7 +229,7 @@ def result_plots(result_path, ref_cat_path, \
     for b in xrange(nbands):
 
         plt.title('Posterior Magnitude Distribution - ' + str(bands[b]))
-        (n, bins, patches) = plt.hist(ref_mags[b], histtype='step', label=label, color='g')
+        (n, bins, patches) = plt.hist(ref_mags[b], histtype='step', label=label, color='g', bins=mag_bins)
         post_hist = []
         for samp in xrange(burn_in, nsamp):
             hist = np.histogram([adu_to_magnitude(x, nmgy_per_count[b]) for x in fsrcs[b][samp] if x>0], bins=bins)
@@ -256,7 +258,7 @@ def result_plots(result_path, ref_cat_path, \
 
         for samp in xrange(burn_in, samp):
             mask = fsrcs[0,samp,:] > 0
-            n_bright = min(300, int(len(fsrcs[0,samp])/3))
+            n_bright = min(50, int(len(fsrcs[0,samp])/3))
 
             colors = colorsrcs[b][samp]
             brightest_idx = np.argpartition(fsrcs[0,samp][mask], n_bright)[-n_bright:]
@@ -301,7 +303,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
                         frame_number_list=None, \
                         datatype='real', \
                         plttype='pdf', \
-                        bright_n=300, \
+                        bright_n=50, \
                         imdim=100,  \
                         bands=['r']):
 
@@ -362,36 +364,36 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
     gains = dict()
     biases = dict()
 
-    if datatype != 'mock':
-        frame_basic_path = data_path+'/'+dataname+'/frames/frame--'+run_cam_field+'.fits'
-        gains = dict({"r":4.61999, "i":4.38999, "g":4.2, "z":5.67999})
-        biases = dict({"r":1044., "i":1177., "g":1113., "z":1060.})
-
-    else:
-        for band in bands:
-            pix_path = data_path+'/'+dataname+'/pixs/'+dataname+'-pix'+band+'.txt'
-            g = open(pix_path)
-            a = g.readline().split()
-            bias, gain = [np.float32(i) for i in np.float32(g.readline().split())]
-            gains[band] = gain
-            biases[band] = bias
-
-    print 'biases:', biases
-    print 'gains:', gains
-    print 'nmgy_per_count:', nmgy_per_count
-
-
-    color_bins = np.linspace(-2, 2, 30)
-
+    #if datatype != 'mock':
+    #    frame_basic_path = data_path+'/'+dataname+'/frames/frame--'+run_cam_field+'.fits'
+    #    gains = dict({"r":4.61999, "i":4.38999, "g":4.2, "z":5.67999})
+    #    biases = dict({"r":1044., "i":1177., "g":1113., "z":1060.})
+        
+    
     for band in bands:
-        if datatype=='mock':
-            pix_path = data_path+'/'+dataname+'/pixs/'+dataname+'-pix'+band+'.txt'
-            g = open(pix_path)
-            a = g.readline().split()
-            np.float32(g.readline().split())
-        else:
-            frame_path = frame_basic_path.replace('--', '-'+band+'-')
-    mean_dpos = dict({'r-i':[-1.,3.], 'r-g':[3.,10.], 'r-z':[1.,7.]})
+        pix_path = data_path+'/'+dataname+'/pixs/'+dataname+'-pix'+band+'.txt'
+        g = open(pix_path)
+        a = g.readline().split()
+        bias, gain = [np.float32(i) for i in np.float32(g.readline().split())]
+        gains[band] = gain
+        biases[band] = bias
+
+    #print 'biases:', biases
+    #print 'gains:', gains
+    #print 'nmgy_per_count:', nmgy_per_count
+
+
+    color_bins = np.linspace(-4, 4, 50)
+
+    #for band in bands:
+        #if datatype=='mock':
+            #pix_path = data_path+'/'+dataname+'/pixs/'+dataname+'-pix'+band+'.txt'
+            #g = open(pix_path)
+            #a = g.readline().split()
+            #np.float32(g.readline().split())
+            
+            #frame_path = frame_basic_path.replace('--', '-'+band+'-')
+    mean_dpos = dict({'r-i':[-1.,3.], 'r-g':[3.,10.], 'r-z':[1.,7.], 'r-r':[0.,0.]})
 
 
     if frame_number_list is None:
@@ -417,7 +419,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             imsz = [len(data), len(data[0])]
             if datatype !='mock':
                 data -= biases[bands[b]]
-                print biases[bands[b]]
+                #print biases[bands[b]]
 
             if b==0:
                 xs = xsrcs[num]
@@ -426,7 +428,7 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
                 xs, ys = transform_q(xsrcs[num], ysrcs[num], pixel_transfer_mats[b-1])
                 if datatype != 'mock':
                     col_name = bands[0]+'-'+bands[b]
-                    print mean_dpos[col_name]
+                    #print mean_dpos[col_name]
                     xs -= mean_dpos[col_name][0]
                     ys -= mean_dpos[col_name][1]
             model = image_model_eval(xs, ys, fsrcs[b, num], bkgs[b], imsz, nc, cf)
@@ -434,11 +436,11 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             variance = data / gains[bands[b]]
             weight = 1. / variance
             
-            np.savetxt(result_path+'/resid_'+str(num)+str(bands[b])+'.txt', resid*np.sqrt(weight))
+            np.savetxt(result_path+'/residuals/resid_'+str(num)+str(bands[b])+'.txt', resid*np.sqrt(weight))
            # plt.figure()
            # plt.imshow(resids[0,b,:,:]*np.sqrt(weight), origin='lower', interpolation='none', cmap='Greys', vmin=-30, vmax=30)
            # if boolplotsave:
-           #     plt.savefig(result_path + '/resid_' + str(num) +str(bands[b])+ '.'+plttype, bbox_inches='tight')
+           #     plt.savefig(result_path + '/residuals/resid_' + str(num) +str(bands[b])+ '.'+plttype, bbox_inches='tight')
            # plt.close()
 
             #plt.figure(figsize=(15,x))
@@ -447,13 +449,17 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             plt.imshow(data, origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data), vmax=np.percentile(data, 95))
             plt.colorbar()
             if hubble_cat_path is not None:
-                plt.scatter(hubble_coords[2*b][posmask][hmask], hubble_coords[1+2*b][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy) / sizefac, color='lime') #hubble
+                print 'using Hubble coordinates'
+                plt.scatter(hubble_coords[1+2*b][posmask][hmask], hubble_coords[2*b][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy) / sizefac, color='lime') #hubble
             else:
                 mask = ref_f[:,0] > 250 # will have to change this for other data sets
                 plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[:,b][mask] / sizefac, color='lime')
                 mask = np.logical_not(mask)
                 plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[:,b][mask] / sizefac, color='g')
-            plt.scatter(xs, ys, marker='x', s=(10000/len(data)**2)*fsrcs[b, num]/(2*sizefac), color='r')
+            if len(data)>100:
+                plt.scatter(xs, ys, marker='x', s=(len(data)**2/1e5)*fsrcs[b,num]/(2*sizefac), color='r')
+            else:
+                plt.scatter(xs, ys, marker='x', s=(1e4/len(data)**2)*fsrcs[b, num]/(2*sizefac), color='r')
             plt.xlim(-0.5, len(data)-0.5)
             plt.ylim(-0.5, len(data)-0.5)
 
@@ -473,23 +479,24 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             plt.xlabel(str(bands[b]))
             plt.yscale('log')
         if boolplotsave:
-            plt.savefig(result_path + '/sample_' + str(num) + '_mags.'+plttype, bbox_inches='tight')
+            plt.savefig(result_path + '/frames/sample_' + str(num) + '_mags.'+plttype, bbox_inches='tight')
         if boolplotshow:
             plt.show()
         plt.close()
 
+        plt.figure(figsize=(10,5))
         for b in xrange(nbands-1):
             colors = colorsrcs[b][num]
             colors = adus_to_color(fsrcs[0, num], fsrcs[b+1, num], nmgy_per_count)
-            plt.subplot(1, nbands, b+1)
-            print 'colors:', colors
+            plt.subplot(1, nbands-1, b+1)
+            #print 'colors:', colors
             plt.hist(colors[~np.isnan(colors)], label='Chain', bins=color_bins, bottom=0.1, histtype='step', color='r')
             plt.hist(ref_colors[b], label=labldata, bins=color_bins, bottom=0.1, histtype='step', color='g')
             plt.legend(loc=2)
             plt.yscale('log')
-            plt.xlabel(bands[0] + ' - ' + bands[1])
+            plt.xlabel(bands[0] + ' - ' + bands[b+1])
         if boolplotsave and nbands >1:
-            plt.savefig(result_path + '/color_histograms_sample_' + str(num) + '.'+plttype, bbox_inches='tight')
+            plt.savefig(result_path + '/color_histogram/color_histograms_sample_' + str(num) + '.'+plttype, bbox_inches='tight')
         if boolplotshow and nbands > 1:
             plt.show()
         plt.close()
@@ -499,6 +506,6 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 
 
 result_plots(result_path, ref_cat_path, datatype=datatype, burn_in_frac=0.5, bands=bands, plttype='png')
-multiband_retro_frames(result_path, ref_cat_path, data_path, bands=bands, datatype=datatype, plttype='png')
+multiband_retro_frames(result_path, ref_cat_path, data_path, bands=bands, datatype=datatype, plttype='pdf', imdim=500)
 
 

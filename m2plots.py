@@ -13,7 +13,7 @@ import time
 from astropy import wcs
 from scipy import interpolate
 import networkx as nx
-
+import os
 
 dataname = sys.argv[1]
 run_name = sys.argv[2]
@@ -68,7 +68,7 @@ elif sys.platform=='linux2':
     #base_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
     base_path = '/n/home07/rfederstaehle/'
     result_path = '/n/home07/rfederstaehle/figures/'
-    data_path = '/n/fink1/rfeder/mpcat/multiband_pcat'
+    data_path = '/n/fink1/rfeder/mpcat/multiband_pcat/'
 else:
     base_path = raw_input('Operating system not detected, please enter base_path directory (eg. /Users/.../pcat-lion-master):')
     if not os.path.isdir(base_path):
@@ -124,18 +124,19 @@ def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
 
 ###################### READ IN CATALOGS AND CATALOG CHAINS ##################################
 def hubble_cat_kd():
-    fitshubble = np.loadtxt(data_path+'/Data/'+dataname+'/hubble_catalog_2583-2-0136_astrans.txt')
+    #fitshubble = np.loadtxt(data_path+'/Data/'+dataname+'/hubble_catalog_2583-2-0136_astrans.txt')
+    fitshubble = np.loadtxt(data_path+'/Data/'+dataname+'/hubble_catalog_2583-2-0136_astrans_newr.txt')
     HTx_fits = fitshubble[:,0] - bounds[0]
     HTy_fits = fitshubble[:,1] - bounds[2]
     fitsmask = np.logical_and(fitshubble[:,2]>0, fitshubble[:,3]>0)
-    fitsmask = np.logical_and(np.logical_and(np.logical_and(HTx_fits > 0+hwhm, HTx_fits < 99-hwhm), np.logical_and(HTy_fits > 0+hwhm, HTy_fits < 99-hwhm)), fitsmask)
+    fitsmask = np.logical_and(np.logical_and(np.logical_and(HTx_fits > 0+hwhm, HTx_fits < imdim-1-hwhm), np.logical_and(HTy_fits > 0+hwhm, HTy_fits < imdim-1-hwhm)), fitsmask)
     HTx_fits = HTx_fits[fitsmask]
     HTy_fits = HTy_fits[fitsmask]
 
     HT606 = fitshubble[:,2]
     HT814 = fitshubble[:,3]
 
-    HTcat = np.loadtxt(data_path+'/Data/NGC7089R.RDVIQ.cal.adj.zpt', skiprows=1)
+    #HTcat = np.loadtxt(data_path+'/Data/NGC7089R.RDVIQ.cal.adj.zpt', skiprows=1)
     HT606 = HT606[fitsmask]
     HT814 = HT814[fitsmask]
 
@@ -465,7 +466,7 @@ def clusterize(seed_cat, cat_x, cat_y, cat_n, cat_r):
 #------------------- PORTILLO ET AL 2017 -----------------------
 
 if datatype != 'mock':
-    PCcat = np.loadtxt(base_path+'/Data/'+dataname+'/posterior_sample.txt')
+    PCcat = np.loadtxt(data_path+'Data/'+dataname+'/posterior_sample.txt')
     maxn = 3000
     PCn = PCcat[-nsamp:,10003].astype(np.int)
     PCx = PCcat[-nsamp:,10004:10004+maxn]
@@ -496,78 +497,74 @@ if include_hubble:
 # load in chain
 lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r, lion_all, PCi, lion_f = lion_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/chain.npz')
 
-# dat = generate_seed_catalog(lion_kd, lion_all, lion_r_all, PCi)
+if datatype != 'mock':
+    if os.path.isfile(base_path+'/pcat-lion-results/'+run_name+'/seeds.txt'):
+        dat = np.loadtxt(base_path+'/pcat-lion-results/'+run_name+'/seeds.txt')
+    else:
+        dat = generate_seed_catalog(lion_kd, lion_all, lion_r_all, PCi)    
+    cut = 0.1
 
-dat = np.loadtxt(base_path+'/pcat-lion-results/'+run_name+'/seeds.txt')
+    # plots histogram of confidence
+    fig = plt.gcf()
+    fig.set_size_inches(10, 5)
+    plt.subplots_adjust(wspace=0.5)
+    plt.subplot(1,2,2)
+    plt.hist(dat[:,2], bins=50)
+    plt.xlabel("Number of Samples")
+    plt.ylim([0, 1250])
+    plt.title("Seed Catalog")
+    plt.subplot(1,2,1)
+    plt.hist(dat[:,2]/nsamp, bins=50)
+    plt.xlabel("Prevalence")
+    plt.ylim([0, 1250])
+    plt.title("Seed Catalog")
+    plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/hist_seed_cat.pdf')
 
-cut = 0.1
+    #performs confidence cut
+    x = dat[:,0][dat[:,2] > cut*nsamp]
+    y = dat[:,1][dat[:,2] > cut*nsamp]
+    n = dat[:,2][dat[:,2] > cut*nsamp]
 
-# plots histogram of confidence
+    assert x.size == y.size
+    assert x.size == n.size
 
-fig = plt.gcf()
-fig.set_size_inches(10, 5)
-plt.subplots_adjust(wspace=0.5)
-plt.subplot(1,2,2)
-plt.hist(dat[:,2], bins=50)
-plt.xlabel("Number of Samples")
-plt.ylim([0, 1250])
-plt.title("Seed Catalog")
-plt.subplot(1,2,1)
-plt.hist(dat[:,2]/nsamp, bins=50)
-plt.xlabel("Prevalence")
-plt.ylim([0, 1250])
-plt.title("Seed Catalog")
-plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/hist_seed_cat.pdf')
+    seed_cat = np.zeros((x.size, 2))
+    seed_cat[:,0] = x
+    seed_cat[:,1] = y
+    cat_len = x.size
 
-#performs confidence cut
-x = dat[:,0][dat[:,2] > cut*nsamp]
-y = dat[:,1][dat[:,2] > cut*nsamp]
-n = dat[:,2][dat[:,2] > cut*nsamp]
+    condensed_cat = clusterize(seed_cat, lion_x, lion_y, lion_n, lion_f)
+    condensed_x = condensed_cat[:,0]
+    condensed_y = condensed_cat[:,1]
 
-assert x.size == y.size
-assert x.size == n.size
+    print 'min, max of x and y:'
+    print np.amin(condensed_x), np.amax(condensed_x)
+    print np.amin(condensed_y), np.amax(condensed_y)
 
-seed_cat = np.zeros((x.size, 2))
-seed_cat[:,0] = x
-seed_cat[:,1] = y
-cat_len = x.size
+    cond_kd, cond_x, cond_y, cond_r = condensed_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/classical_catalog.txt')
 
-condensed_cat = clusterize(seed_cat, lion_x, lion_y, lion_n, lion_f)
-condensed_x = condensed_cat[:,0]
-condensed_y = condensed_cat[:,1]
+    print np.amin(cond_x), np.amax(cond_x)
+    print np.amax(cond_y), np.amax(cond_y)
 
-print 'min, max of x and y:'
-print np.amin(condensed_x), np.amax(condensed_x)
-print np.amin(condensed_y), np.amax(condensed_y)
+    # # plots histogram of confidence
 
-cond_kd, cond_x, cond_y, cond_r = condensed_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/classical_catalog.txt')
-
-print np.amin(cond_x), np.amax(cond_x)
-print np.amax(cond_y), np.amax(cond_y)
-
-# # plots histogram of confidence
-
-fig = plt.gcf()
-fig.set_size_inches(10, 5)
-plt.subplots_adjust(wspace=0.5)
-plt.subplot(1,2,2)
-plt.hist(condensed_cat[:,8], bins=50)
-plt.xlabel("Number of Samples")
-plt.ylim([0, 1250])
-plt.title("Condensed Catalog")
-plt.subplot(1,2,1)
-plt.hist(condensed_cat[:,8]/nsamp, bins=50)
-plt.xlabel("Prevalence")
-plt.ylim([0, 1250])
-plt.title("Condensed Catalog")
-plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/hist_classical_cat.pdf')
-
-
+    fig = plt.gcf()
+    fig.set_size_inches(10, 5)
+    plt.subplots_adjust(wspace=0.5)
+    plt.subplot(1,2,2)
+    plt.hist(condensed_cat[:,8], bins=50)
+    plt.xlabel("Number of Samples")
+    plt.ylim([0, 1250])
+    plt.title("Condensed Catalog")
+    plt.subplot(1,2,1)
+    plt.hist(condensed_cat[:,8]/nsamp, bins=50)
+    plt.xlabel("Prevalence")
+    plt.ylim([0, 1250])
+    plt.title("Condensed Catalog")
+    plt.savefig(base_path+'/pcat-lion-results/'+run_name+'/hist_classical_cat.pdf')
 
 
 prec_portillo17, prec_lion, prec_condensed = [np.zeros(nbins) for x in xrange(3)]
-
-
 
 if datatype == 'mock':
     goodmatch_lion = associate(lion_kd, lion_r_all, mock_kd, mock_rmag, dr, dmag)
@@ -582,13 +579,13 @@ for i in xrange(nbins):
 
     inbin = np.logical_and(lion_r_all >= rlo, lion_r_all < rhi)
     prec_lion[i] = np.sum(np.logical_and(inbin, goodmatch_lion)) / float(np.sum(inbin))
-
+    #print rlo, rhi, np.sum(np.logical_and(inbin, goodmatch_lion))
     if datatype != 'mock':
         inbin = np.logical_and(PCr_all >= rlo, PCr_all < rhi)
         inbin_cond = np.logical_and(cond_r >= rlo, cond_r < rhi)
         prec_portillo17[i] = np.sum(np.logical_and(inbin, goodmatch_portillo17)) / float(np.sum(inbin))
         prec_condensed[i] = np.sum(np.logical_and(inbin_cond, goodmatch_condensed)) / float(np.sum(inbin_cond))
-
+        print rlo, rhi, np.sum(np.logical_and(inbin_cond, goodmatch_condensed))
 print 'prec_lion', prec_lion
 print 'prec_condensed', prec_condensed
 
@@ -606,11 +603,13 @@ plt.ylabel('false discovery rate')
 plt.ylim((-0.05, 0.9))
 plt.xlim((15,24))
 plt.legend(prop={'size':12}, loc = 'best')
-plt.savefig(result_path+'/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+#plt.savefig(result_path+'/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+plt.savefig(result_path+'/'+run_name+'/fdr-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'-newr.pdf')
+
 plt.close()
 
 fdr_lion = 1-prec_lion
-np.savetxt(result_path+'/'+run_name+'/fdr_'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.txt', fdr_lion)
+np.savetxt(result_path+'/'+run_name+'/fdr_'+str(dr)+'_'+str(dmag)+'.txt', fdr_lion)
 
 
 
@@ -637,11 +636,13 @@ for i in xrange(nbins):
     if datatype != 'mock':
         inbin = np.logical_and(HT606 >= rlo, HT606 < rhi)
         reclPC_portillo17[i] = np.sum(complete_portillo17[inbin]) / float(np.sum(inbin))
+        recl_cond[i] = np.sum(complete_condensed[inbin])/float(np.sum(inbin))
     else:
         inbin = np.logical_and(mock_rmag >= rlo, mock_rmag< rhi)
     reclPC_lion[i] = np.sum(complete_lion[inbin]) / float(np.sum(inbin))
-    recl_cond[i] = np.sum(complete_condensed[inbin])/float(np.sum(inbin))
-
+    #recl_cond[i] = np.sum(complete_condensed[inbin])/float(np.sum(inbin))
+    print rlo, rhi, np.sum(complete_lion[inbin])
+    #print np.sum(complete_condensed[inbin])
 
 
 plt.figure()
@@ -653,10 +654,12 @@ plt.xlabel('HST F606W magnitude', fontsize='large')
 plt.ylabel('completeness', fontsize='large')
 plt.ylim((-0.1,1.1))
 plt.legend(loc='best', fontsize='large')
-plt.savefig(result_path+'/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+#plt.savefig(result_path+'/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'.pdf')
+plt.savefig(result_path+'/'+run_name+'/completeness-lion'+str(run_name)+'_'+str(dr)+'_'+str(dmag)+'-newr.pdf')
+
 plt.close()
 
-np.savetxt(result_path+'/'+run_name+'/completeness_'+str(run_name)+'.txt', reclPC_lion)
+np.savetxt(result_path+'/'+run_name+'/completeness_'+str(dr)+'_'+str(dmag)+'.txt', reclPC_lion)
 
 
 
