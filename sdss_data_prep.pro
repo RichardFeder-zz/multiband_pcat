@@ -2,15 +2,16 @@ pro mpcat_asTrans, band1, band2, run, camcol, field, rerun, corner_x, corner_y, 
 
   run_cam_field = string(run,'-',camcol,'-',field, format='(I6.6,A,I1,A,I4.4)')
   
+; ------- Set $PHOTO_REDUX
   setenv, 'PHOTO_REDUX='+data_repository
 
   run =fix(uint(run))
   camcol = fix(uint(camcol))
-  
-; -------- Set $PHOTO_REDUX
-  ;setenv, 'PHOTO_REDUX=/n/fink1/rfeder/mpcat/multiband_pcat/Data/idR-002583-2-0134'
-; -------- Check path stuff is set up                                                                                                                                                                           
-                                      
+; -------- Check path stuff is set up
+                                    
+  print, run
+  print, camcol
+
   print, sdss_path('asTrans', run, camcol, rerun=rerun)
 ; -------- and that we can generate a correct file name
   
@@ -26,7 +27,6 @@ pro mpcat_asTrans, band1, band2, run, camcol, field, rerun, corner_x, corner_y, 
   nx = dim
   ny = dim
 
-
   xbox = lindgen(nx, ny) mod nx
   ybox = lindgen(nx, ny)  /  nx
 ; derivatives for band 1 to band 2
@@ -34,12 +34,19 @@ pro mpcat_asTrans, band1, band2, run, camcol, field, rerun, corner_x, corner_y, 
   get_derivative, as1, as2, xbox, ybox, 0.5d, 0.0d, dxpdx12, dypdx12, corner_x, corner_y
   get_derivative, as1, as2, xbox, ybox, 0.0d, 0.5d, dxpdy12, dypdy12, corner_x, corner_y
 
-  astrans_band2band, as1, as2, xbox, ybox, xp12, yp12
-  xp12 = xp12
-  yp12 = yp12
+  ;print, dypdy12
 
-  asGrid_path = data_repository+'/asGrid'
-  fname = string(asGrid_path, run, '-', camcol, '-', field, '-', nx, 'x', ny, '-', band1, '-', band2, '-', corner_x, '-', corner_y, '_cterms0_0.fits', format='(A,I6.6,A,I1,A,I4.4,A,I4.4,A,I4.4,A,A,A,A,A,I4.4,A,I4.4,A)')
+
+  astrans_band2band, as1, as2, xbox, ybox, xp12, yp12
+  ;xp12 = xp12
+  ;yp12 = yp12
+  ;print, 'xp12', xp12
+  ;print, 'yp12', yp12
+
+  asGrid_path = data_repository+'/asGrid/asGrid'
+  ;fname = string(asGrid_path, run, '-', camcol, '-', field, '-', nx, 'x', ny, '-', band1, '-', band2, '-', corner_x, '-', corner_y, '_cterms_0p15_1p0.fits', format='(A,I6.6,A,I1,A,I4.4,A,I4.4,A,I4.4,A,A,A,A,A,I4.4,A,I4.4,A)')
+ 
+  fname = string(asGrid_path, run, '-', camcol, '-', field, '-', nx, 'x', ny, '-', band1, '-', band2, '-', corner_x, '-', corner_y, '_cterms0_0_nov12.fits', format='(A,I6.6,A,I1,A,I4.4,A,I4.4,A,I4.4,A,A,A,A,A,I4.4,A,I4.4,A)')
 
   print, 'Writing ', fname
   mwrfits, xp12, fname, /create
@@ -62,22 +69,28 @@ pro psField, run_cam_field, data_repository
 
   FOREACH band, bands DO BEGIN
      psfield = mrdfits(psfield_path, color_dict[band])
+     psfimage_recenter = sdss_psf_recon(psfield, 630+50, 310+50, trimdim=[25,25])
      psfimage = sdss_psf_recon(psfield, 600., 500., trimdim=[25,25])
      psf_path = psf_base_path+'-'+band+'.fits'
-     mwrfits, psfimage, psf_path
+     psf_path_recenter = psf_base_path+'-'+band+'-680-360.fits'
+     mwrfits, psfimage, psf_path, /create
+     mwrfits, psfimage_recenter, psf_path_recenter, /create
+     ;mwrfits, psfimage, data_repository+'/psfs/'
+     ;mwrfits, psfimage, '~/Data/idR-'+run_cam_field+'/psfs/sdss-'+run_cam_field+'-psf-'+band+'-680-360.fits', /create
   ENDFOREACH
 
 end
 
-pro get_subregion_idr, infile, outfile, offx, offy
+pro get_subregion_idr, infile, outfile, offx, offy, dim
   idr_in = mrdfits(infile)
-  mwrfits, idr_in[40+offx :40+offx+499,offy :offy+499], outfile
+  mwrfits, idr_in[40+offx :40+offx+dim-1,offy :offy+dim-1], outfile, /create
 end
 
 pro astrans_band2band, as0, as1, x, y, x1, y1
-
-  astrans_xy2eq, as0, x, y, ra=ra, dec=dec, cterm=0.0
-  astrans_eq2xy, as1, ra, dec, xpix=x1, ypix=y1, cterm=0.0
+  astrans_xy2eq, as0, x, y, ra=ra, dec=dec
+  astrans_eq2xy, as1, ra, dec, xpix=x1, ypix=y1
+  ;astrans_xy2eq, as0, x, y, ra=ra, dec=dec, cterm=0.15
+  ;astrans_eq2xy, as1, ra, dec, xpix=x1, ypix=y1, cterm=1.0 ;when transforming to g band, cterm should be <g-r>
 
   return
 end
@@ -100,27 +113,30 @@ end
 bands = ["r", "i", "g", "z"]
 run = '002583'
 camcol = '2'
-field = '0134'
+field = '0136'
 rerun = '301'
 run_cam_field = run+'-'+camcol+'-'+field
 data_repository = '/n/fink1/rfeder/mpcat/multiband_pcat/Data/idR-'+run_cam_field
 x0 = 310.
 y0 = 630.
-dim = 20
+
+dim = 100
 
 
-psField, run_cam_field, data_repository
+;psField, run_cam_field, data_repository
 
-FOREACH band, bands DO BEGIN
-   band_col = '-'+band+camcol+'-'
-   run_cam_field_band = repstr(run_cam_field, '-'+camcol+'-', band_col)
-   cts_path = data_repository+'/cts/idR-'+run_cam_field_band+'_subregion_cts.fits'
-   in_path = data_repository+'/idR-'+run_cam_field_band+'.fit'
-   get_subregion_idr, in_path, cts_path, x0, y0
-ENDFOREACH
+;FOREACH band, bands DO BEGIN
+;   band_col = '-'+band+camcol+'-'
+;   run_cam_field_band = repstr(run_cam_field, '-'+camcol+'-', band_col)
+;   cts_path = data_repository+'/cts/idR-'+run_cam_field_band+'_subregion_500_cts.fits'
+;   in_path = data_repository+'/idrs/idR-'+run_cam_field_band+'.fit'
+;   get_subregion_idr, in_path, cts_path, x0, y0, dim
+   ; for copying to home directory for jupyter notebook validation
+;   get_subregion_idr, in_path, '~/Data/idR-'+run_cam_field+'/cts/idR-'+run_cam_field_band+'_subregion_500_cts.fits', x0, y0, dim
+;ENDFOREACH
 
-astrans_bands = ["i", "g", "z"]
-
+;astrans_bands = ["i", "g", "z"]
+astrans_bands = ["i", "g"]
 FOREACH band, astrans_bands DO BEGIN
    print, 'r - ', band
    mpcat_asTrans, 'r', band, run, camcol, field, rerun, x0, y0, dim, data_repository  
