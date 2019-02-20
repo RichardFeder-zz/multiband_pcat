@@ -7,16 +7,15 @@ rewrite = 1
 
 
 
-offsets = np.array([1.2], dtype=np.float32)
+offsets = np.array([1.0, 1.2, 1.5], dtype=np.float32)
 #offsets = np.array([0.5, 0.6, 0.75, 1.0, 1.2, 1.5], dtype=np.float32)
-flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
-#flux_ratios = np.array([1.0], dtype=np.float32)
-r_fluxes = np.array([500.], dtype=np.float32)
-#r_fluxes = np.array([250., 500., 1000.], dtype=np.float32)
+#flux_ratios = np.array([1.0, 2.0, 5.0], dtype=np.float32)
+flux_ratios = np.array([5.0], dtype=np.float32)
+#r_fluxes = np.array([250.], dtype=np.float32)
+r_fluxes = np.array([250., 500., 1000.], dtype=np.float32)
 
-# cases = ['chain3', 'chain1', 'chain1x3']
 cases = ['r+i+g', 'r', 'rx3']
-#cases = ['rx3']
+#cases = ['r', 'rx3']
 
 if len(sys.argv)>1:
         flu = float(sys.argv[1])
@@ -25,7 +24,7 @@ if len(sys.argv)>1:
 print 'r_fluxes:', r_fluxes
 
 
-n_noise_realizations = 3
+n_noise_realizations = 5
 
 n_iterations = (len(offsets))*(len(flux_ratios))*(len(r_fluxes))*n_noise_realizations
 

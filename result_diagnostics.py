@@ -2,7 +2,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-# from astropy.visualization import (MinMaxInterval, SqrtStretch, ImageNormalize)
 from astropy.io import fits
 from helpers import *
 from image_eval import image_model_eval
@@ -26,6 +25,8 @@ else:
 
 np.seterr(divide='ignore', invalid='ignore')
 
+def gaussian(x, mu, sig):
+    return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
 
 run = '008151'
 camcol = '4'
@@ -42,8 +43,6 @@ datatype = str(sys.argv[3])
 for b in xrange(4,len_sys):
     bands.append(sys.argv[b])
     
-
-
 
 ref_cat_path = data_path+'/'+dataname+'/truth/'+dataname+'-tru.txt'
 result_path += result_dir_name
@@ -105,9 +104,9 @@ def result_plots(result_path, ref_cat_path, \
     accept_stats = chain['accept']
     nmgy_per_count = chain['nmgy']
     epsilons = chain['eps']
-
     diff2s = chain['diff2s']
-
+    #cprior_vals = np.array([[0,0],[0,0]])
+    cprior_vals = chain['cprior_vals']
     nsamp = len(nsrcs)
     burn_in = int(nsamp*burn_in_frac)
     nbands = len(bands)
@@ -274,12 +273,18 @@ def result_plots(result_path, ref_cat_path, \
         medians_bright /= (np.sum(medians_bright)*(color_post_bins[1]-color_post_bins[0]))  
         bincentres = [(color_post_bins[i]+color_post_bins[i+1])/2. for i in range(len(color_post_bins)-1)]
 
-
+        cp_mu = cprior_vals[0,b]
+        cp_sig = cprior_vals[1,b]
+        cp_vals = gaussian(np.array(bincentres),cp_mu, cp_sig) 
+        #print 'cp_sig:', cp_sig
+        #print 'cp_mu:', cp_mu
+        #print 'cp_vals:', cp_vals
         plt.figure()
         plt.title('Normalized Posterior Color Distribution')
         plt.step(bincentres, medians, where='mid', color='b', label='Posterior', alpha=0.5)
         plt.step(bincentres, medians_bright, where='mid', color='k', label='Brightest Third', alpha=0.5)
-        plt.hist(ref_colors[b], color='g', bins=color_post_bins, label=datatype, histtype='step', normed=1, alpha=0.5)
+        plt.hist(ref_colors[b], color='g', bins=color_post_bins, label='DAOPHOT', histtype='step', normed=1, alpha=0.5)
+        plt.plot(bincentres, cp_vals, color='r', label='Prior', alpha=0.5) #plot color prior as well
         plt.legend()
         plt.xlabel(str(bands[0]) + ' - ' + str(bands[b+1]))
         plt.legend()
@@ -353,9 +358,14 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
         ref_colors.append(ref_color)
 
 
+    hpath2 = '/n/fink1/rfeder/mpcat/multiband_pcat/Data/idR-002583-2-0136/hubble_catalog_2583-2-0136_astrans.txt'
     # use transform q to get hubble coordinates in other bands, or mean_dpos
     if hubble_cat_path is not None:
-        hubble_coords, hf, hmask = get_hubble(hubble_cat_path)
+        hubble_coords, hf, hmask, posmask, hx, hy = get_hubble(hubble_cat_path, hpath_2=hpath2)
+        #hubble_coords = np.loadtxt(hubble_cat_path)
+        #hx0 = hubble_coords[:,0]-310
+        #hy0 = hubble_coords[:,1]-630
+        #h_rmag = hubble_coords[:,2]
     #hx1, hy1 = transform_q(h_coords[0][posmask], h_coords[1][posmask], pixel_transfer_mats[first_frame_band_no-
 
     psf_basic_path = data_path+'/'+dataname+'/psfs/'+dataname+'-psf.txt'
@@ -393,8 +403,8 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             #np.float32(g.readline().split())
             
             #frame_path = frame_basic_path.replace('--', '-'+band+'-')
-    mean_dpos = dict({'r-i':[-1.,3.], 'r-g':[3.,10.], 'r-z':[1.,7.], 'r-r':[0.,0.]})
-
+    #mean_dpos = dict({'r-i':[-1.,3.], 'r-g':[3.,10.], 'r-z':[1.,7.], 'r-r':[0.,0.]})
+    mean_dpos = dict({'r-i':[-1.,3.], 'r-g':[-2.,12.]})
 
     if frame_number_list is None:
         frame_number_list = np.linspace(0, nsamp, nframes)
@@ -412,6 +422,9 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
         for b in xrange(nbands):
             bop = int(3*b)
             psf_path = psf_basic_path.replace('.txt', bands[b]+'.txt')
+            #if datatype != 'mock':
+            #    psf_path = psf_path.replace('.txt', '-refit_g.txt') # only if using refit psf!
+            #print 'psf_path:', psf_path
             cts_path = cts_basic_path.replace('.txt', bands[b]+'.txt')
             psf, nc, cf = get_psf_and_vals(psf_path)
             #get background
@@ -424,6 +437,8 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             if b==0:
                 xs = xsrcs[num]
                 ys = ysrcs[num]
+                if hubble_cat_path is not None:
+                    hx_band, hy_band = hx, hy
             else:
                 xs, ys = transform_q(xsrcs[num], ysrcs[num], pixel_transfer_mats[b-1])
                 if datatype != 'mock':
@@ -431,6 +446,12 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
                     #print mean_dpos[col_name]
                     xs -= mean_dpos[col_name][0]
                     ys -= mean_dpos[col_name][1]
+                    if hubble_cat_path is not None:
+                        #print 'pixel_transfer_mats'
+                        #print pixel_transfer_mats
+                        hx_band, hy_band = transform_q(hx, hy, pixel_transfer_mats[b-1])
+                        hx_band -= mean_dpos[col_name][0]
+                        hy_band -= mean_dpos[col_name][1]
             model = image_model_eval(xs, ys, fsrcs[b, num], bkgs[b], imsz, nc, cf)
             resid = data-model
             variance = data / gains[bands[b]]
@@ -449,8 +470,15 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
             plt.imshow(data, origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data), vmax=np.percentile(data, 95))
             plt.colorbar()
             if hubble_cat_path is not None:
-                print 'using Hubble coordinates'
-                plt.scatter(hubble_coords[1+2*b][posmask][hmask], hubble_coords[2*b][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy) / sizefac, color='lime') #hubble
+                #print 'using Hubble coordinates'
+                #print 'hx_band[posmask]:'
+                #print hx_band[posmask]
+                #print 'hmask length'
+                #print len(hmask)
+                #print 'hx_band[posmask][hmask]'
+                #print hx_band[posmask][hmask]
+                plt.scatter(hx_band[hmask], hy_band[hmask], marker='+', s=2*mag_to_cts(hf[hmask],nmgy_per_count[b])/sizefac, color='lime')
+                #plt.scatter(hubble_coords[1+2*b][posmask][hmask], hubble_coords[2*b][posmask][hmask], marker='+', s=2*mag_to_cts(hf[hmask], nmgy) / sizefac, color='lime') #hubble
             else:
                 mask = ref_f[:,0] > 250 # will have to change this for other data sets
                 plt.scatter(ref_x[mask], ref_y[mask], marker='+', s=ref_f[:,b][mask] / sizefac, color='lime')
@@ -503,9 +531,14 @@ def multiband_retro_frames(result_path, ref_cat_path, data_path,\
 
 
 
+hubble_cat_path = '/n/fink1/rfeder/mpcat/multiband_pcat/Data/idR-002583-2-0136/hubble_catalog_2583-2-0136_astrans.txt'
+hubble_cat_path = '/n/fink1/rfeder/mpcat/multiband_pcat/Data/idR-002583-2-0136/hubble_pixel_coords-2583-2-0136.fits'
+result_plots(result_path, ref_cat_path, datatype=datatype, burn_in_frac=0.5, bands=bands, plttype='png', hubble_cat_path=hubble_cat_path)
+multiband_retro_frames(result_path, ref_cat_path, data_path, bands=bands, datatype=datatype, plttype='png', imdim=500, hubble_cat_path=hubble_cat_path)
 
+m2plots_command = 'python m2plots.py '+dataname+' '+result_dir_name+' 1'
 
-result_plots(result_path, ref_cat_path, datatype=datatype, burn_in_frac=0.5, bands=bands, plttype='png')
-multiband_retro_frames(result_path, ref_cat_path, data_path, bands=bands, datatype=datatype, plttype='pdf', imdim=500)
-
+# UNCOMMENT TO RUN CONDENSED CATALOG CODE/COMPLETENESS/FDR
+#print m2plots_command
+#os.system(m2plots_command)
 

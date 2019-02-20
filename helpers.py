@@ -90,7 +90,7 @@ def get_nanomaggy_per_count(frame_path):
     nanomaggy_per_count = frame_header['NMGY']
     return nanomaggy_per_count
 
-def get_hubble(hubble_cat_path, xoff=310, yoff=630):
+def get_hubble(hubble_cat_path,hpath_2, xoff=310, yoff=630, imdim=100):
     hubble_pos = fits.open(hubble_cat_path)
 
     hxr = hubble_pos[0].data-xoff
@@ -102,16 +102,21 @@ def get_hubble(hubble_cat_path, xoff=310, yoff=630):
 
     hubble_coords = [hxr, hyr, hxi, hyi, hxg, hyg]
 
-    hubble_cat = np.loadtxt(hubble_cat_path)
-    hx = hubble_cat[:,0]
-    hy = hubble_cat[:,1]
-    hf = hubble_cat[:,2:]
-
-    posmask = np.logical_and(hx+0.5<imdim, hy+0.5<imdim)
+    hubble_cat = np.loadtxt(hpath_2)
+    hx = hubble_cat[:,0]-xoff
+    hy = hubble_cat[:,1]-yoff
+    hf = hubble_cat[:,2]
+    print 'hf'
+    print hf
+    posmask = np.logical_and(np.logical_and(hx+1.0<imdim, hx > 1.0), np.logical_and(hy+1.0<imdim, hy > 1.0))
     hf = hf[posmask]
+    hx = hx[posmask]
+    hy = hy[posmask]
+    print 'hf[posmask]'
+    print hf
     hmask = hf < 22
 
-    return hubble_coords, hf, hmask
+    return hubble_coords, hf, hmask, posmask, hx, hy
 
 
 
