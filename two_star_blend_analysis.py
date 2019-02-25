@@ -155,30 +155,24 @@ def fp_error(imsz, nsam, a, b, c, nrealization, case, all_x, all_y, all_f, ns, s
 			nonz_x = all_x[case][s][0]
 			nonz_y = all_y[case][s][0]
 			nonz_f = all_f[case][s][0]
+                        if nonz_f == 0:
+                            print 'ZERO!!!!!'
 			ds2 = np.sqrt(np.square(nonz_x-src2[0])+np.square(nonz_y-src2[1]))
-
-                        frac_f = np.abs(nonz_f-r_fluxes[b]*flux_ratios[c])/(r_fluxes[b]*flux_ratios[c])
-			#if case==2:
-                        #frac_f = np.abs(nonz_f-3*r_fluxes[b]*flux_ratios[c])/(3*r_fluxes[b]*flux_ratios[c])
-			#else:
-			#	frac_f = np.abs(nonz_f-r_fluxes[b]*flux_ratios[c])/(r_fluxes[b]*flux_ratios[c])
-			
-			if flux_ratios[c] > 1: #give it directly to brighter source
+                        if case == 2:
+                            frac_f = np.abs(nonz_f-flux_fac[1]*r_fluxes[b]*flux_ratios[c])/(flux_fac[1]*r_fluxes[b]*flux_ratios[c])
+                        else:
+                            frac_f = np.abs(nonz_f-r_fluxes[b]*flux_ratios[c])/(r_fluxes[b]*flux_ratios[c])
+                        if flux_ratios[c] > 1: #give it directly to brighter source
+                            #print
                             #dss2.append(ds2)
                             #dss2.append(np.abs(nonz_y-src2[1]))    
                             dss2.append(np.abs(nonz_x-src2[0]))
                             dfs2.append(frac_f)
-			else:
+                        else:
 				ds1 = np.sqrt(np.square(nonz_x-src1[0])+np.square(nonz_y-src1[1]))
-				#weights = [1/ds1**2, 1/ds2**2]
-				#weights = [1/ds1, 1/ds2]
-                                #weights /= np.sum(weights)
 				choose_source = np.argmin(np.array([ds1, ds2]))
-                                #choose_source = np.random.choice(weights.size, p=weights)
 				if choose_source==0:
-                                    #dss1.append(np.abs(nonz_y-src1[1]))
                                     dss1.append(np.abs(nonz_x-src1[0]))
-                                    #dss1.append(ds1)
                                     dfs1.append(frac_f)
 				else:
                                     #dss2.append(np.abs(nonz_y-src2[1]))
@@ -381,8 +375,7 @@ if individual:
 		all_plots(realizations)
 
 else:
-    pass
-	#all_plots(spec_realizations)
+    all_plots(spec_realizations)
 
 
 
