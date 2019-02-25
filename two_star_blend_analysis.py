@@ -64,7 +64,7 @@ def find_offsets_errs(f, rat, plist, offsets, num, case):
 		if len(entry)>0:
 			offs.append(offset)
 			mean_errs.append(np.average(entry[:,num]))
-			std_errs.append(np.std(entry[:,num]))
+			std_errs.append(np.std(entry[:,num])/(np.sqrt(nsamp*num_realizations)))
 		else:
 			offs.append(np.nan)
 			mean_errs.append(np.nan)
