@@ -9,6 +9,8 @@ import h5py
 import sys
 import os
 
+np.seterr(divide='ignore', invalid='ignore')
+
 if sys.platform=='darwin':
     result_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/pcat-lion-results/'
     data_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master/Data'
@@ -21,12 +23,6 @@ else:
     base_path = raw_input('Operating system not detected, please enter base_path directory (eg. /Users/.../pcat-lion-master):')
     if not os.path.isdir(base_path):
         raise OSError('Directory chosen does not exist. Please try again.')
-
-
-np.seterr(divide='ignore', invalid='ignore')
-
-def gaussian(x, mu, sig):
-    return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
 
 run = '008151'
 camcol = '4'

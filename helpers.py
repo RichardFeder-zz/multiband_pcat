@@ -3,6 +3,10 @@ import numpy as np
 from astropy.io import fits
 from image_eval import psf_poly_fit
 
+
+''' As the name suggests, the functions here are helper functions used by pcat.py and other scripts. '''
+
+
 def adus_to_color(flux0, flux1, nm_2_cts):
     colors = adu_to_magnitude(flux0, nm_2_cts[0]) - adu_to_magnitude(flux1, nm_2_cts[1])
     return colors

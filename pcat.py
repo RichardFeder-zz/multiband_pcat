@@ -13,6 +13,7 @@ import random
 import math
 from image_eval import psf_poly_fit, image_model_eval
 from helpers import * 
+np.seterr(divide='ignore', invalid='ignore')
 
 timestr = time.strftime("%Y%m%d-%H%M%S")
 print 'timestr:', timestr
@@ -21,6 +22,9 @@ lin_astrans = 0
 fminratio_bool = 0
 #generate random seed for initialization
 np.random.seed(20170501)
+
+
+# px and py are for astrometric color correction, don't worry about this
 
 #trueback_dict = dict({"r":179., "i":310., "g":95.}) # run 2583
 
@@ -32,7 +36,6 @@ np.random.seed(20170501)
 #py = dict({"r":0.0168097, "i":0.0136938, "g":0.107862})
 #px = dict({"r":0.0250862, "i":0.0202184, "g":0.118614})
 
-
 # swapped riuzg for sparse field, run 8151
 px = dict({"r":0.03026955, "i":0.11053126,"u":0.01785904, "z":0.01449279, "g":0.00513858})
 py = dict({"r":0.0073814, "i":-0.00581684, "u":0.00432934, "z":0.00352542, "g":0.00125652})
@@ -40,22 +43,20 @@ py = dict({"r":0.0073814, "i":-0.00581684, "u":0.00432934, "z":0.00352542, "g":0
 # swapped ugriz for sparse field, run 8151
 #px = dict({"g":0.11053126,"r":0.01785904, "i":0.01449279})
 #py = dict({"g":-0.00581684, "r":0.00432934, "i":0.00352542})
-
-trueback_dict = dict({"r":135., "i":215., "g":234., "z":140.}) # for sparse field test 
-
-
+# backgrounds for sparse field test
+trueback_dict = dict({"r":135., "i":215., "g":234., "z":140.}) 
 
 
-np.seterr(divide='ignore', invalid='ignore')
 
+# ------------------------------ these are for input python command, might change this format -------------------------
 # script arguments
 dataname = str(sys.argv[1])
 verbtype = int(sys.argv[2])
 # 1 to test, 0 not to test
 testpsfn = int(sys.argv[3]) > 0
-# 'mock' for simulated, 'mock2' for two source blended mock
+# 'mock' for simulated, 'mock2' for two source blended mock test
 datatype = str(sys.argv[4])
-# 1 for multiband, 0 for single band
+# 1 for multiband, 0 for single band (I think single band is deprecated now but you can do one band fit with multiband=1
 multiband = int(sys.argv[5]) > 0
 
 if datatype=='mock2':
@@ -66,11 +67,15 @@ if datatype=='mock' or datatype=='mock2':
     trueback = []
     lin_astrans = 0
 
+# --------------------------------------------------------------------------------------------------------------------
+
 mock_test_name = 'mock_2star_30'
 
 bands, ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
     data_array, data_hdrs, weights, nmgy_per_count, best_fit_astrans, mean_dpos = [[] for x in xrange(14)]
 
+
+#-------------------------- this portion sets up base directories, probably will need to modify ---------------------
 
 if sys.platform=='darwin':
     base_path = '/Users/richardfeder/Documents/multiband_pcat/pcat-lion-master'
@@ -81,7 +86,6 @@ else:
     if not os.path.isdir(base_path):
         raise OSError('Directory chosen does not exist. Please try again.')
 
-
 if datatype=='mock2':
     result_path = base_path + '/Data'
 else:
@@ -90,6 +94,8 @@ else:
     else:
         result_path = base_path + '/pcat-lion-results'
 print 'Results will go in', result_path
+
+#-------------------------- portion below for manually entering in bands used in fit, one by one --------------------
 
 if multiband:
     if datatype=='mock2':
@@ -113,6 +119,7 @@ else:
     nbands = 1
     bands = ['']
 
+
 trueback = []       
 if datatype != 'mock' and datatype != 'mock2':      
     for band in bands:      
@@ -121,6 +128,10 @@ if datatype != 'mock' and datatype != 'mock2':
 print 'datatype:', datatype
 
 start_time = time.clock()
+
+
+'''now, we want to read in (1) psf template (2) pixel txt file with bias/gain/etc. and (3) the actual image we're cataloging (cts file). Once we do this then we preprocess the data: '''
+
 
 for b in xrange(nbands):
 
@@ -151,6 +162,7 @@ for b in xrange(nbands):
     psfs.append(psf)
 
     g = open(paths[1])
+    # w and h are the width and height of the image, might need to change a few things in the code that assume the image is a square
     w, h, nb = [np.int32(i) for i in g.readline().split()]
     bias, gain = [np.float32(i) for i in g.readline().split()]
     if multiband:
@@ -167,6 +179,9 @@ for b in xrange(nbands):
     gains.append(gain)
     g.close()
 
+
+    ''' read in the image, subtract bias, divide by gain to get in units of ADU, and then compute variances
+    used when calculate likelihoods with inverse variance weighting. we assume here that the noise is gaussian '''
     data = np.loadtxt(paths[2]).astype(np.float32)
     data -= bias
     data_array.append(data)
@@ -174,12 +189,14 @@ for b in xrange(nbands):
     weight = 1. / variance
     weights.append(weight)
 
-    # establish image dimensions for first band, then other bands will use these
+    ''' establish image dimensions for first band, then other bands will use these. 
+    there might need to be some modifications to the code for non-square images but shouldn't be much of a problem..
+    don't worry about the pixel transfer matrices stuff this is just for multiband optical sdss data'''
     if b==0:
         w0=w
         h0=h
         imsz = (w0, h0)
-    #load asTran files for other bands
+    
     if b > 0:
         # since we're doing color corrections in pcat_multiband_eval, use astrans files with 0p01 default color
         #pathname = 'Data/'+dataname+'/asGrid/asGrid002583-2-0136-0100x0100-'+bands[0]+'-'+bands[b]+'-0310-0630_cterms_0p01_0p01_1203.fits'
@@ -222,6 +239,9 @@ print 'gains:', gains
 print 'nmgy_per_count:', nmgy_per_count
 print 'backgrounds:', trueback
 
+
+''' the multiple regions boolean determines whether subregions are used in each catalog sampling step (i.e. which regions point sources are modified in / where dlogL is calculated at a given step. this subregion approach helps a lot with convergence. the regions are set up in a checkerboard fashion and non overlapping regions are chosen at each step I think '''
+
 if lin_astrans:
     print 'Using linear approximation to asTrans linear interpolation'
 
@@ -238,6 +258,8 @@ else:
 assert imsz[0] % regsize == 0
 assert imsz[1] % regsize == 0
 
+''' N_eff is the effective number of pixels in the PSF, I believe this is defined by the PSF FWHM. 
+This is then used with the pixel variance (assuming Gaussian noise) to set err_f which is used to set sample step sizes.'''
 margin = 10
 pixel_variance = trueback[0]/gains[0]
 N_eff = 17.5
@@ -250,13 +272,20 @@ if datatype=='mock2':
     if config_type=='rx3':
         trueback[0] *= 3
 else:
+    '''  this is *roughly* the number of sources you think are in the image and is used to set one of the 
+    sample step sizes, as long as its within a factor of a few it should be fine''' 
     N_src = 1400.
     #nsamp = 3000
+    ''' this sets how many thinned samples are obtained, out of which we usually take the last 300 or something. 
+    in total the sampler is taking nsamp*nloop steps but adjacent samples are highly correlated'''
     nsamp = 1500
+
 nloop = 1000 # factor by which sample chain is thinned
 
+''' dont worry about ntemps/temps, was used when we were trying out a simulated annealing approach with galaxies'''
 ntemps = 1
 temps = np.sqrt(2) ** np.arange(ntemps)
+
 
 def initialize_c():
     if verbtype > 1:
@@ -297,6 +326,8 @@ def flux_proposal(f0, nw, trueminf, b):
     pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
     return pf
 
+
+''' the multiband model evaluation looks complicated because we tried out a bunch of things with the astrometry, but could probably rewrite this function. it uses image_model_eval which is written in both python and C (C is faster as you might expect)'''
 def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, margin, offsetx, offsety, eps=None, modl_eval_colors=None):
     dmodels = []
     dt_transf = 0
@@ -356,6 +387,7 @@ def pcat_multiband_eval(x, y, f, bkg, imsz, nc, cf, weights, ref, lib, regsize, 
 
     return dmodels, diff2s, dt_transf
 
+
 # ix, iy = 0. to 3.999
 def testpsf(nc, cf, psf, ix, iy, lib=None):
     psf0 = image_model_eval(np.array([12.-ix/5.], dtype=np.float32), np.array([12.-iy/5.], dtype=np.float32), np.array([1.], dtype=np.float32), 0., (25,25), nc, cf, lib=lib)
@@ -387,6 +419,7 @@ def testpsf(nc, cf, psf, ix, iy, lib=None):
     plt.title('fractional difference')
     plt.show()
 
+''' neighbours function is used in merge proposal, where you have some source and you want to choose a nearby source with some probability to merge'''
 def neighbours(x,y,neigh,i,generate=False):
     neighx = np.abs(x - x[i])
     neighy = np.abs(y - y[i])
@@ -480,7 +513,7 @@ class Proposal:
             starsk = starsk.reshape((starsk.shape[0], starsk.shape[1]*starsk.shape[2]))
         self.__add_phonions_stars(starsk, remove=True)
 
-    def add_eps_shift(self, stars0): # for absolute astrometry offset, not working currently
+    def add_eps_shift(self, stars0): # for absolute astrometry offset, not working currently, don't worry about this
         self.goodmove = True
         self.eps_shift = True
         self.stars0 = stars0
@@ -505,17 +538,18 @@ class Proposal:
 
 
 class Model:
-    nstar = 2000
+    nstar = 2000 # this sets the maximum number of sources allowed in thee code, can change depending on the image
     if datatype=='mock2':
         nstar = 20
-    trueminf = np.float32(236)
-    truealpha = np.float32(2)
-    alph = 1.0
+    trueminf = np.float32(236) # minimum flux for source in ADU, might need to change
+    truealpha = np.float32(2) # power law flux slope parameter, might need to change
+    alph = 1.0 # used as scalar factor in regularization prior, which determines the penalty in dlogL when adding/subtracting a source
     penalty = 1+0.5*alph*(nbands)
-    kickrange = 1.
-    eps_prop_sig = 0.001
-    #kickrange = 1./np.sqrt(nbands) # did not work well
+    kickrange = 1. # sets scale for merge proposal i.e. how far you look for neighbors to merge
+    eps_prop_sig = 0.001 # don't worry about this
     
+
+    ''' mus and sigs set the gaussian color priors used in optical, won't need these ''' 
     mus = dict({'r-i':0.1, 'r-g':-0.3, 'r-z':0.0, 'r-r':0.0})
     #sigs = dict({'r-i':0.5, 'r-g':5.0, 'r-z':1.0, 'r-r':0.05})
     sigs = dict({'r-i':1.0, 'r-g':1.0, 'r-z':3}) #very broad color prior
@@ -535,9 +569,12 @@ class Model:
     _Y = 1
     _F = 2
 
-    split_col_sig = 0.25
+
+    split_col_sig = 0.25 # used when splitting sources and determining colors of resulting objects
     k =2.5/np.log(10)
 
+    ''' the init function sets all of the data structures used for the catalog, 
+    randomly initializes catalog source values drawing from catalog priors  '''
     def __init__(self):
         self.back = np.zeros(nbands, dtype=np.float32)
         self.regsize = regsize
@@ -557,17 +594,18 @@ class Model:
                 new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
                 self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
 
+    ''' run_sampler() completes nloop samples, so the function is called nsamp times'''
     def run_sampler(self, temperature, nloop=1000, multiband=False):
         t0 = time.clock()
         nmov = np.zeros(nloop)
         movetype = np.zeros(nloop)
         accept = np.zeros(nloop)
         outbounds = np.zeros(nloop)
-        dt1 = np.zeros(nloop)
+        dt1 = np.zeros(nloop) # dt1/dt2/dt3/dttq are just for time performance diagnostics
         dt2 = np.zeros(nloop)
         dt3 = np.zeros(nloop)
         dttq = np.zeros(nloop)
-        diff2_list = np.zeros(nloop)
+        diff2_list = np.zeros(nloop) 
 
         if multiple_regions:
             self.offsetx = np.random.randint(self.regsize)
@@ -598,8 +636,7 @@ class Model:
             print 'n_phon'
             print n_phon
 
-        models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, \
-                                                        regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps = self.eps)
+        models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps = self.eps)
         logL = -0.5*diff2s
         
         if verbtype > 1:
@@ -624,7 +661,9 @@ class Model:
         for b in xrange(nbands):
             resids[b] -= models[b]
         
-        # proposal types
+        '''the proposals here are: move_stars (P) which changes the parameters of existing model sources, 
+        birth/death (BD) and merge/split (MS). Don't worry about perturb_astrometry. 
+        The moveweights array, once normalized, determines the probability of choosing a given proposal. '''
         moveweights = np.array([80., 40., 40., 0.])
         movetypes = ['P *', 'BD *', 'MS *', 'EPS *']
         movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_astrometry]
@@ -660,14 +699,11 @@ class Model:
 
             #proposal types
             proposal = movefns[rtype]()
-
-            if rtype==3 and verbtype > 1:
-                print 'after proposal, self.eps is', self.eps
             dt1[i] = time.clock() - t1
+            
             if proposal.goodmove:
                 t2 = time.clock()
-                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, \
-                                                                 lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps=proposal.eps)
+                dmodels, diff2s, dt_transf = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps=proposal.eps)
 
                 dttq[i] = dt_transf
                 plogL = -0.5*diff2s                
@@ -690,11 +726,11 @@ class Model:
                 if proposal.factor is not None:
                     dlogP[regiony, regionx] += proposal.factor
                 else:
-                    print 'heyo'
+                    print 'proposal factor is None'
                 acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
                 acceptprop = acceptreg[regiony, regionx]
                 numaccept = np.count_nonzero(acceptprop)
-                    
+                ''' for each band compute the delta log likelihood between states, theen add these together'''
                 for b in xrange(nbands):
                     dmodel_acpt = np.zeros_like(dmodels[b])
                     diff2_acpt = np.zeros_like(diff2s)
@@ -740,6 +776,7 @@ class Model:
                         print len(idx_move_a), np.count_nonzero(idx_move_a)
                         print 'starsp'
                         print starsp
+                
                 if proposal.do_birth:
                     if verbtype> 1:
                         print 'implementing birth proposal'
@@ -813,7 +850,9 @@ class Model:
                 print 'df2 for band at end of run_sampler', b
                 print df2
 
-
+        ''' this section prints out some information at the end of each thinned sample, 
+        namely acceptance fractions for the different proposals and some time performance statistics as well. '''
+        
         fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f (Pg) %0.3f (BDg) %0.3f (S-g) %0.3f (gSg) %0.3f (gMS) %0.3f'
         print 'Background', self.back, 'N_star', self.n, 'eps:', self.eps, 'chi^2', list(chi2)
         dt1 *= 1000
@@ -902,7 +941,7 @@ class Model:
             if b==0:
                 pf = flux_proposal(f0[b], nw, self.trueminf, b)
             else:
-                pf = flux_proposal(f0[b], nw, 1, b) #place a minor minf to avoid negative fluxes
+                pf = flux_proposal(f0[b], nw, 1, b) #place a minor minf to avoid negative fluxes in non-pivot bands
             pfs.append(pf)
  
         if (np.array(pfs)<0).any():
@@ -923,9 +962,8 @@ class Model:
             #os.exit()
             factor[np.isnan(factor)]=0
 
-
+        ''' the loop over bands below computes colors and prior factors in color used when sampling the posterior '''
         modl_eval_colors = []
-
 
         for b in xrange(nbands-1):
             nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
@@ -944,22 +982,20 @@ class Model:
             print 'color factors nan'                
 
         if verbtype > 1:
-            #print 'color factors'
-            #print color_factors
             print 'avg abs color_factors:', np.average(np.abs(color_factors))
             print 'avg abs flux factor:', np.average(np.abs(factor))
 
         factor = np.array(factor) + np.sum(color_factors, axis=0)
-        #dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.5*(2+nbands))))/(np.maximum(f0[0],pfs[0]))
+        
         if multiple_regions:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*regions_factor*(2+nbands))))/(np.maximum(f0[0],pfs[0]))
-            #dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/(np.sqrt(N_src*0.04*(2+nbands))))/(np.maximum(f0[0], pfs[0])) #could also use regions factor
         else:
             dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*err_f/np.sqrt(N_src*(2+nbands)))/(np.maximum(f0[0], pfs[0]))
+        
         if verbtype > 1:
             print 'dpos_rms'
             print dpos_rms
-        #dpos_rms[dpos_rms < 1e-4] = 1e-4
+        
         dpos_rms[dpos_rms < 1e-3] = 1e-3 #do we need this line? perhaps not
         dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
         dy = np.random.normal(size=nw).astype(np.float32)*dpos_rms
@@ -1011,6 +1047,7 @@ class Model:
                 if b==0:
                     starsb[self._F+b,:] = self.trueminf * np.exp(np.random.exponential(scale=1./(self.truealpha-1.),size=nbd))
                 else:
+                    # draw new source colors from color prior
                     new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=nbd)
                     if verbtype > 1:
                         print 'new_colors'
@@ -1093,12 +1130,10 @@ class Model:
                 if verbtype > 1:
                     print 'frac_sim'
                     print frac_sim
-                    print 'dcolor for band', b+1, 'is', d_color                    print 'k:', self.k
+                    print 'dcolor for band', b+1, 'is', d_color
+                    print 'k:', self.k
                     print 'fracs[0]', fracs[0]
                 
-            if (np.array(fracs)<0).any() or (np.array(fracs)>1).any():
-                print 'fracs are negative!'
-
             starsp = np.empty_like(stars0)
             starsb = np.empty_like(stars0)
 
@@ -1108,6 +1143,7 @@ class Model:
             starsb[self._Y,:] = stars0[self._Y,:] - fracs[0]*dy
 
             for b in xrange(nbands):
+                
                 starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
                 starsb[self._F+b,:] = stars0[self._F+b,:]*(1-fracs[b])
                 if (starsp[self._F+b,:]<0).any():
@@ -1141,10 +1177,6 @@ class Model:
             
             nms = idx_move.size
             goodmove = nms > 0
-            if (np.array(fracs)<0).any():
-                print 'fracs are negative after inbounds'
-                print fracs
-            
             
             if goodmove:
                 proposal.add_move_stars(idx_move, stars0, starsp)
@@ -1223,7 +1255,6 @@ class Model:
                 fracs.append(f0[b,:] / sum_fs[b])
             fminratio = sum_fs[0] / self.trueminf
             
-
             if verbtype > 1:
                 print 'fminratio'
                 print fminratio
@@ -1240,41 +1271,53 @@ class Model:
                 print 'idx_kill'
                 print idx_kill
                 
-
             starsp = np.empty_like(stars0)
+            # place merged source at center of flux of previous two sources
             starsp[self._X,:] = fracs[0]*stars0[self._X,:] + (1-fracs[0])*starsk[self._X,:]
             starsp[self._Y,:] = fracs[0]*stars0[self._Y,:] + (1-fracs[0])*starsk[self._Y,:]
+            
             for b in xrange(nbands):
                 starsp[self._F+b,:] = f0[b] + fk[b]
+            
             if goodmove:
                 proposal.add_move_stars(idx_move, stars0, starsp)
                 proposal.add_death_stars(idx_kill, starsk)
+            
             # turn bright_n into an array
             bright_n = bright_n - (f0[0] > 2*self.trueminf) - (fk[0] > 2*self.trueminf) + (starsp[self._F,:] > 2*self.trueminf)
+        
+        ''' The lines below are where we compute the prior factors that go into P(Catalog), 
+        which we use along with P(Data|Catalog) in order to sample from the posterior. 
+        The variable "factor" has the log prior (log(P(Catalog))), and since the prior is a product of 
+        individual priors we add log factors to get the log prior.'''
         if goodmove:
-            factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + \
-                np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + \
-                np.log(invpairs) + np.log(sum_fs[0]) # last term is Jacobian
+            # first three terms are ratio of flux priors, remaining terms come from how we choose sources to merge, and last term is Jacobian for the transdimensional proposal
+            factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(imsz[0]*imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + np.log(invpairs) + np.log(sum_fs[0])
 
             if np.isnan(factor).any():
                 print 'nan before colorfactors'
+
             if verbtype > 1:
                 print 'factor before colors'
                 print factor
                 print 'sum of factor before colors'
                 print np.sum(factor)
+
             for b in xrange(nbands-1):
                 stars0_color = adus_to_color(stars0[self._F,:], stars0[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                 starsp_color = adus_to_color(starsp[self._F,:], starsp[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
                 dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
+                # added_fac comes from the transition kernel of splitting colors in the manner that we do
                 added_fac = 0.5*np.log(2*np.pi*self.split_col_sig**2)+(dc**2/(2*self.split_col_sig**2))
                 if np.isnan(added_fac).any():
                     print 'added fac is nan'
                 factor += added_fac
+                
                 if splitsville:
                     if np.isnan(factor).any():
                         print 'nan right before split'
                     starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+                    # colfac is ratio of color prior factors i.e. P(s_0)P(s_1)/P(s_merged), where 0 and 1 are original sources 
                     colfac = (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
                         
                     factor += colfac
@@ -1298,6 +1341,7 @@ class Model:
                         print -0.5*np.log(2*np.pi*self.color_sigs[b]**2)
                 else:
                     starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+                    # same as above but for merging sources
                     colfac = (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
                     factor += colfac
 
@@ -1329,23 +1373,9 @@ class Model:
         return proposal
 
 
-        
+''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
 libmmult = npct.load_library('pcat-lion', '.')
 initialize_c()
-
-if datatype=='mock2':
-    truth = np.loadtxt('Data/'+mock_test_name+'/'+dataname+'/'+dataname+'-tru.txt')
-else:
-    truth = np.loadtxt('Data/'+dataname+'/truth/'+dataname+'-tru.txt')
-truex = truth[:,0]
-truey = truth[:,1]
-truef = truth[:,2:2+nbands]
-truecolors = []
-for b in xrange(nbands-1):
-    nmpc = [nmgy_per_count[0], nmgy_per_count[b+1]]
-    truecolor = adus_to_color(truef[:,0], truef[:,b+1], nmpc) 
-    truecolors.append(truecolor)
-
 nstar = Model.nstar
 cprior_vals = np.array([Model.color_mus, Model.color_sigs])
 nsample = np.zeros(nsamp, dtype=np.int32)
@@ -1356,7 +1386,6 @@ diff2_all = np.zeros((nsamp, nloop), dtype=np.float32)
 accept_all = np.zeros((nsamp, nloop), dtype=np.float32)
 rtypes = np.zeros((nsamp, nloop), dtype=np.float32)
 accept_stats = np.zeros((nsamp, 5), dtype=np.float32)
-
 tq_times = np.zeros(nsamp, dtype=np.float32)
 if multiband:
     fsample = [np.zeros((nsamp, nstar), dtype=np.float32) for x in xrange(nbands)]
@@ -1403,6 +1432,7 @@ for j in xrange(nsamp):
     chi2sample[j] = chi2_all[0]
     timestats[j,:] = statarrays
     eps_sample[j,:,:] = models[0].eps
+
 if not multiband:
     colorsample = []
 
@@ -1412,13 +1442,10 @@ if datatype=='mock2':
     np.savez(result_path + '/'+mock_test_name+'/' + str(dataname) + '/results/'+str(config_type)+'-'+str(nrealization)+'.npz', n=nsample, x=xsample, y=ysample, f=fsample, chi2=np.sum(chi2sample, axis=1), times=timestats, back=trueback, accept=accept_stats, cprior_vals=cprior_vals)
 else:
     np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, colors=colorsample, eps=eps_sample, chi2=chi2sample, times=timestats, accept=accept_stats, nmgy=nmgy_per_count, back=trueback, pixel_transfer_mats=pixel_transfer_mats, diff2s=diff2_all, rtypes=rtypes, accepts=accept_all, cprior_vals=cprior_vals, comments=comments)
-    #save comments in a txt file
-    #np.savetxt(result_path+'/'+str(timestr)+'/comments.txt', comments, fmt="%s")
 
 dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)
 print 'Time String:', str(timestr)
-
 
 if datatype == 'real':
     datatype == 'DAOPHOT'
