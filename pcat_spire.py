@@ -21,7 +21,6 @@ np.seterr(divide='ignore', invalid='ignore')
 #generate random seed for initialization
 np.random.seed(20170501)
 
-
 #-------------------------- this portion sets up base directories, probably will need to modify ---------------------
 
 def get_parser_arguments():
@@ -63,6 +62,8 @@ def get_spire_psf(pixel_fwhm=3, nc=5):
     return psfnew, cf, nc
 
 def load_in_map(opt, band=0, zero_nans=True):
+	band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
+
 	file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_P'+band_dict[band]+'W_nr_1.fits'
     spire_dat = fits.open(file_path)
     image = spire_dat[1].data
@@ -126,7 +127,6 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
     match_x = (get_region(x[0:n], offsetx, regsize) % 2) == parity_x
     match_y = (get_region(y[0:n], offsety, regsize) % 2) == parity_y
     return np.flatnonzero(np.logical_and(match_x, match_y))
-
 
    
 class Proposal:
@@ -289,6 +289,39 @@ class Model:
         return timestat_array, accept_fracs
 
 
+        ''' the multiband model evaluation looks complicated because we tried out a bunch of things with the astrometry, but could probably rewrite this function. it uses image_model_eval which is written in both python and C (C is faster as you might expect)'''
+    def pcat_multiband_eval(self, x, y, f, nc, cf, weights, ref, lib):
+        dmodels = []
+        dt_transf = 0
+        diff2s = 0
+        
+        for b in xrange(nbands):
+            if b>0:
+                t4 = time.clock()
+                if bands[b] != bands[0]:
+                    xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
+                else:
+                    xp = x
+                    yp = y
+                dt_transf += time.clock()-t4
+                dmodel, diff2 = image_model_eval(xp, yp, f[b], self.bkg[b], self.imsz, \
+                                                nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], \
+                                                ref=ref[b], lib=libmmult.pcat_model_eval, regsize=self.regsize, \
+                                                margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
+            else:    
+                xp=x
+                yp=y
+                dmodel, diff2 = image_model_eval(xp, yp, f[b], self.bkg[b], self.imsz, \
+                                                nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], \
+                                                ref=ref[b], lib=libmmult.pcat_model_eval, regsize=self.regsize, \
+                                                margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
+            
+            diff2s += diff2
+            dmodels.append(dmodel)
+
+        return dmodels, diff2s, dt_transf
+
+
 
     ''' run_sampler() completes nloop samples, so the function is called nsamp times'''
     def run_sampler(self):
@@ -330,7 +363,7 @@ class Model:
             print 'n_phon'
             print n_phon
 
-        models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, self.back, self.imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps = self.eps)
+        models, diff2s, dt_transf = pcat_multiband_eval(evalx, evaly, evalf, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval)
         logL = -0.5*diff2s
        
         for b in xrange(nbands):
@@ -370,7 +403,7 @@ class Model:
             
             if proposal.goodmove:
                 t2 = time.clock()
-                dmodels, diff2s = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, imsz, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval, regsize=self.regsize, margin=margin, offsetx=self.offsetx, offsety=self.offsety, eps=proposal.eps)
+                dmodels, diff2s = pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval)
 
                 plogL = -0.5*diff2s                
                 plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
@@ -400,9 +433,9 @@ class Model:
                 for b in xrange(self.nbands):
                     dmodel_acpt = np.zeros_like(dmodels[b])
                     diff2_acpt = np.zeros_like(diff2s)
-                    libmmult.pcat_imag_acpt(self.imsz[0], self.imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, margin, self.offsetx, self.offsety)
+                    libmmult.pcat_imag_acpt(self.imsz[0], self.imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, self.margin, self.offsetx, self.offsety)
                     # using this dmodel containing only accepted moves, update logL
-                    libmmult.pcat_like_eval(self.imsz[0], self.imsz[1], dmodel_acpt, resids[b], weights[b], diff2_acpt, self.regsize, margin, self.offsetx, self.offsety)   
+                    libmmult.pcat_like_eval(self.imsz[0], self.imsz[1], dmodel_acpt, resids[b], weights[b], diff2_acpt, self.regsize, self.margin, self.offsetx, self.offsety)   
 
                     resids[b] -= dmodel_acpt
                     models[b] += dmodel_acpt
@@ -898,18 +931,12 @@ class Model:
 
 
 
-band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
-
-
-ncs, nbins, psfs, cfs, pixel_transfer_mats, biases, gains, \
-    data_array, data_hdrs, weights, best_fit_astrans, mean_dpos = [[] for x in xrange(14)]
+ncs, nbins, psfs, cfs, biases, data_array, weights = [[] for x in xrange(7)]
 
 opt = get_parser_arguments()
 opt.timestr = time.strftime("%Y%m%d-%H%M%S")
 opt.nbands = len(opt.bands)
 print 'timestr:', opt.timestr
-
-
 
 
 for band in opt.bands:
