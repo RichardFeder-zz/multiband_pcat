@@ -33,8 +33,8 @@ def get_parser_arguments():
 	parser.add_argument('--nsamp', type=int, default=1000, help='Number of thinned samples')
 	parser.add_argument('--mean_subtraction', type=float, default=None, help='absolute level subtracted from SPIRE model image')
 	parser.add_argument('--nregion', type=int, default=1, help='splits up image into subregions to do proposals within')
-	parser.add_argument('--psf_pixel_fwhm', type=int, default=3)
-	parser.add_argument('--nominal_nsrc', type=int, default=300, help='this is the nominal number of sources expected in a given image, helps set sample step sizes during MCMC')
+	parser.add_argument('--psf_pixel_fwhm', type=float, default=3.)
+	parser.add_argument('--nominal_nsrc', type=int, default=1000, help='this is the nominal number of sources expected in a given image, helps set sample step sizes during MCMC')
 	parser.add_argument('--max_nsrc', type=int, default=2000, help='this sets the maximum number of sources allowed in thee code, can change depending on the image')
 	parser.add_argument('--nloop', type=int, default=1000, help='factor by which the chain is thinned')
 	parser.add_argument('--margin', type=int, default=10, help='used in model evaluation')
@@ -48,24 +48,35 @@ def get_parser_arguments():
 	parser.add_argument('--height', type=int, default=0, help='same as width')
 	parser.add_argument('--bias', type=float, default=-0.0025, help='DC offset for SPIRE image (Jy)')
 	parser.add_argument('--visual', type=bool, default=False, help='interactive backend should be loaded before importing pyplot')
+	parser.add_argument('--mock_name', default=None, help='specify name if using mock data, affects how the data is read in')
 	opt = parser.parse_known_args()[0]
 
 	return opt
 
 
 
-def get_spire_psf(pixel_fwhm=3, nbin=5, nc=25):
-	
-	gaussian_2D_kernel = Gaussian2DKernel(pixel_fwhm)
-	persf = np.zeros((50,50))
-	persf[0:nc,0:nc] = gaussian_2D_kernel.array
-	psf = scipy.misc.imresize(persf, (250, 250), interp='lanczos', mode='F')
-	psfnew = np.array(psf[0:125, 0:125])
-	psfnew[0:123,0:123] = psf[2:125,2:125]  # shift due to lanczos kernel
-	cf = psf_poly_fit(psf, nbin=nbin)
-	return psfnew, cf, nc, nbin
+def get_spire_psf2(pixel_fwhm=3, nbin=5):
 
-def load_in_map(opt, band=0, inf_nans=True):
+    gaussian_2D_kernel = Gaussian2DKernel(pixel_fwhm)
+    nc = gaussian_2D_kernel.shape[0]
+    psf = np.zeros((nc*2,nc*2)).astype(np.float32)
+    psf[0:nc,0:nc] = gaussian_2D_kernel.array
+    psf = scipy.misc.imresize(psf, (nc*2*nbin, nc*2*nbin), mode='F')
+    psfnew = np.array(psf[0:nc*nbin, 0:nc*nbin]).astype(np.float32)
+    cf = psf_poly_fit(psfnew, nbin=nbin)
+    return psfnew, cf, nc, nbin
+
+def get_spire_psf(pixel_fwhm=3, nbin=5):
+
+    gaussian_2D_kernel = Gaussian2DKernel(pixel_fwhm)
+    nc = gaussian_2D_kernel.shape[0]
+    psf = np.zeros((nc*2,nc*2)).astype(np.float32)
+    psf[0:nc,0:nc] = gaussian_2D_kernel.array
+    psf = scipy.misc.imresize(psf, (nc*2*nbin, nc*2*nbin), mode='F')
+    psfnew = np.array(psf[0:nc*nbin, 0:nc*nbin]).astype(np.float32)
+    return psfnew, cf, nc, nbin
+
+def load_in_map(opt, band=0):
 	band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 
 	file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_P'+band_dict[band]+'W_nr_1.fits'
@@ -76,12 +87,6 @@ def load_in_map(opt, band=0, inf_nans=True):
 	error = np.nan_to_num(spire_dat[2].data)
 	exposure = spire_dat[3].data
 	mask = spire_dat[4].data
-	
-	if inf_nans:
-		image[np.isnan(image)] = np.inf
-		error[np.isnan(error)] = np.inf
-		exposure[np.isnan(exposure)] = np.inf
-		mask[np.isnan(mask)] = np.inf
 
 	return image, error, exposure, mask
 
@@ -315,7 +320,7 @@ class Model:
 					xp = x
 					yp = y
 				dt_transf += time.clock()-t4
-				dmodel, diff2 = image_model_eval(xp, yp, f[b], self.bkg[b], self.imsz, \
+				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imsz, \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], \
 												ref=ref[b], lib=libmmult.pcat_model_eval, regsize=self.regsize, \
 												margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
@@ -323,13 +328,14 @@ class Model:
 			else:    
 				xp=x
 				yp=y
-				dmodel, diff2 = image_model_eval(xp, yp, f[b], self.bkg[b], self.imsz, \
+				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imsz, \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], \
 												ref=ref[b], lib=libmmult.pcat_model_eval, regsize=self.regsize, \
 												margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
 			
 				diff2s = diff2
 			# dmodels.append(dmodel.transpose())
+			# dmodel[weights[0]==0.] = 0.
 			dmodels.append(dmodel)
 		return dmodels, diff2s, dt_transf
 
@@ -376,6 +382,9 @@ class Model:
 			print n_phon
 
 		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval)
+		model = models[0]
+		# print('model:', model)
+		# print('to start, ', np.max(np.abs(model[model!=0.])), np.std(model[model!=0.]), np.max(evalf))
 		logL = -0.5*diff2s
 	   
 		for b in xrange(self.nbands):
@@ -419,10 +428,16 @@ class Model:
 				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
 				plogL[:,(1-self.parity_x)::2] = float('-inf')
 				dlogP = plogL - logL
-				
+				# print('dlogP:', dlogP)
+				# print('proposal factor:', proposal.factor)
 				if self.verbtype > 1:
 					print 'dlogP'
 					print dlogP
+
+				# print('dlogP:', dlogP)
+				# model = dmodels[0]
+				# print('model:', model)
+				# print(np.max(np.abs(model[model!=0.])), np.std(model[model!=0.]), np.max(proposal.fphon))
 				
 				assert np.isnan(dlogP).any() == False
 				
@@ -443,8 +458,6 @@ class Model:
 				for b in xrange(self.nbands):
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
-					# print('dmodel_acpt:', dmodel_acpt)
-					# print('dmodels[b]:', dmodels[b])
 
 					libmmult.pcat_imag_acpt(self.imsz[0], self.imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, self.margin, self.offsetx, self.offsety)
 					# using this dmodel containing only accepted moves, update logL
@@ -497,6 +510,7 @@ class Model:
 					print 'out of bounds'
 				outbounds[i] = 1
 
+			# print('weights:', weights[b])
 			for b in xrange(self.nbands):
 				diff2_list[i] += np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
 					
@@ -518,6 +532,37 @@ class Model:
 
 
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
+
+		if self.opt.visual:
+			plt.gcf().clear()
+			plt.figure(1, figsize=(9, 4))
+			plt.clf()
+			plt.subplot(1,3,1)
+			plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+			plt.colorbar()
+			sizefac = 10.*136
+			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+			plt.xlim(-0.5, self.imsz[0]-0.5)
+			plt.ylim(-0.5, self.imsz[1]-0.5)
+			plt.subplot(1,3,2)
+			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
+
+			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(resids[0], 5), vmax=np.percentile(resids[0], 95))
+			plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-10, vmax=10)
+			plt.colorbar()
+			plt.subplot(1,3,3)
+			plt.hist(np.log10(self.stars[self._F, 0:self.n]), range=(np.log10(self.trueminf), np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n])))), log=True, alpha=0.5, label='Chain', histtype='step')
+			plt.legend()
+			plt.xlabel('log10 flux')
+			plt.ylim((0.5, self.max_nsrc))
+			plt.tight_layout()
+			plt.draw()
+			# if savefig:
+				# plt.savefig(frame_dir + '/frame_' + str(c) + '.png')
+			plt.pause(1e-5)
+
+
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept
 
@@ -581,9 +626,13 @@ class Model:
 			print np.array(pfs)[np.array(pfs)<0]
 
 		dlogf = np.log(pfs[0]/f0[0])
+		# print 'average flux difference'
+		# print np.average(np.abs(f0[0]-pfs[0]))
 		if self.verbtype > 1:
 			print 'average flux difference'
 			print np.average(np.abs(f0[0]-pfs[0]))
+		# print 'average flux difference'
+		# print np.median(np.abs(f0[0]-pfs[0]))
 		factor = -self.truealpha*dlogf
 
 		if np.isnan(factor).any():
@@ -967,8 +1016,10 @@ print 'timestr:', opt.timestr
 
 
 for band in opt.bands:
-
-	image, error, exposure, mask = load_in_map(opt, band, inf_nans=False)
+	if opt.mock_name is None:
+		image, error, exposure, mask = load_in_map(opt, band)
+	else:
+		image, error, exposure, mask = load_in_mock_map(opt.mock_name, band)
 	
 	if opt.width > 0:
 		image = image[:opt.width,:opt.height]
@@ -985,13 +1036,16 @@ for band in opt.bands:
 	variance[variance==0.]=np.inf
 	weight = 1. / variance
 	print('weights:', weight) # 0 for masked pixels
+	print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
 	weights.append(weight.astype(np.float32))
 	errors.append(error.astype(np.float32))
 	data_array.append(image.astype(np.float32))
 	masks.append(mask.astype(np.float32))
 	exposures.append(exposure.astype(np.float32))
 
-	psf, cf, nc, nbin = get_spire_psf()
+	psf, cf, nc, nbin = get_spire_psf2(pixel_fwhm=opt.psf_pixel_fwhm)
+
+	print('sum of PSF is ', np.sum(psf))
 	psfs.append(psf)
 	cfs.append(cf)
 	ncs.append(nc)
@@ -1005,10 +1059,11 @@ print('regsize/regions_factor:', opt.regsize, opt.regions_factor)
 assert opt.imsz[0] % opt.regsize == 0
 # assert opt.imsz[1] % opt.regsize == 0
 
-pixel_variance = np.median(errors[0])
+pixel_variance = np.median(errors[0]**2)
 print('pixel_variance:', pixel_variance)
-N_eff = 17.5
-opt.err_f = np.sqrt(N_eff * pixel_variance)
+N_eff = 4*np.pi*opt.psf_pixel_fwhm**2
+# N_eff = 17.5
+opt.err_f = np.sqrt(N_eff * pixel_variance)*0.1
 print('err_f:', opt.err_f)
 
 
