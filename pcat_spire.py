@@ -46,6 +46,8 @@ def get_parser_arguments():
 	parser.add_argument('--trueminf', type=float, default=0.01, help='minimum flux allowed in fit for SPIRE sources (Jy)')
 	parser.add_argument('--width', type=int, default=0,  help='specify if you want to fix the dimension of incoming image, may be useful for subregion sampling')
 	parser.add_argument('--height', type=int, default=0, help='same as width')
+	parser.add_argument('--x0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
+	parser.add_argument('--y0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
 	parser.add_argument('--bias', type=float, default=-0.0025, help='DC offset for SPIRE image (Jy)')
 	parser.add_argument('--visual', type=bool, default=False, help='interactive backend should be loaded before importing pyplot')
 	parser.add_argument('--mock_name', default=None, help='specify name if using mock data, affects how the data is read in')
@@ -280,7 +282,7 @@ class Model:
    
 	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):    
 		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
-		print 'Background', self.back, 'N_star', self.n, 'chi^2', list(chi2)
+		print 'Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2)
 		dts *= 1000
 
 		accept_fracs = []
@@ -537,24 +539,45 @@ class Model:
 			plt.gcf().clear()
 			plt.figure(1, figsize=(9, 4))
 			plt.clf()
-			plt.subplot(1,3,1)
+			plt.subplot(2,3,1)
+			plt.title('Data')
 			plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
 			plt.colorbar()
 			sizefac = 10.*136
 			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
 			plt.xlim(-0.5, self.imsz[0]-0.5)
 			plt.ylim(-0.5, self.imsz[1]-0.5)
-			plt.subplot(1,3,2)
+			plt.subplot(2,3,2)
+			plt.title('Model')
+			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
+			plt.colorbar()
+			plt.subplot(2,3,3)
+			plt.title('Residual')
 			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
 			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
+			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
 
-			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(resids[0], 5), vmax=np.percentile(resids[0], 95))
-			plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-10, vmax=10)
+			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
+			plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 			plt.colorbar()
-			plt.subplot(1,3,3)
-			plt.hist(np.log10(self.stars[self._F, 0:self.n]), range=(np.log10(self.trueminf), np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n])))), log=True, alpha=0.5, label='Chain', histtype='step')
+			plt.subplot(2,3,4)
+			plt.title('Data (zoomed in)')
+			plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+			plt.colorbar()
+			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+			plt.ylim(90, 140)
+			plt.xlim(70, 120)
+			plt.subplot(2,3,5)
+			plt.title('Residual (zoomed in)')
+			plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+			plt.colorbar()
+			plt.ylim(90, 140)
+			plt.xlim(70, 120)
+			plt.subplot(2,3,6)
+			plt.hist(np.log10(self.stars[self._F, 0:self.n]), range=(np.log10(self.trueminf), np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n])))), log=True, alpha=0.5, bins=np.linspace(np.log10(self.trueminf), 0, 20), label='Chain', histtype='step')
 			plt.legend()
-			plt.xlabel('log10 flux')
+			plt.xlabel('$S_{\\nu}$ (Jy)')
+			plt.ylabel('N')
 			plt.ylim((0.5, self.max_nsrc))
 			plt.tight_layout()
 			plt.draw()
@@ -1022,10 +1045,10 @@ for band in opt.bands:
 		image, error, exposure, mask = load_in_mock_map(opt.mock_name, band)
 	
 	if opt.width > 0:
-		image = image[:opt.width,:opt.height]
-		error = error[:opt.width,:opt.height]
-		exposure = exposure[:opt.width,:opt.height]
-		mask = mask[:opt.width,:opt.height]
+		image = image[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
+		error = error[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
+		exposure = exposure[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
+		mask = mask[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
 		opt.imsz = (opt.width, opt.height)
 	else:
 		opt.imsz = (image.shape[0], image.shape[1])
@@ -1039,7 +1062,7 @@ for band in opt.bands:
 	print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
 	weights.append(weight.astype(np.float32))
 	errors.append(error.astype(np.float32))
-	data_array.append(image.astype(np.float32))
+	data_array.append(image.astype(np.float32)+0.0035)
 	masks.append(mask.astype(np.float32))
 	exposures.append(exposure.astype(np.float32))
 
