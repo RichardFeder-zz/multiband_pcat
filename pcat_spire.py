@@ -574,11 +574,25 @@ class Model:
 			plt.ylim(90, 140)
 			plt.xlim(70, 120)
 			plt.subplot(2,3,6)
-			plt.hist(np.log10(self.stars[self._F, 0:self.n]), range=(np.log10(self.trueminf), np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n])))), log=True, alpha=0.5, bins=np.linspace(np.log10(self.trueminf), 0, 20), label='Chain', histtype='step')
+
+			binz = np.linspace(np.log10(self.trueminf)+3, np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3), 20)
+
+			hist = np.histogram(np.log10(self.stars[self._F, 0:self.n])+3, bins=binz)
+			logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
+			binz_Sz = 10**(binz-3)
+
+			dSz = binz_Sz[1:]-binz_Sz[:-1]
+			dNdS = hist[0]
+			n_steradian = 0.11/(180./np.pi)**2
+			n_steradian *= self.opt.frac # a number of pixels in the image are not actually observing anything
+			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+			plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
+			plt.yscale('log')
 			plt.legend()
-			plt.xlabel('$S_{\\nu}$ (Jy)')
-			plt.ylabel('N')
-			plt.ylim((0.5, self.max_nsrc))
+			plt.xlabel('log($S_{\\nu}$) (mJy)')
+			plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
+			plt.ylim(1e1, 1e5)
+			plt.xlim(-0.5, 3)
 			plt.tight_layout()
 			plt.draw()
 			# if savefig:
@@ -1059,6 +1073,9 @@ for band in opt.bands:
 	variance[variance==0.]=np.inf
 	weight = 1. / variance
 	print('weights:', weight) # 0 for masked pixels
+	opt.frac = np.count_nonzero(weight)/float(opt.width*opt.height)
+	print('fraction used:', opt.frac)
+
 	print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
 	weights.append(weight.astype(np.float32))
 	errors.append(error.astype(np.float32))
