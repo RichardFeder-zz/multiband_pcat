@@ -478,7 +478,7 @@ class Model:
 				
 				assert np.isnan(dlogP).any() == False
 				
-				dts[3,i] = time.clock() - t2
+				dts[1,i] = time.clock() - t2
 				t3 = time.clock()
 				refx, refy = proposal.get_ref_xy()
 				regionx = get_region(refx, self.offsetx, self.regsize)
@@ -1100,6 +1100,7 @@ class samples():
 		self.colorsample = [[] for x in xrange(opt.nbands-1)]
 		self.chi2sample = np.zeros((opt.nsamp, opt.nbands), dtype=np.int32)
 		self.nbands = opt.nbands
+		self.opt = opt
 
 	def add_sample(self, j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays):
 		
@@ -1122,13 +1123,12 @@ class samples():
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
 				accepts=self.accept_all)
 
-
-
-
-
+''' This class sets up the data structures for data/data-related information. 
+load_in_data() loads in data, generates the PSF template and computes weights from the noise model
+'''
 class pcat_data():
 
-	def __init__(self):
+	def __init__(self, opt):
 		self.ncs = []
 		self.nbins = []
 		self.psfs = []
@@ -1139,6 +1139,7 @@ class pcat_data():
 		self.masks = []
 		self.exposures = []
 		self.errors = []
+		self.opt = opt
 
 	def load_in_data(self, opt):
 
@@ -1162,14 +1163,17 @@ class pcat_data():
 			variance = error**2
 			variance[variance==0.]=np.inf
 			weight = 1. / variance
-			print('weights:', weight) # 0 for masked pixels
-			opt.frac = np.count_nonzero(weight)/float(opt.width*opt.height)
-			print('fraction used:', opt.frac)
 
+			print('weights:', np.count_nonzero(weight))
+			print('width/height:', opt.width, opt.height)
+
+			opt.frac = np.count_nonzero(weight)/float(opt.width*opt.height)
+			print('fraction of image with non-zero weight:', opt.frac)
 			print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
+			
 			self.weights.append(weight.astype(np.float32))
 			self.errors.append(error.astype(np.float32))
-			self.data_array.append(image.astype(np.float32)+0.0035)
+			self.data_array.append(image.astype(np.float32)+0.0035) # constant offset, may need to change
 			self.masks.append(mask.astype(np.float32))
 			self.exposures.append(exposure.astype(np.float32))
 
@@ -1185,8 +1189,8 @@ class pcat_data():
 		opt.regsize = opt.imsz[0]/opt.nregion
 		opt.regions_factor = 1./float(opt.nregion**2)
 		print('regsize/regions_factor:', opt.regsize, opt.regions_factor)
-		assert opt.imsz[0] % opt.regsize == 0
-		assert opt.imsz[1] % opt.regsize == 0
+		assert opt.imsz[0] % opt.regsize == 0 
+		assert opt.imsz[1] % opt.regsize == 0 
 
 		pixel_variance = np.median(self.errors[0]**2)
 		print('pixel_variance:', pixel_variance)
@@ -1194,15 +1198,20 @@ class pcat_data():
 		opt.err_f = np.sqrt(opt.N_eff * pixel_variance)*0.1
 
 
+		return opt
 
-# -------------------- load in data and actually execute the thing ----------------
+
+
+# -------------------- actually execute the thing ----------------
 
 def pcat_main():
 
 	opt = load_opt()
 
-	dat = pcat_data()
-	dat.load_in_data(opt)
+	dat = pcat_data(opt)
+	opt = dat.load_in_data(opt)
+
+	print('width/height:', opt.width, opt.height)
 
 	''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
 	libmmult = npct.load_library('pcat-lion', '.')
@@ -1210,8 +1219,9 @@ def pcat_main():
 
 	#create directory for results, save config file from run
 	frame_dir, newdir = create_directories(opt)
+	opt.frame_dir = frame_dir
+	opt.newdir = newdir
 	save_params(newdir, opt)
-
 
 	start_time = time.clock()
 
@@ -1242,7 +1252,7 @@ def pcat_main():
 
 # run PCAT!
 
-pcat_main()
+# pcat_main()
 
 
 
