@@ -1068,6 +1068,74 @@ class Model:
 
 
 
+class samples():
+
+	def __init__(self, opt):
+		self.nsample = np.zeros(opt.nsamp, dtype=np.int32)
+		self.xsample = np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32)
+		self.ysample = np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32)
+		self.timestats = np.zeros((opt.nsamp, 6, 4), dtype=np.float32)
+		self.diff2_all = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
+		self.accept_all = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
+		self.rtypes = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
+		self.accept_stats = np.zeros((opt.nsamp, 4), dtype=np.float32)
+		self.tq_times = np.zeros(opt.nsamp, dtype=np.float32)
+		self.fsample = [np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32) for x in xrange(opt.nbands)]
+		self.colorsample = [[] for x in xrange(opt.nbands-1)]
+		self.chi2sample = np.zeros((opt.nsamp, opt.nbands), dtype=np.int32)
+		self.nbands = opt.nbands
+
+	def add_sample(self, j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays):
+		
+		self.nsample[j] = model.n
+		self.xsample[j]
+		self.ysample[j,:] = model.stars[Model._Y, :]
+		self.diff2_all[j,:] = diff2_list
+		self.accept_all[j,:] = accepts
+		self.rtypes[j,:] = rtype_array
+		self.accept_stats[j,:] = accept_fracs
+		self.chi2sample[j] = chi2_all
+		self.timestats[j,:] = statarrays
+
+		for b in xrange(self.nbands):
+			self.fsample[b][j,:] = model.stars[Model._F+b,:]
+
+	def save_samples(self, result_path, timestr):
+
+		np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
+				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
+				accepts=self.accept_all)
+
+
+
+def pcat_main(opt):
+
+	start_time = time.clock()
+
+	samps = samples(opt)
+
+	model = Model(opt)
+
+	# run sampler for opt.nsamp thinned states
+
+	for j in xrange(opt.nsamp):
+		print 'Sample', j
+
+		_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts = model.run_sampler()
+		samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays)
+
+	print 'saving...'
+
+	# save catalog ensemble and other diagnostics
+	samps.save_samples(opt.result_path, opt.timestr)
+
+	# save final catalog state
+	np.savez(opt.result_path + '/'+str(opt.timestr)+'/final_state.npz', cat=model.stars)
+
+	dt_total = time.clock() - start_time
+	print 'Full Run Time (s):', np.round(dt_total,3)
+	print 'Time String:', str(opt.timestr)
+
 
 # -------------------- load in data and actually execute the thing ----------------
 
@@ -1137,7 +1205,6 @@ assert opt.imsz[0] % opt.regsize == 0
 pixel_variance = np.median(errors[0]**2)
 print('pixel_variance:', pixel_variance)
 N_eff = 4*np.pi*opt.psf_pixel_fwhm**2
-# N_eff = 17.5
 opt.err_f = np.sqrt(N_eff * pixel_variance)*0.1
 print('err_f:', opt.err_f)
 
@@ -1145,63 +1212,13 @@ print('err_f:', opt.err_f)
 ''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
 libmmult = npct.load_library('pcat-lion', '.')
 initialize_c(opt)
-nstar = opt.max_nsrc
-# cprior_vals = np.array([Model.color_mus, Model.color_sigs])
-nsample = np.zeros(opt.nsamp, dtype=np.int32)
-xsample = np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32)
-ysample = np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32)
-timestats = np.zeros((opt.nsamp, 6, 4), dtype=np.float32)
-diff2_all = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
-accept_all = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
-rtypes = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
-accept_stats = np.zeros((opt.nsamp, 4), dtype=np.float32)
-tq_times = np.zeros(opt.nsamp, dtype=np.float32)
-fsample = [np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32) for x in xrange(opt.nbands)]
-colorsample = [[] for x in xrange(opt.nbands-1)]
-chi2sample = np.zeros((opt.nsamp, opt.nbands), dtype=np.int32)
-model = Model(opt)
 
 #create directory for results, save config file from run
 frame_dir, newdir = create_directories(opt)
 save_params(newdir, opt)
 
 
+# run PCAT!
 
-# sampling loop
-for j in xrange(opt.nsamp):
-	chi2_all = np.zeros((opt.nbands))
-	print 'Sample', j
+pcat_main(opt)
 
-	_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts = model.run_sampler()
-
-	nsample[j] = model.n
-	xsample[j,:] = model.stars[Model._X, :]
-	ysample[j,:] = model.stars[Model._Y, :]
-	diff2_all[j,:] = diff2_list
-	accept_all[j,:] = accepts
-	rtypes[j,:] = rtype_array
-	accept_stats[j,:] = accept_fracs
-
-	for b in xrange(opt.nbands):
-		fsample[b][j,:] = model.stars[Model._F+b,:]
-		if b>0:
-			csample = adus_to_color(model.stars[Model._F,:], model.stars[Model._F+b,:], nmpc)
-			csample = np.array([value for value in csample if not math.isnan(value)])
-			colorsample[b-1].append(csample)
-
-	chi2sample[j] = chi2_all
-	timestats[j,:] = statarrays
-
-
-print 'saving...'
-
-np.savez(opt.result_path + '/' + str(opt.timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, \
-	colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, diff2s=diff2_all, rtypes=rtypes, accepts=accept_all)
-
-# save final catalog state
-np.savez(opt.result_path + '/'+str(opt.timestr)+'/final_state.npz', cat=model.stars)
-
-
-dt_total = time.clock()-start_time
-print 'Full Run Time (s):', np.round(dt_total,3)
-print 'Time String:', str(opt.timestr)
