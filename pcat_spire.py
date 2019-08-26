@@ -15,6 +15,7 @@ from astropy.convolution import Gaussian2DKernel
 import scipy.signal
 from image_eval import psf_poly_fit, image_model_eval
 from helpers import * 
+import cPickle as pickle
 np.seterr(divide='ignore', invalid='ignore')
 
 
@@ -29,7 +30,9 @@ def get_parser_arguments():
 	parser.add_argument('--base_path', default='/Users/richardfeder/Documents/multiband_pcat/')
 	parser.add_argument('--result_path', default='/Users/richardfeder/Documents/multiband_pcat/spire_results')
 	parser.add_argument('--dataname', default='a0370', help='name of cluster being analyzed')
-	parser.add_argument('--bands', default=[0], help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
+	parser.add_argument('--band0', type=int, default=0, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
+	parser.add_argument('--band1', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
+	parser.add_argument('--band2', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
 	parser.add_argument('--nsamp', type=int, default=1000, help='Number of thinned samples')
 	parser.add_argument('--mean_subtraction', type=float, default=None, help='absolute level subtracted from SPIRE model image')
 	parser.add_argument('--nregion', type=int, default=1, help='splits up image into subregions to do proposals within')
@@ -49,34 +52,49 @@ def get_parser_arguments():
 	parser.add_argument('--x0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
 	parser.add_argument('--y0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
 	parser.add_argument('--bias', type=float, default=-0.0025, help='DC offset for SPIRE image (Jy)')
-	parser.add_argument('--visual', type=bool, default=False, help='interactive backend should be loaded before importing pyplot')
+	parser.add_argument('--visual', help='interactive backend should be loaded before importing pyplot')
+	parser.add_argument('--weighted_residual', help='used for visual mode')
 	parser.add_argument('--mock_name', default=None, help='specify name if using mock data, affects how the data is read in')
+	parser.add_argument('--load_state_path', default=None, help='filepath for previous catalog if using as an initial state. loads in .npy files')
 	opt = parser.parse_known_args()[0]
 
 	return opt
 
 
+def save_params(dir, opt):
+	# save parameters as dictionary, then pickle them to txt file
+	param_dict = vars(opt)
+	print param_dict
+	
+	with open(dir+'/params.txt', 'w') as file:
+		file.write(pickle.dumps(param_dict))
+	file.close()
+	
+	with open(dir+'/params_read.txt', 'w') as file2:
+		for key in param_dict:
+			file2.write(key+': '+str(param_dict[key])+'\n')
+	file2.close()
 
-def get_spire_psf2(pixel_fwhm=3, nbin=5):
 
-    gaussian_2D_kernel = Gaussian2DKernel(pixel_fwhm)
-    nc = gaussian_2D_kernel.shape[0]
-    psf = np.zeros((nc*2,nc*2)).astype(np.float32)
-    psf[0:nc,0:nc] = gaussian_2D_kernel.array
-    psf = scipy.misc.imresize(psf, (nc*2*nbin, nc*2*nbin), mode='F')
-    psfnew = np.array(psf[0:nc*nbin, 0:nc*nbin]).astype(np.float32)
-    cf = psf_poly_fit(psfnew, nbin=nbin)
-    return psfnew, cf, nc, nbin
 
 def get_spire_psf(pixel_fwhm=3, nbin=5):
 
-    gaussian_2D_kernel = Gaussian2DKernel(pixel_fwhm)
-    nc = gaussian_2D_kernel.shape[0]
-    psf = np.zeros((nc*2,nc*2)).astype(np.float32)
-    psf[0:nc,0:nc] = gaussian_2D_kernel.array
-    psf = scipy.misc.imresize(psf, (nc*2*nbin, nc*2*nbin), mode='F')
-    psfnew = np.array(psf[0:nc*nbin, 0:nc*nbin]).astype(np.float32)
-    return psfnew, cf, nc, nbin
+	gaussian_2D_kernel = Gaussian2DKernel(pixel_fwhm, x_size=25, y_size=25)
+	nc = gaussian_2D_kernel.shape[0]
+	psf = np.zeros((nc*2,nc*2)).astype(np.float32)
+	psf[0:nc,0:nc] = gaussian_2D_kernel.array
+	psf = scipy.misc.imresize(psf, (nc*2*nbin, nc*2*nbin), mode='F')
+	psfnew = np.array(psf[0:nc*nbin, 0:nc*nbin]).astype(np.float32)
+	cf = psf_poly_fit(psfnew, nbin=nbin)
+	return psfnew, cf, nc, nbin
+
+def get_spire_psf2(pixel_fwhm=1.28, nbin=5):
+	nc = 25
+	psfnew = Gaussian2DKernel(pixel_fwhm*nbin, x_size=125, y_size=125).array.astype(np.float32)
+	psfnew *= nc
+	cf = psf_poly_fit(psfnew, nbin=nbin)
+	return psfnew, cf, nc, nbin
+
 
 def load_in_map(opt, band=0):
 	band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
@@ -267,15 +285,16 @@ class Model:
 		self.bkg = np.array([opt.bias for b in xrange(opt.nbands)])
 		self.opt = opt
 
-
-		for b in xrange(opt.nbands):
-			if b==0:
-				self.stars[self._F+b,0:self.n] **= -1./(self.truealpha - 1.)
-				self.stars[self._F+b,0:self.n] *= self.trueminf
-			else:
-				new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
-				self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
-
+		if opt.load_state_path is None:
+			for b in xrange(opt.nbands):
+				if b==0:
+					self.stars[self._F+b,0:self.n] **= -1./(self.truealpha - 1.)
+					self.stars[self._F+b,0:self.n] *= self.trueminf
+				else:
+					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
+					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
+		else:
+			self.stars = np.load(opt.load_state_path)['cat']
 
 	''' this function prints out some information at the end of each thinned sample, 
 	namely acceptance fractions for the different proposals and some time performance statistics as well. '''
@@ -549,17 +568,23 @@ class Model:
 			plt.ylim(-0.5, self.imsz[1]-0.5)
 			plt.subplot(2,3,2)
 			plt.title('Model')
-			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
+			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
 			plt.colorbar()
 			plt.subplot(2,3,3)
 			plt.title('Residual')
 			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
 			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
 			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
-
 			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
-			plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+			if self.opt.weighted_residual:
+				plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+			else:
+				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
+
 			plt.colorbar()
+			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+
 			plt.subplot(2,3,4)
 			plt.title('Data (zoomed in)')
 			plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
@@ -569,30 +594,33 @@ class Model:
 			plt.xlim(70, 120)
 			plt.subplot(2,3,5)
 			plt.title('Residual (zoomed in)')
-			plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+
+			if self.opt.weighted_residual:
+				plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+			else:
+				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
 			plt.colorbar()
 			plt.ylim(90, 140)
 			plt.xlim(70, 120)
 			plt.subplot(2,3,6)
 
-			binz = np.linspace(np.log10(self.trueminf)+3, np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3), 20)
-
+			binz = np.linspace(np.log10(self.trueminf)+3., np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3.), 20)
 			hist = np.histogram(np.log10(self.stars[self._F, 0:self.n])+3, bins=binz)
 			logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
 			binz_Sz = 10**(binz-3)
-
 			dSz = binz_Sz[1:]-binz_Sz[:-1]
 			dNdS = hist[0]
-			n_steradian = 0.11/(180./np.pi)**2
+			n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
 			n_steradian *= self.opt.frac # a number of pixels in the image are not actually observing anything
 			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+			
 			plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
 			plt.yscale('log')
 			plt.legend()
 			plt.xlabel('log($S_{\\nu}$) (mJy)')
 			plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-			plt.ylim(1e1, 1e5)
-			plt.xlim(-0.5, 3)
+			plt.ylim(1e0, 1e5)
+			plt.xlim(-1.5, 2.5)
 			plt.tight_layout()
 			plt.draw()
 			# if savefig:
@@ -1044,10 +1072,17 @@ class Model:
 # -------------------- load in data and actually execute the thing ----------------
 
 
+start_time = time.clock()
 ncs, nbins, psfs, cfs, biases, data_array, weights, masks, exposures, errors = [[] for x in xrange(10)]
 
 opt = get_parser_arguments()
 opt.timestr = time.strftime("%Y%m%d-%H%M%S")
+opt.bands = []
+opt.bands.append(opt.band0)
+if opt.band1 is not None:
+	opt.bands.append(opt.band1)
+	if opt.band2 is not None:
+		opt.bands.append(opt.band2)
 opt.nbands = len(opt.bands)
 print 'timestr:', opt.timestr
 
@@ -1125,9 +1160,12 @@ fsample = [np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32) for x in xrange
 colorsample = [[] for x in xrange(opt.nbands-1)]
 chi2sample = np.zeros((opt.nsamp, opt.nbands), dtype=np.int32)
 model = Model(opt)
-#create directory for results
 
+#create directory for results, save config file from run
 frame_dir, newdir = create_directories(opt)
+save_params(newdir, opt)
+
+
 
 # sampling loop
 for j in xrange(opt.nsamp):
@@ -1158,14 +1196,12 @@ for j in xrange(opt.nsamp):
 print 'saving...'
 
 np.savez(opt.result_path + '/' + str(opt.timestr) + '/chain.npz', n=nsample, x=xsample, y=ysample, f=fsample, \
-	colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, diff2s=diff2_all, rtypes=rtypes, accepts=accept_all, comments=comments)
+	colors=colorsample, chi2=chi2sample, times=timestats, accept=accept_stats, diff2s=diff2_all, rtypes=rtypes, accepts=accept_all)
+
+# save final catalog state
+np.savez(opt.result_path + '/'+str(opt.timestr)+'/final_state.npz', cat=model.stars)
+
 
 dt_total = time.clock()-start_time
 print 'Full Run Time (s):', np.round(dt_total,3)
-print 'Time String:', str(self.timestr)
-
-
-
-
-
-
+print 'Time String:', str(opt.timestr)
