@@ -61,6 +61,20 @@ def get_parser_arguments():
 	return opt
 
 
+def load_opt():
+	opt = get_parser_arguments()
+	opt.timestr = time.strftime("%Y%m%d-%H%M%S")
+	opt.bands = []
+	opt.bands.append(opt.band0)
+	if opt.band1 is not None:
+		opt.bands.append(opt.band1)
+		if opt.band2 is not None:
+			opt.bands.append(opt.band2)
+	opt.nbands = len(opt.bands)
+
+	return opt
+
+
 def save_params(dir, opt):
 	# save parameters as dictionary, then pickle them to txt file
 	param_dict = vars(opt)
@@ -111,7 +125,7 @@ def load_in_map(opt, band=0):
 	return image, error, exposure, mask
 
 
-def initialize_c(opt):
+def initialize_c(opt, libmmult):
 	if opt.verbtype > 1:
 		print 'initializing c routines and data structs'
 	if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
@@ -183,7 +197,7 @@ class Proposal:
 		self.factor = factor
 
 	def in_bounds(self, catalogue):
-		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (opt.imsz[0] -1)), \
+		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (self.opt.imsz[0] -1)), \
 				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.opt.imsz[1] - 1))
 
 	def assert_types(self):
@@ -258,7 +272,7 @@ class Model:
 
 	''' the init function sets all of the data structures used for the catalog, 
 	randomly initializes catalog source values drawing from catalog priors  '''
-	def __init__(self, opt):
+	def __init__(self, opt, dat, libmmult=None):
 		self.back = np.zeros(opt.nbands, dtype=np.float32)
 		self.err_f = opt.err_f
 		self.imsz = opt.imsz
@@ -284,6 +298,8 @@ class Model:
 		self.trueminf = opt.trueminf
 		self.bkg = np.array([opt.bias for b in xrange(opt.nbands)])
 		self.opt = opt
+		self.dat = dat
+		self.libmmult = libmmult
 
 		if opt.load_state_path is None:
 			for b in xrange(opt.nbands):
@@ -342,16 +358,16 @@ class Model:
 					yp = y
 				dt_transf += time.clock()-t4
 				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imsz, \
-												nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], \
-												ref=ref[b], lib=libmmult.pcat_model_eval, regsize=self.regsize, \
+												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
+												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsize, \
 												margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
 				diff2s += diff2
 			else:    
 				xp=x
 				yp=y
 				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imsz, \
-												nc[b], np.array(cf[b]).astype(np.float32()), weights=weights[b], \
-												ref=ref[b], lib=libmmult.pcat_model_eval, regsize=self.regsize, \
+												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
+												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsize, \
 												margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
 			
 				diff2s = diff2
@@ -385,7 +401,7 @@ class Model:
 
 		resids = []
 		for b in xrange(self.nbands):
-			resid = data_array[b].copy() # residual for zero image is data
+			resid = self.dat.data_array[b].copy() # residual for zero image is data
 			resids.append(resid)
 
 
@@ -395,14 +411,14 @@ class Model:
 		
 		n_phon = evalx.size
 
-		if opt.verbtype > 1:
+		if self.opt.verbtype > 1:
 			print 'beginning of run sampler'
 			print 'self.n here'
 			print self.n
 			print 'n_phon'
 			print n_phon
 
-		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval)
+		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.pcat_model_eval)
 		model = models[0]
 		# print('model:', model)
 		# print('to start, ', np.max(np.abs(model[model!=0.])), np.std(model[model!=0.]), np.max(evalf))
@@ -417,7 +433,7 @@ class Model:
 
 		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
 		self.moveweights /= np.sum(self.moveweights)
-		if opt.nregion > 1:
+		if self.opt.nregion > 1:
 			xparities = np.random.randint(2, size=self.nloop)
 			yparities = np.random.randint(2, size=self.nloop)
 		
@@ -443,7 +459,7 @@ class Model:
 			
 			if proposal.goodmove:
 				t2 = time.clock()
-				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, ncs, cfs, weights=weights, ref=resids, lib=libmmult.pcat_model_eval)
+				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.pcat_model_eval)
 
 				plogL = -0.5*diff2s                
 				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
@@ -480,9 +496,9 @@ class Model:
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
-					libmmult.pcat_imag_acpt(self.imsz[0], self.imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, self.margin, self.offsetx, self.offsety)
+					self.libmmult.pcat_imag_acpt(self.imsz[0], self.imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, self.margin, self.offsetx, self.offsety)
 					# using this dmodel containing only accepted moves, update logL
-					libmmult.pcat_like_eval(self.imsz[0], self.imsz[1], dmodel_acpt, resids[b], weights[b], diff2_acpt, self.regsize, self.margin, self.offsetx, self.offsety)   
+					self.libmmult.pcat_like_eval(self.imsz[0], self.imsz[1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsize, self.margin, self.offsetx, self.offsety)   
 
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
@@ -533,7 +549,7 @@ class Model:
 
 			# print('weights:', weights[b])
 			for b in xrange(self.nbands):
-				diff2_list[i] += np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
+				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 					
 			if self.verbtype > 1:
 				print 'end of Loop', i
@@ -544,7 +560,7 @@ class Model:
 			
 		chi2 = np.zeros(self.nbands)
 		for b in xrange(self.nbands):
-			chi2[b] = np.sum(weights[b]*(data_array[b]-models[b])*(data_array[b]-models[b]))
+			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 			
 		if self.verbtype > 1:
 			print 'end of sample'
@@ -560,7 +576,7 @@ class Model:
 			plt.clf()
 			plt.subplot(2,3,1)
 			plt.title('Data')
-			plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+			plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
 			plt.colorbar()
 			sizefac = 10.*136
 			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
@@ -568,7 +584,7 @@ class Model:
 			plt.ylim(-0.5, self.imsz[1]-0.5)
 			plt.subplot(2,3,2)
 			plt.title('Model')
-			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
 			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
 			plt.colorbar()
 			plt.subplot(2,3,3)
@@ -578,16 +594,16 @@ class Model:
 			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
 			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
 			if self.opt.weighted_residual:
-				plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+				plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 			else:
-				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
+				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
 
 			plt.colorbar()
 			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
 
 			plt.subplot(2,3,4)
 			plt.title('Data (zoomed in)')
-			plt.imshow(data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+			plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
 			plt.colorbar()
 			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
 			plt.ylim(90, 140)
@@ -596,9 +612,9 @@ class Model:
 			plt.title('Residual (zoomed in)')
 
 			if self.opt.weighted_residual:
-				plt.imshow(resids[0]*np.sqrt(weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+				plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 			else:
-				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
+				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
 			plt.colorbar()
 			plt.ylim(90, 140)
 			plt.xlim(70, 120)
@@ -731,7 +747,7 @@ class Model:
 
 		factor = np.array(factor) + np.sum(color_factors, axis=0)
 		
-		dpos_rms = np.float32(np.sqrt(N_eff/(2*np.pi))*self.err_f/(np.sqrt(self.nominal_nsrc*self.regions_factor*(2+self.nbands))))/(np.maximum(f0[0],pfs[0]))
+		dpos_rms = np.float32(np.sqrt(self.opt.N_eff/(2*np.pi))*self.err_f/(np.sqrt(self.nominal_nsrc*self.regions_factor*(2+self.nbands))))/(np.maximum(f0[0],pfs[0]))
 
 		if self.verbtype > 1:
 			print 'dpos_rms'
@@ -1108,13 +1124,100 @@ class samples():
 
 
 
-def pcat_main(opt):
+
+
+class pcat_data():
+
+	def __init__(self):
+		self.ncs = []
+		self.nbins = []
+		self.psfs = []
+		self.cfs = []
+		self.biases = []
+		self.data_array = []
+		self.weights = []
+		self.masks = []
+		self.exposures = []
+		self.errors = []
+
+	def load_in_data(self, opt):
+
+		for band in opt.bands:
+			if opt.mock_name is None:
+				image, error, exposure, mask = load_in_map(opt, band)
+			else:
+				image, error, exposure, mask = load_in_mock_map(opt.mock_name, band)
+
+			if opt.width > 0:
+				image = image[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
+				error = error[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
+				exposure = exposure[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
+				mask = mask[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
+				opt.imsz = (opt.width, opt.height)
+			else:
+				opt.imsz = (image.shape[0], image.shape[1])
+
+
+			print 'imsz is ', opt.imsz
+			variance = error**2
+			variance[variance==0.]=np.inf
+			weight = 1. / variance
+			print('weights:', weight) # 0 for masked pixels
+			opt.frac = np.count_nonzero(weight)/float(opt.width*opt.height)
+			print('fraction used:', opt.frac)
+
+			print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
+			self.weights.append(weight.astype(np.float32))
+			self.errors.append(error.astype(np.float32))
+			self.data_array.append(image.astype(np.float32)+0.0035)
+			self.masks.append(mask.astype(np.float32))
+			self.exposures.append(exposure.astype(np.float32))
+
+			psf, cf, nc, nbin = get_spire_psf2(pixel_fwhm=opt.psf_pixel_fwhm)
+
+			print('sum of PSF is ', np.sum(psf))
+			self.psfs.append(psf)
+			self.cfs.append(cf)
+			self.ncs.append(nc)
+			self.nbins.append(nbin)
+			self.biases.append(opt.bias)
+
+		opt.regsize = opt.imsz[0]/opt.nregion
+		opt.regions_factor = 1./float(opt.nregion**2)
+		print('regsize/regions_factor:', opt.regsize, opt.regions_factor)
+		assert opt.imsz[0] % opt.regsize == 0
+		assert opt.imsz[1] % opt.regsize == 0
+
+		pixel_variance = np.median(self.errors[0]**2)
+		print('pixel_variance:', pixel_variance)
+		opt.N_eff = 4*np.pi*opt.psf_pixel_fwhm**2
+		opt.err_f = np.sqrt(opt.N_eff * pixel_variance)*0.1
+
+
+
+# -------------------- load in data and actually execute the thing ----------------
+
+def pcat_main():
+
+	opt = load_opt()
+
+	dat = pcat_data()
+	dat.load_in_data(opt)
+
+	''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
+	libmmult = npct.load_library('pcat-lion', '.')
+	initialize_c(opt, libmmult)
+
+	#create directory for results, save config file from run
+	frame_dir, newdir = create_directories(opt)
+	save_params(newdir, opt)
+
 
 	start_time = time.clock()
 
 	samps = samples(opt)
 
-	model = Model(opt)
+	model = Model(opt, dat, libmmult)
 
 	# run sampler for opt.nsamp thinned states
 
@@ -1137,88 +1240,13 @@ def pcat_main(opt):
 	print 'Time String:', str(opt.timestr)
 
 
-# -------------------- load in data and actually execute the thing ----------------
-
-
-start_time = time.clock()
-ncs, nbins, psfs, cfs, biases, data_array, weights, masks, exposures, errors = [[] for x in xrange(10)]
-
-opt = get_parser_arguments()
-opt.timestr = time.strftime("%Y%m%d-%H%M%S")
-opt.bands = []
-opt.bands.append(opt.band0)
-if opt.band1 is not None:
-	opt.bands.append(opt.band1)
-	if opt.band2 is not None:
-		opt.bands.append(opt.band2)
-opt.nbands = len(opt.bands)
-print 'timestr:', opt.timestr
-
-
-for band in opt.bands:
-	if opt.mock_name is None:
-		image, error, exposure, mask = load_in_map(opt, band)
-	else:
-		image, error, exposure, mask = load_in_mock_map(opt.mock_name, band)
-	
-	if opt.width > 0:
-		image = image[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-		error = error[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-		exposure = exposure[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-		mask = mask[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-		opt.imsz = (opt.width, opt.height)
-	else:
-		opt.imsz = (image.shape[0], image.shape[1])
-
-
-	print 'imsz is ', opt.imsz
-	variance = error**2
-	variance[variance==0.]=np.inf
-	weight = 1. / variance
-	print('weights:', weight) # 0 for masked pixels
-	opt.frac = np.count_nonzero(weight)/float(opt.width*opt.height)
-	print('fraction used:', opt.frac)
-
-	print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
-	weights.append(weight.astype(np.float32))
-	errors.append(error.astype(np.float32))
-	data_array.append(image.astype(np.float32)+0.0035)
-	masks.append(mask.astype(np.float32))
-	exposures.append(exposure.astype(np.float32))
-
-	psf, cf, nc, nbin = get_spire_psf2(pixel_fwhm=opt.psf_pixel_fwhm)
-
-	print('sum of PSF is ', np.sum(psf))
-	psfs.append(psf)
-	cfs.append(cf)
-	ncs.append(nc)
-	nbins.append(nbin)
-	biases.append(opt.bias)
-
-
-opt.regsize = opt.imsz[0]/opt.nregion
-opt.regions_factor = 1./float(opt.nregion**2)
-print('regsize/regions_factor:', opt.regsize, opt.regions_factor)
-assert opt.imsz[0] % opt.regsize == 0
-# assert opt.imsz[1] % opt.regsize == 0
-
-pixel_variance = np.median(errors[0]**2)
-print('pixel_variance:', pixel_variance)
-N_eff = 4*np.pi*opt.psf_pixel_fwhm**2
-opt.err_f = np.sqrt(N_eff * pixel_variance)*0.1
-print('err_f:', opt.err_f)
-
-
-''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
-libmmult = npct.load_library('pcat-lion', '.')
-initialize_c(opt)
-
-#create directory for results, save config file from run
-frame_dir, newdir = create_directories(opt)
-save_params(newdir, opt)
-
-
 # run PCAT!
 
-pcat_main(opt)
+pcat_main()
+
+
+
+
+
+
 
