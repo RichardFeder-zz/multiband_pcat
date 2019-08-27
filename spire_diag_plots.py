@@ -7,6 +7,7 @@ from astropy.io import fits
 from helpers import *
 from image_eval import image_model_eval
 import cPickle as pickle
+from scipy.ndimage import gaussian_filter
 import h5py
 import sys
 import os
@@ -52,8 +53,38 @@ def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, pltt
     timestats = chain['times']
     accept_stats = chain['accept']
     diff2s = chain['diff2s']
+    residuals = chain['residuals']
     burn_in = int(opt.nsamp*burn_in_frac)
     bands = opt.bands
+
+
+    # ------------------- mean residual ---------------------------
+
+
+    for b in xrange(opt.nbands):
+
+        residz = residuals[b]
+        print(residz.shape)
+        mean_resid = np.mean(residz, axis=0)
+
+
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1,2,1)
+        plt.title('Mean Residual -- '+band_dict[bands[b]])
+        plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
+        plt.colorbar()
+        plt.subplot(1,2,2)
+        plt.title('Smoothed Residual')
+        smoothed_resid = gaussian_filter(mean_resid, sigma=3)
+        plt.imshow(smoothed_resid, cmap='Greys', vmin=np.percentile(smoothed_resid, 1), vmax=np.percentile(smoothed_resid, 99))
+        plt.colorbar()
+        if boolplotsave:
+            plt.savefig(filepath +'/mean_residual_and_smoothed.'+plttype, bbox_inches='tight')
+        if boolplotshow:
+            plt.show()
+        plt.close()
+
+
 
     
     # ------------------- SOURCE NUMBER ---------------------------
@@ -159,7 +190,7 @@ def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, pltt
         plt.xlabel('log($S_{\\nu}$) (mJy)')
         plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
         plt.ylim(1e0, 1e5)
-        plt.xlim(-1.5, 2.5)
+        plt.xlim(np.log10(opt.trueminf)+3.-0.5, 2.5)
         plt.tight_layout()
         if boolplotsave:
             plt.savefig(filepath+'/posterior_number_counts_histogram_'+str(band_dict[b])+'.'+plttype, bbox_inches='tight')
@@ -182,7 +213,7 @@ def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, pltt
 
 
 
-result_plots('20190826-154049', burn_in_frac=0.5, plttype='png')
+result_plots('20190826-191306', burn_in_frac=0.6, plttype='png')
 
 
 

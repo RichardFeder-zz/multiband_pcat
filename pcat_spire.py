@@ -55,7 +55,8 @@ def get_parser_arguments():
 	parser.add_argument('--visual', help='interactive backend should be loaded before importing pyplot')
 	parser.add_argument('--weighted_residual', help='used for visual mode')
 	parser.add_argument('--mock_name', default=None, help='specify name if using mock data, affects how the data is read in')
-	parser.add_argument('--load_state_path', default=None, help='filepath for previous catalog if using as an initial state. loads in .npy files')
+	parser.add_argument('--load_state_timestr', default=None, help='filepath for previous catalog if using as an initial state. loads in .npy files')
+	parser.add_argument('--residual_samples', type=int, default=100, help='number of residual samples to average for final product')
 	opt = parser.parse_known_args()[0]
 
 	return opt
@@ -301,7 +302,7 @@ class Model:
 		self.dat = dat
 		self.libmmult = libmmult
 
-		if opt.load_state_path is None:
+		if opt.load_state_timestr is None:
 			for b in xrange(opt.nbands):
 				if b==0:
 					self.stars[self._F+b,0:self.n] **= -1./(self.truealpha - 1.)
@@ -310,7 +311,10 @@ class Model:
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
 					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
 		else:
-			self.stars = np.load(opt.load_state_path)['cat']
+			print 'Loading in catalog from run with timestr='+opt.load_state_timestr+'...'
+			catpath = opt.result_path+'/'+opt.load_state_timestr+'/final_state.npz'
+			self.stars = np.load(catpath)['cat']
+			self.n = np.count_nonzero(self.stars[self._F,:])
 
 	''' this function prints out some information at the end of each thinned sample, 
 	namely acceptance fractions for the different proposals and some time performance statistics as well. '''
@@ -420,8 +424,6 @@ class Model:
 
 		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.pcat_model_eval)
 		model = models[0]
-		# print('model:', model)
-		# print('to start, ', np.max(np.abs(model[model!=0.])), np.std(model[model!=0.]), np.max(evalf))
 		logL = -0.5*diff2s
 	   
 		for b in xrange(self.nbands):
@@ -636,7 +638,7 @@ class Model:
 			plt.xlabel('log($S_{\\nu}$) (mJy)')
 			plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
 			plt.ylim(1e0, 1e5)
-			plt.xlim(-1.5, 2.5)
+			plt.xlim(np.log10(self.trueminf)+3.-0.5, 2.5)
 			plt.tight_layout()
 			plt.draw()
 			# if savefig:
@@ -645,7 +647,7 @@ class Model:
 
 
 
-		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept
+		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids
 
 
 	def idx_parity_stars(self):
@@ -715,6 +717,8 @@ class Model:
 		# print 'average flux difference'
 		# print np.median(np.abs(f0[0]-pfs[0]))
 		factor = -self.truealpha*dlogf
+
+		# print('factor:', factor)
 
 		if np.isnan(factor).any():
 			print 'factor nan from flux'
@@ -1098,11 +1102,12 @@ class samples():
 		self.tq_times = np.zeros(opt.nsamp, dtype=np.float32)
 		self.fsample = [np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32) for x in xrange(opt.nbands)]
 		self.colorsample = [[] for x in xrange(opt.nbands-1)]
+		self.residuals = np.zeros((opt.nbands, opt.residual_samples, opt.width, opt.height))
 		self.chi2sample = np.zeros((opt.nsamp, opt.nbands), dtype=np.int32)
 		self.nbands = opt.nbands
 		self.opt = opt
 
-	def add_sample(self, j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays):
+	def add_sample(self, j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids):
 		
 		self.nsample[j] = model.n
 		self.xsample[j]
@@ -1116,12 +1121,14 @@ class samples():
 
 		for b in xrange(self.nbands):
 			self.fsample[b][j,:] = model.stars[Model._F+b,:]
+			if self.opt.nsamp - j < self.opt.residual_samples+1:
+				self.residuals[b,-(self.opt.nsamp-j),:,:] = resids[b] 
 
 	def save_samples(self, result_path, timestr):
 
 		np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all)
+				accepts=self.accept_all, residuals=self.residuals)
 
 ''' This class sets up the data structures for data/data-related information. 
 load_in_data() loads in data, generates the PSF template and computes weights from the noise model
@@ -1234,8 +1241,8 @@ def pcat_main():
 	for j in xrange(opt.nsamp):
 		print 'Sample', j
 
-		_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts = model.run_sampler()
-		samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays)
+		_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts, resids = model.run_sampler()
+		samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids)
 
 	print 'saving...'
 
