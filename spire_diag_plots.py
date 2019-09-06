@@ -10,6 +10,7 @@ import cPickle as pickle
 from scipy.ndimage import gaussian_filter
 import h5py
 import sys
+from scipy import stats
 import os
 
 np.seterr(divide='ignore', invalid='ignore')
@@ -33,12 +34,12 @@ def load_param_dict(timestr):
     return opt, filepath, result_path
 
 
-
 def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, plttype='pdf'):
 
     band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
     
     opt, filepath, result_path = load_param_dict(timestr)
+    opt.auto_resize=False
 
     dat = pcat_data(opt)
     dat.load_in_data(opt)
@@ -65,41 +66,70 @@ def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, pltt
 
         residz = residuals[b]
         print(residz.shape)
-        mean_resid = np.mean(residz, axis=0)
+        median_resid = np.median(residz, axis=0)
 
 
         plt.figure(figsize=(10, 5))
         plt.subplot(1,2,1)
-        plt.title('Mean Residual -- '+band_dict[bands[b]])
-        plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
+        plt.title('Median Residual -- '+band_dict[bands[b]])
+        plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=-0.01, vmax=0.01)
+        # plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=-0.002, vmax=np.percentile(mean_resid, 90))
+        # plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
         plt.colorbar()
         plt.subplot(1,2,2)
         plt.title('Smoothed Residual')
-        smoothed_resid = gaussian_filter(mean_resid, sigma=3)
-        plt.imshow(smoothed_resid, cmap='Greys', vmin=np.percentile(smoothed_resid, 1), vmax=np.percentile(smoothed_resid, 99))
+        smoothed_resid = gaussian_filter(median_resid, sigma=3)
+        plt.imshow(smoothed_resid, cmap='Greys', vmin=-0.004, vmax=0.0005)
+        # plt.imshow(smoothed_resid, cmap='Greys', vmin=np.percentile(smoothed_resid, 10.), vmax=np.percentile(smoothed_resid, 90))
         plt.colorbar()
         if boolplotsave:
-            plt.savefig(filepath +'/mean_residual_and_smoothed.'+plttype, bbox_inches='tight')
+            plt.savefig(filepath +'/median_residual_and_smoothed.'+plttype, bbox_inches='tight')
         if boolplotshow:
             plt.show()
         plt.close()
 
+        median_resid_rav = median_resid[dat.weights[0] != 0.].ravel()
 
 
-    
-    # ------------------- SOURCE NUMBER ---------------------------
+        plt.figure()
+        plt.hist(median_resid_rav, bins=np.linspace(-0.02, 0.02, 50))
+        if boolplotsave:
+            plt.savefig(filepath +'/median_residual_1pt_function.'+plttype, bbox_inches='tight')
+        if boolplotshow:
+            plt.show()
+        plt.close()
 
-    plt.figure()
-    plt.title('Posterior Source Number Histogram')
-    plt.hist(nsrcs[burn_in:], histtype='step', label='Posterior', color='b', bins=15)
-    plt.axvline(np.median(nsrcs[burn_in:]), label='Median=' + str(np.median(nsrcs[burn_in:])), color='b', linestyle='dashed')
-    plt.xlabel('nstar')
-    plt.legend()
-    if boolplotsave:
-        plt.savefig(filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight')
-    if boolplotshow:
-        plt.show()
-    plt.close()
+        median_resid = median_resid[30:median_resid.shape[1]-30,30:median_resid.shape[0]-30]
+
+        plt.figure()
+        plt.imshow(median_resid, vmin=-0.01, vmax=0.01, cmap='Greys', interpolation='none')
+        plt.colorbar()
+        if boolplotsave:
+            plt.savefig(filepath +'/cropped_image.'+plttype, bbox_inches='tight')
+        if boolplotshow:
+            plt.show()
+        plt.close()
+
+        # rbins, radprof, radstd = compute_cl(mean_resid, mean_resid, nbins=18)
+
+        # kmin = 250.
+        # plt.figure()
+        # plt.plot(rbins*kmin, radprof, marker='.')
+        # # plt.plot(rbins*lmin, np.sqrt((rbins*lmin)**2*radprof/(2*np.pi)), marker='.')
+        # plt.xscale('log')
+        # plt.yscale('log')
+        # plt.xlabel('$\\ell$', fontsize=14)
+        # plt.ylabel('$C_{\\ell}$', fontsize=14)
+        # if boolplotsave:
+        #     plt.savefig(filepath +'/residual_power_spectrum.'+plttype, bbox_inches='tight')
+        # if boolplotshow:
+        #     plt.show()
+        # plt.close()
+
+        # plot_radavg_spectrum(rbins, radprofs=[radprof], lmin=500., save=True)
+
+        
+
 
     # -------------------- CHI2 ------------------------------------
 
@@ -157,6 +187,9 @@ def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, pltt
 
     # -------------------------------- ITERATE OVER BANDS -------------------------------------
 
+
+    nsrc_fov = []
+
     for b in xrange(opt.nbands):
 
         nbins = 20
@@ -164,9 +197,23 @@ def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, pltt
         raw_number_counts = np.zeros((opt.nsamp - burn_in, nbins-1)).astype(np.float32)
 
         binz = np.linspace(np.log10(opt.trueminf)+3., 3., nbins)
+
+        weight = dat.weights[b]
+
         print(fsrcs.shape)
+        print('burnin/nsamp:', burn_in, opt.nsamp)
+        print np.arange(burn_in, opt.nsamp)
         for i, j in enumerate(np.arange(burn_in, opt.nsamp)):
-            hist = np.histogram(np.log10(fsrcs[b][j])+3, bins=binz)
+
+            print('nsrcs[j]:', nsrcs[j], j, i)
+            print np.array([weight[int(xsrcs[j][k]), int(ysrcs[j][k])] for k in xrange(nsrcs[j])])
+            fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in xrange(nsrcs[j]) if weight[int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
+            nsrc_fov.append(len(fsrcs_in_fov))
+            print(len(fsrcs[b][j]), len(fsrcs_in_fov))
+
+            hist = np.histogram(np.log10(fsrcs_in_fov)+3, bins=binz)
+
+            # hist = np.histogram(np.log10(fsrcs[b][j])+3, bins=binz)
             logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
             binz_Sz = 10**(binz-3)
             dSz = binz_Sz[1:]-binz_Sz[:-1]
@@ -204,9 +251,23 @@ def result_plots(timestr, burn_in_frac=0.5, boolplotsave=1, boolplotshow=0, pltt
         plt.errorbar(logSv+3, np.mean(raw_number_counts, axis=0), yerr=np.array([np.abs(mean-np.percentile(raw_number_counts, 16, axis=0)), np.abs(np.percentile(raw_number_counts, 84, axis=0)-mean)]), fmt='o', label='Posterior')
         plt.legend()
         plt.yscale('log', nonposy='clip')
-        plt.xlabel('Magnitude - ' + str(band_dict[b]))
+        plt.xlabel('log10(Flux) - ' + str(band_dict[b]))
         if boolplotsave:
             plt.savefig(filepath+'/posterior_flux_histogram_'+str(band_dict[b])+'.'+plttype, bbox_inches='tight')
+        if boolplotshow:
+            plt.show()
+        plt.close()
+
+            # ------------------- SOURCE NUMBER ---------------------------
+
+        plt.figure()
+        plt.title('Posterior Source Number Histogram')
+        plt.hist(nsrc_fov, histtype='step', label='Posterior', color='b', bins=15)
+        plt.axvline(np.median(nsrc_fov), label='Median=' + str(np.median(nsrc_fov)), color='b', linestyle='dashed')
+        plt.xlabel('nstar')
+        plt.legend()
+        if boolplotsave:
+            plt.savefig(filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight')
         if boolplotshow:
             plt.show()
         plt.close()

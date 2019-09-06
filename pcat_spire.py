@@ -28,36 +28,48 @@ np.random.seed(20170502)
 def get_parser_arguments():
 
 	parser = argparse.ArgumentParser()
-	parser.add_argument('--base_path', default='/Users/richardfeder/Documents/multiband_pcat/')
-	parser.add_argument('--result_path', default='/Users/richardfeder/Documents/multiband_pcat/spire_results')
-	parser.add_argument('--bias', type=float, default=-0.00, help='DC offset for SPIRE image (Jy)')
-	parser.add_argument('--dataname', default='a0370', help='name of cluster being analyzed')
-	parser.add_argument('--band0', type=int, default=0, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
-	parser.add_argument('--band1', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
-	parser.add_argument('--band2', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
-	parser.add_argument('--nsamp', type=int, default=1000, help='Number of thinned samples')
-	parser.add_argument('--mean_subtraction', type=float, default=None, help='absolute level subtracted from SPIRE model image')
-	parser.add_argument('--nregion', type=int, default=1, help='splits up image into subregions to do proposals within')
-	parser.add_argument('--psf_pixel_fwhm', type=float, default=3.)
-	parser.add_argument('--nominal_nsrc', type=int, default=1000, help='this is the nominal number of sources expected in a given image, helps set sample step sizes during MCMC')
-	parser.add_argument('--max_nsrc', type=int, default=2000, help='this sets the maximum number of sources allowed in thee code, can change depending on the image')
-	parser.add_argument('--nloop', type=int, default=1000, help='factor by which the chain is thinned')
-	parser.add_argument('--margin', type=int, default=10, help='used in model evaluation')
-	parser.add_argument('--verbtype', type=int, default=0, help='verbosity during program execution')
-	parser.add_argument('--alph', type=float, default=1.0, help='used as scalar factor in regularization prior, which determines the penalty in dlogL when adding/subtracting a source')
-	parser.add_argument('--kickrange', type=float, default=1.0, help='sets scale for merge proposal i.e. how far you look for neighbors to merge')
-	parser.add_argument('--split_col_sig', type=float, default=0.25, help='used when splitting sources and determining colors of resulting objects')
-	parser.add_argument('--truealpha', type=float, default=3.0, help='number counts power law slope for SPIRE sources')    
-	parser.add_argument('--trueminf', type=float, default=0.01, help='minimum flux allowed in fit for SPIRE sources (Jy)')
+	''' These configure the input image dimensions '''
+	parser.add_argument('--auto_resize', help='resizes images to largest square dimension modulo opt.nregion')
 	parser.add_argument('--width', type=int, default=0,  help='specify if you want to fix the dimension of incoming image, may be useful for subregion sampling')
 	parser.add_argument('--height', type=int, default=0, help='same as width')
 	parser.add_argument('--x0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
 	parser.add_argument('--y0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
-	parser.add_argument('--visual', help='interactive backend should be loaded before importing pyplot')
-	parser.add_argument('--auto_resize', help='resizes images to largest square dimension modulo opt.nregion')
-	parser.add_argument('--weighted_residual', help='used for visual mode')
+	
+	''' These indicate which bands to run on and some of their properties'''
+	parser.add_argument('--band0', type=int, default=0, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
+	parser.add_argument('--band1', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
+	parser.add_argument('--band2', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
+	parser.add_argument('--bias', type=float, default=0.00, help='DC offset for SPIRE image (Jy)')
+	parser.add_argument('--mean_subtraction', type=float, default=None, help='absolute level subtracted from SPIRE model image')
+	parser.add_argument('--psf_pixel_fwhm', type=float, default=3.)
+
+	''' Configure these for individual directory structure '''
+	parser.add_argument('--base_path', default='/Users/richardfeder/Documents/multiband_pcat/')
+	parser.add_argument('--result_path', default='/Users/richardfeder/Documents/multiband_pcat/spire_results')
+	parser.add_argument('--dataname', default='a0370', help='name of cluster being analyzed')
 	parser.add_argument('--mock_name', default=None, help='specify name if using mock data, affects how the data is read in')
 	parser.add_argument('--load_state_timestr', default=None, help='filepath for previous catalog if using as an initial state. loads in .npy files')
+	
+	''' Settings for sampler '''
+	parser.add_argument('--nsamp', type=int, default=1000, help='Number of thinned samples')
+	parser.add_argument('--nloop', type=int, default=1000, help='factor by which the chain is thinned')
+
+
+	''' Settings for proposals '''
+	parser.add_argument('--alph', type=float, default=1.0, help='used as scalar factor in regularization prior, which determines the penalty in dlogL when adding/subtracting a source')
+	parser.add_argument('--kickrange', type=float, default=1.0, help='sets scale for merge proposal i.e. how far you look for neighbors to merge')
+	parser.add_argument('--margin', type=int, default=10, help='used in model evaluation')
+	parser.add_argument('--max_nsrc', type=int, default=2000, help='this sets the maximum number of sources allowed in thee code, can change depending on the image')
+	parser.add_argument('--nominal_nsrc', type=int, default=1000, help='this is the nominal number of sources expected in a given image, helps set sample step sizes during MCMC')
+	parser.add_argument('--nregion', type=int, default=1, help='splits up image into subregions to do proposals within')
+	parser.add_argument('--split_col_sig', type=float, default=0.25, help='used when splitting sources and determining colors of resulting objects')
+	parser.add_argument('--truealpha', type=float, default=3.0, help='number counts power law slope for SPIRE sources')    
+	parser.add_argument('--trueminf', type=float, default=0.001, help='minimum flux allowed in fit for SPIRE sources (Jy)')
+
+	''' Settings for user experience!! '''
+	parser.add_argument('--visual', help='interactive backend should be loaded before importing pyplot')
+	parser.add_argument('--weighted_residual', help='used for visual mode')
+	parser.add_argument('--verbtype', type=int, default=0, help='verbosity during program execution')
 	parser.add_argument('--residual_samples', type=int, default=100, help='number of residual samples to average for final product')
 	opt = parser.parse_known_args()[0]
 
@@ -383,7 +395,7 @@ class Model:
 		for b in xrange(self.nbands):
 			if b>0:
 				t4 = time.clock()
-				if bands[b] != bands[0]:
+				if self.opt.bands[b] != bands[0]:
 					xp, yp = self.dat.fast_astrom.transform_q(x, y, b-1)
 					# xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
 				else:
@@ -1139,7 +1151,7 @@ class samples():
 	def add_sample(self, j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids):
 		
 		self.nsample[j] = model.n
-		self.xsample[j]
+		self.xsample[j,:] = model.stars[Model._X, :]
 		self.ysample[j,:] = model.stars[Model._Y, :]
 		self.diff2_all[j,:] = diff2_list
 		self.accept_all[j,:] = accepts
@@ -1233,7 +1245,7 @@ class pcat_data():
 			self.weights.append(weight.astype(np.float32))
 			self.errors.append(error.astype(np.float32))
 			# self.data_array.append(image.astype(np.float32)) # constant offset, may need to change
-			self.data_array.append(image.astype(np.float32)+0.006) # constant offset, may need to change
+			self.data_array.append(image.astype(np.float32)+0.0035) # constant offset, may need to change
 			# self.masks.append(mask.astype(np.float32))
 			self.exposures.append(exposure.astype(np.float32))
 
