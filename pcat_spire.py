@@ -15,6 +15,7 @@ from astropy.convolution import Gaussian2DKernel
 import scipy.signal
 from image_eval import psf_poly_fit, image_model_eval
 from helpers import * 
+from fast_astrom import *
 import cPickle as pickle
 np.seterr(divide='ignore', invalid='ignore')
 
@@ -29,6 +30,7 @@ def get_parser_arguments():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--base_path', default='/Users/richardfeder/Documents/multiband_pcat/')
 	parser.add_argument('--result_path', default='/Users/richardfeder/Documents/multiband_pcat/spire_results')
+	parser.add_argument('--bias', type=float, default=-0.00, help='DC offset for SPIRE image (Jy)')
 	parser.add_argument('--dataname', default='a0370', help='name of cluster being analyzed')
 	parser.add_argument('--band0', type=int, default=0, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
 	parser.add_argument('--band1', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
@@ -51,8 +53,8 @@ def get_parser_arguments():
 	parser.add_argument('--height', type=int, default=0, help='same as width')
 	parser.add_argument('--x0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
 	parser.add_argument('--y0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
-	parser.add_argument('--bias', type=float, default=-0.0025, help='DC offset for SPIRE image (Jy)')
 	parser.add_argument('--visual', help='interactive backend should be loaded before importing pyplot')
+	parser.add_argument('--auto_resize', help='resizes images to largest square dimension modulo opt.nregion')
 	parser.add_argument('--weighted_residual', help='used for visual mode')
 	parser.add_argument('--mock_name', default=None, help='specify name if using mock data, affects how the data is read in')
 	parser.add_argument('--load_state_timestr', default=None, help='filepath for previous catalog if using as an initial state. loads in .npy files')
@@ -90,6 +92,9 @@ def save_params(dir, opt):
 			file2.write(key+': '+str(param_dict[key])+'\n')
 	file2.close()
 
+def fluxes_to_color(flux1, flux2):
+	return 2.5*np.log10(flux1/flux2)
+
 
 
 def get_spire_psf(pixel_fwhm=3, nbin=5):
@@ -103,27 +108,36 @@ def get_spire_psf(pixel_fwhm=3, nbin=5):
 	cf = psf_poly_fit(psfnew, nbin=nbin)
 	return psfnew, cf, nc, nbin
 
-def get_spire_psf2(pixel_fwhm=1.28, nbin=5):
+def get_spire_psf2(pixel_fwhm=3., nbin=5):
 	nc = 25
-	psfnew = Gaussian2DKernel(pixel_fwhm*nbin, x_size=125, y_size=125).array.astype(np.float32)
+	print('pixel fwhm in get spire psf2:', pixel_fwhm/2.355)
+	psfnew = Gaussian2DKernel((pixel_fwhm/2.355)*nbin, x_size=125, y_size=125).array.astype(np.float32)
 	psfnew *= nc
 	cf = psf_poly_fit(psfnew, nbin=nbin)
 	return psfnew, cf, nc, nbin
 
 
-def load_in_map(opt, band=0):
+def load_in_map(opt, band=0, astrom=None):
 	band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
-
+	# file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_sim200P'+band_dict[band]+'W_noise+sz.fits'
+	# file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
+	# file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_P'+band_dict[band]+'W_sim0200.fits'
 	file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_P'+band_dict[band]+'W_nr_1.fits'
 	print('file_path:', file_path)
 
+	if astrom is not None:
+		astrom.load_wcs_header_and_dim(opt.dataname+'_P'+band_dict[band]+'W_nr_1.fits', hdu_idx=3)
+
 	spire_dat = fits.open(file_path)
+
+
+
 	image = np.nan_to_num(spire_dat[1].data)
 	error = np.nan_to_num(spire_dat[2].data)
 	exposure = spire_dat[3].data
 	mask = spire_dat[4].data
 
-	return image, error, exposure, mask
+	return image, error, exposure, mask, band_dict
 
 
 def initialize_c(opt, libmmult):
@@ -271,6 +285,13 @@ class Model:
 
 	k =2.5/np.log(10)
 
+	mus = dict({'S-M':0., 'M-L':-0.3, 'L-S':0.0, 'M-S':0.0, 'S-L':0.5, 'L-M':0.2})
+	#sigs = dict({'r-i':0.5, 'r-g':5.0, 'r-z':1.0, 'r-r':0.05})
+	sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
+	#mus = dict({'r-i':0.0, 'r-g':0.0}) # for same flux different noise tests, r, i, g are all different realizations of r band
+	#sigs = dict({'r-i':0.5, 'r-g':0.5})
+	color_mus, color_sigs = [], []
+	
 	''' the init function sets all of the data structures used for the catalog, 
 	randomly initializes catalog source values drawing from catalog priors  '''
 	def __init__(self, opt, dat, libmmult=None):
@@ -302,6 +323,13 @@ class Model:
 		self.dat = dat
 		self.libmmult = libmmult
 
+		for b in xrange(self.nbands-1):
+
+			col_string = self.opt.band_dict[self.opt.bands[0]]+'-'+self.opt.band_dict[self.opt.bands[b+1]]
+			print('col string is ', col_string)
+			self.color_mus.append(self.mus[col_string])
+			self.color_sigs.append(self.sigs[col_string])
+
 		if opt.load_state_timestr is None:
 			for b in xrange(opt.nbands):
 				if b==0:
@@ -309,7 +337,7 @@ class Model:
 					self.stars[self._F+b,0:self.n] *= self.trueminf
 				else:
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
-					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
+					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
 		else:
 			print 'Loading in catalog from run with timestr='+opt.load_state_timestr+'...'
 			catpath = opt.result_path+'/'+opt.load_state_timestr+'/final_state.npz'
@@ -356,7 +384,8 @@ class Model:
 			if b>0:
 				t4 = time.clock()
 				if bands[b] != bands[0]:
-					xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
+					xp, yp = self.dat.fast_astrom.transform_q(x, y, b-1)
+					# xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
 				else:
 					xp = x
 					yp = y
@@ -732,8 +761,8 @@ class Model:
 		come back to this later  '''
 		modl_eval_colors = []
 		for b in xrange(self.nbands-1):
-			colors = adus_to_color(pfs[0], pfs[b+1], nmpc)
-			orig_colors = adus_to_color(f0[0], f0[b+1], nmpc)
+			colors = fluxes_to_color(pfs[0], pfs[b+1])
+			orig_colors = fluxes_to_color(f0[0], f0[b+1])
 			colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
 			orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
 			color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
@@ -811,7 +840,7 @@ class Model:
 				else:
 					# draw new source colors from color prior
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=nbd)
-					starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)*nmgy_per_count[0]/nmgy_per_count[b]
+					starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)
 			
 					if (starsb[self._F+b,:]<0).any():
 						print 'negative birth star fluxes'
@@ -1046,22 +1075,22 @@ class Model:
 			factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz[0]*self.imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + np.log(invpairs) + np.log(sum_fs[0])
 
 			for b in xrange(self.nbands-1):
-				stars0_color = adus_to_color(stars0[self._F,:], stars0[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
-				starsp_color = adus_to_color(starsp[self._F,:], starsp[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+				stars0_color = fluxes_to_color(stars0[self._F,:], stars0[self._F+b+1,:])
+				starsp_color = fluxes_to_color(starsp[self._F,:], starsp[self._F+b+1,:])
 				dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
 				# added_fac comes from the transition kernel of splitting colors in the manner that we do
 				added_fac = 0.5*np.log(2*np.pi*self.split_col_sig**2)+(dc**2/(2*self.split_col_sig**2))
 				factor += added_fac
 				
 				if splitsville:
-					starsb_color = adus_to_color(starsb[self._F,:], starsb[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+					starsb_color = fluxes_to_color(starsb[self._F,:], starsb[self._F+b+1,:])
 					# colfac is ratio of color prior factors i.e. P(s_0)P(s_1)/P(s_merged), where 0 and 1 are original sources 
 					colfac = (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
 						
 					factor += colfac
 			 
 				else:
-					starsk_color = adus_to_color(starsk[self._F,:], starsk[self._F+b+1,:], [nmgy_per_count[0], nmgy_per_count[b]])
+					starsk_color = fluxes_to_color(starsk[self._F,:], starsk[self._F+b+1,:])
 					# same as above but for merging sources
 					colfac = (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
 					factor += colfac
@@ -1147,23 +1176,46 @@ class pcat_data():
 		self.exposures = []
 		self.errors = []
 		self.opt = opt
+		self.fast_astrom = wcs_astrometry()
+		self.widths = []
+		self.heights = []
+
+	def find_lowest_mod(self, number, mod_number):
+		while number > 0:
+			if np.mod(number, mod_number) == 0:
+				print 'got it'
+				return number
+			else:
+				number -= 1
+		return False
 
 	def load_in_data(self, opt):
 
 		for band in opt.bands:
 			if opt.mock_name is None:
-				image, error, exposure, mask = load_in_map(opt, band)
+
+				image, error, exposure, mask, band_dict = load_in_map(opt, band, astrom=self.fast_astrom)
+				opt.band_dict = band_dict
 			else:
 				image, error, exposure, mask = load_in_mock_map(opt.mock_name, band)
+			print('median:', np.median(image[image != 0.]))
+			if opt.auto_resize:
+				print np.min([image.shape[0], image.shape[1]])
+				smaller_dim = np.min([image.shape[0], image.shape[1]])
+				print('smaller dim is', smaller_dim)
+				opt.width = self.find_lowest_mod(smaller_dim, opt.nregion)
+				opt.height = opt.width
+
+				self.opt.imsz = (opt.width, opt.height)
 
 			if opt.width > 0:
 				image = image[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
 				error = error[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
 				exposure = exposure[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
 				mask = mask[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-				opt.imsz = (opt.width, opt.height)
+				self.opt.imsz = (opt.width, opt.height)
 			else:
-				opt.imsz = (image.shape[0], image.shape[1])
+				self.opt.imsz = (image.shape[0], image.shape[1])
 
 
 			print 'imsz is ', opt.imsz
@@ -1180,8 +1232,9 @@ class pcat_data():
 			
 			self.weights.append(weight.astype(np.float32))
 			self.errors.append(error.astype(np.float32))
-			self.data_array.append(image.astype(np.float32)+0.0035) # constant offset, may need to change
-			self.masks.append(mask.astype(np.float32))
+			# self.data_array.append(image.astype(np.float32)) # constant offset, may need to change
+			self.data_array.append(image.astype(np.float32)+0.006) # constant offset, may need to change
+			# self.masks.append(mask.astype(np.float32))
 			self.exposures.append(exposure.astype(np.float32))
 
 			psf, cf, nc, nbin = get_spire_psf2(pixel_fwhm=opt.psf_pixel_fwhm)
@@ -1201,8 +1254,8 @@ class pcat_data():
 
 		pixel_variance = np.median(self.errors[0]**2)
 		print('pixel_variance:', pixel_variance)
-		opt.N_eff = 4*np.pi*opt.psf_pixel_fwhm**2
-		opt.err_f = np.sqrt(opt.N_eff * pixel_variance)*0.1
+		opt.N_eff = 4*np.pi*(opt.psf_pixel_fwhm/2.355)**2
+		opt.err_f = np.sqrt(opt.N_eff * pixel_variance)
 
 
 		return opt
@@ -1259,7 +1312,7 @@ def pcat_main():
 
 # run PCAT!
 
-# pcat_main()
+pcat_main()
 
 
 

@@ -1,4 +1,6 @@
 from astropy import wcs
+from astropy.io import fits
+import numpy as np
 
 class wcs_astrometry():
     ''' This class will contain the WCS header and other information necessary to construct arrays for fast 
@@ -50,7 +52,10 @@ class wcs_astrometry():
 
     
     def __init__(self):
-        pass
+        self.wcs_objs = []
+        self.filenames = []
+        self.all_fast_arrays = []
+        self.dims = []
     
     def change_verbosity(self, verbtype):
         self.verbosity = verbtype
@@ -72,11 +77,8 @@ class wcs_astrometry():
         self.wcs_objs.append(wcs_obj)
         
     def obs_to_obs(self, idx0, idx1, x, y):
-        t0 = time.clock()
         ra, dec = self.wcs_objs[idx0].all_pix2world(x, y, 0)
         x1, y1 = self.wcs_objs[idx1].all_world2pix(ra, dec, 0)
-        dt = time.clock()-t0
-        print 'dt = '+str(dt)
         return x1, y1
     
     def get_pint_dp(self, p):
