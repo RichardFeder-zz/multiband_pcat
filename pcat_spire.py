@@ -40,7 +40,7 @@ def get_parser_arguments():
 	parser.add_argument('--band1', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
 	parser.add_argument('--band2', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
 	parser.add_argument('--bias', type=float, default=0.00, help='DC offset for SPIRE image (Jy)')
-	parser.add_argument('--mean_subtraction', type=float, default=None, help='absolute level subtracted from SPIRE model image')
+	parser.add_argument('--mean_offset', type=float, default=0.0035, help='absolute level subtracted from SPIRE model image')
 	parser.add_argument('--psf_pixel_fwhm', type=float, default=3.)
 
 	''' Configure these for individual directory structure '''
@@ -53,7 +53,6 @@ def get_parser_arguments():
 	''' Settings for sampler '''
 	parser.add_argument('--nsamp', type=int, default=1000, help='Number of thinned samples')
 	parser.add_argument('--nloop', type=int, default=1000, help='factor by which the chain is thinned')
-
 
 	''' Settings for proposals '''
 	parser.add_argument('--alph', type=float, default=1.0, help='used as scalar factor in regularization prior, which determines the penalty in dlogL when adding/subtracting a source')
@@ -1245,7 +1244,7 @@ class pcat_data():
 			self.weights.append(weight.astype(np.float32))
 			self.errors.append(error.astype(np.float32))
 			# self.data_array.append(image.astype(np.float32)) # constant offset, may need to change
-			self.data_array.append(image.astype(np.float32)+0.0035) # constant offset, may need to change
+			self.data_array.append(image.astype(np.float32)+opt.mean_offset) # constant offset, may need to change
 			# self.masks.append(mask.astype(np.float32))
 			self.exposures.append(exposure.astype(np.float32))
 
@@ -1324,7 +1323,7 @@ def pcat_main():
 
 # run PCAT!
 
-pcat_main()
+# pcat_main()
 
 
 
