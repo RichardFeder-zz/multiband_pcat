@@ -23,75 +23,19 @@ np.seterr(divide='ignore', invalid='ignore')
 #generate random seed for initialization
 np.random.seed(20170502)
 
-#-------------------------- this portion sets up base directories, probably will need to modify ---------------------
+class gdatstrt(object):
 
-def get_parser_arguments():
-
-	parser = argparse.ArgumentParser()
-	''' These configure the input image dimensions '''
-	parser.add_argument('--auto_resize', help='resizes images to largest square dimension modulo opt.nregion')
-	parser.add_argument('--width', type=int, default=0,  help='specify if you want to fix the dimension of incoming image, may be useful for subregion sampling')
-	parser.add_argument('--height', type=int, default=0, help='same as width')
-	parser.add_argument('--x0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
-	parser.add_argument('--y0', type=int, default=0, help='sets x coordinate of lower left corner if cropping image')
+	def __init__(self):
+		pass
 	
-	''' These indicate which bands to run on and some of their properties'''
-	parser.add_argument('--band0', type=int, default=0, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
-	parser.add_argument('--band1', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
-	parser.add_argument('--band2', type=int, default=None, help='indices of bands used in fit, where 0->250um, 1->350um and 2->500um.')
-	parser.add_argument('--bias', type=float, default=0.00, help='DC offset for SPIRE image (Jy)')
-	parser.add_argument('--mean_offset', type=float, default=0.0035, help='absolute level subtracted from SPIRE model image')
-	parser.add_argument('--psf_pixel_fwhm', type=float, default=3.)
-
-	''' Configure these for individual directory structure '''
-	parser.add_argument('--base_path', default='/Users/richardfeder/Documents/multiband_pcat/')
-	parser.add_argument('--result_path', default='/Users/richardfeder/Documents/multiband_pcat/spire_results')
-	parser.add_argument('--dataname', default='a0370', help='name of cluster being analyzed')
-	parser.add_argument('--mock_name', default=None, help='specify name if using mock data, affects how the data is read in')
-	parser.add_argument('--load_state_timestr', default=None, help='filepath for previous catalog if using as an initial state. loads in .npy files')
-	
-	''' Settings for sampler '''
-	parser.add_argument('--nsamp', type=int, default=1000, help='Number of thinned samples')
-	parser.add_argument('--nloop', type=int, default=1000, help='factor by which the chain is thinned')
-
-	''' Settings for proposals '''
-	parser.add_argument('--alph', type=float, default=1.0, help='used as scalar factor in regularization prior, which determines the penalty in dlogL when adding/subtracting a source')
-	parser.add_argument('--kickrange', type=float, default=1.0, help='sets scale for merge proposal i.e. how far you look for neighbors to merge')
-	parser.add_argument('--margin', type=int, default=10, help='used in model evaluation')
-	parser.add_argument('--max_nsrc', type=int, default=2000, help='this sets the maximum number of sources allowed in thee code, can change depending on the image')
-	parser.add_argument('--nominal_nsrc', type=int, default=1000, help='this is the nominal number of sources expected in a given image, helps set sample step sizes during MCMC')
-	parser.add_argument('--nregion', type=int, default=1, help='splits up image into subregions to do proposals within')
-	parser.add_argument('--split_col_sig', type=float, default=0.25, help='used when splitting sources and determining colors of resulting objects')
-	parser.add_argument('--truealpha', type=float, default=3.0, help='number counts power law slope for SPIRE sources')    
-	parser.add_argument('--trueminf', type=float, default=0.001, help='minimum flux allowed in fit for SPIRE sources (Jy)')
-
-	''' Settings for user experience!! '''
-	parser.add_argument('--visual', help='interactive backend should be loaded before importing pyplot')
-	parser.add_argument('--weighted_residual', help='used for visual mode')
-	parser.add_argument('--verbtype', type=int, default=0, help='verbosity during program execution')
-	parser.add_argument('--residual_samples', type=int, default=100, help='number of residual samples to average for final product')
-	opt = parser.parse_known_args()[0]
-
-	return opt
+	def __setattr__(self, attr, valu):
+		super(gdatstrt, self).__setattr__(attr, valu)
 
 
-def load_opt():
-	opt = get_parser_arguments()
-	opt.timestr = time.strftime("%Y%m%d-%H%M%S")
-	opt.bands = []
-	opt.bands.append(opt.band0)
-	if opt.band1 is not None:
-		opt.bands.append(opt.band1)
-		if opt.band2 is not None:
-			opt.bands.append(opt.band2)
-	opt.nbands = len(opt.bands)
 
-	return opt
-
-
-def save_params(dir, opt):
+def save_params(dir, gdat):
 	# save parameters as dictionary, then pickle them to txt file
-	param_dict = vars(opt)
+	param_dict = vars(gdat)
 	print param_dict
 	
 	with open(dir+'/params.txt', 'w') as file:
@@ -128,16 +72,16 @@ def get_spire_psf2(pixel_fwhm=3., nbin=5):
 	return psfnew, cf, nc, nbin
 
 
-def load_in_map(opt, band=0, astrom=None):
+def load_in_map(gdat, band=0, astrom=None):
 	band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
-	# file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_sim200P'+band_dict[band]+'W_noise+sz.fits'
-	# file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
-	# file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_P'+band_dict[band]+'W_sim0200.fits'
-	file_path = opt.base_path+'/Data/spire/'+opt.dataname+'_P'+band_dict[band]+'W_nr_1.fits'
+	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise+sz.fits'
+	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
+	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+band_dict[band]+'W_sim0200.fits'
+	file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+band_dict[band]+'W_nr_1.fits'
 	print('file_path:', file_path)
 
 	if astrom is not None:
-		astrom.load_wcs_header_and_dim(opt.dataname+'_P'+band_dict[band]+'W_nr_1.fits', hdu_idx=3)
+		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+band_dict[band]+'W_nr_1.fits', hdu_idx=3)
 
 	spire_dat = fits.open(file_path)
 
@@ -151,8 +95,8 @@ def load_in_map(opt, band=0, astrom=None):
 	return image, error, exposure, mask, band_dict
 
 
-def initialize_c(opt, libmmult):
-	if opt.verbtype > 1:
+def initialize_c(gdat, libmmult):
+	if gdat.verbtype > 1:
 		print 'initializing c routines and data structs'
 	if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 		warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
@@ -168,8 +112,8 @@ def initialize_c(opt, libmmult):
 	libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
 
-def create_directories(opt):
-	new_dir_name = opt.result_path+'/'+opt.timestr
+def create_directories(gdat):
+	new_dir_name = gdat.result_path+'/'+gdat.timestr
 	frame_dir_name = new_dir_name+'/frames'
 	if not os.path.isdir(frame_dir_name):
 		os.makedirs(frame_dir_name)
@@ -205,26 +149,26 @@ class Proposal:
 	_Y = 1
 	_F = 2
 
-	def __init__(self, opt):
+	def __init__(self, gdat):
 		self.idx_move = None
 		self.do_birth = False
 		self.idx_kill = None
 		self.factor = None
 		self.goodmove = False
-		self.dback = np.zeros(opt.nbands, dtype=np.float32)
+		self.dback = np.zeros(gdat.nbands, dtype=np.float32)
 		self.xphon = np.array([], dtype=np.float32)
 		self.yphon = np.array([], dtype=np.float32)
 		self.fphon = []
 		self.modl_eval_colors = []
-		for x in xrange(opt.nbands):
+		for x in xrange(gdat.nbands):
 			self.fphon.append(np.array([], dtype=np.float32))
-		self.opt = opt
+		self.gdat = gdat
 	def set_factor(self, factor):
 		self.factor = factor
 
 	def in_bounds(self, catalogue):
-		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (self.opt.imsz[0] -1)), \
-				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.opt.imsz[1] - 1))
+		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (self.gdat.imsz[0] -1)), \
+				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.gdat.imsz[1] - 1))
 
 	def assert_types(self):
 		assert self.xphon.dtype == np.float32
@@ -237,7 +181,7 @@ class Proposal:
 		self.xphon = np.append(self.xphon, stars[self._X,:])
 		self.yphon = np.append(self.yphon, stars[self._Y,:])
 
-		for b in xrange(self.opt.nbands):
+		for b in xrange(self.gdat.nbands):
 			self.fphon[b] = np.append(self.fphon[b], np.array(fluxmult*stars[self._F+b,:], dtype=np.float32))
 		self.assert_types()
 
@@ -305,44 +249,44 @@ class Model:
 	
 	''' the init function sets all of the data structures used for the catalog, 
 	randomly initializes catalog source values drawing from catalog priors  '''
-	def __init__(self, opt, dat, libmmult=None):
-		self.back = np.zeros(opt.nbands, dtype=np.float32)
-		self.err_f = opt.err_f
-		self.imsz = opt.imsz
-		self.kickrange = opt.kickrange
-		self.margin = opt.margin
-		self.max_nsrc = opt.max_nsrc
+	def __init__(self, gdat, dat, libmmult=None):
+		self.back = np.zeros(gdat.nbands, dtype=np.float32)
+		self.err_f = gdat.err_f
+		self.imsz = gdat.imsz
+		self.kickrange = gdat.kickrange
+		self.margin = gdat.margin
+		self.max_nsrc = gdat.max_nsrc
 		self.moveweights = np.array([80., 40., 40.])
 		self.movetypes = ['P *', 'BD *', 'MS *']
-		self.n = np.random.randint(opt.max_nsrc)+1
-		self.nbands = opt.nbands
-		self.nloop = opt.nloop
-		self.nregion = opt.nregion
-		self.penalty = 1+0.5*opt.alph*opt.nbands
-		self.regsize = opt.regsize
-		self.stars = np.zeros((2+opt.nbands,opt.max_nsrc), dtype=np.float32)
-		self.stars[:,0:self.n] = np.random.uniform(size=(2+opt.nbands,self.n))
-		self.stars[self._X,0:self.n] *= opt.imsz[0]-1
-		self.stars[self._Y,0:self.n] *= opt.imsz[1]-1
-		self.verbtype = opt.verbtype
-		self.nominal_nsrc = opt.nominal_nsrc
-		self.regions_factor = opt.regions_factor
-		self.truealpha = opt.truealpha
-		self.trueminf = opt.trueminf
-		self.bkg = np.array([opt.bias for b in xrange(opt.nbands)])
-		self.opt = opt
+		self.n = np.random.randint(gdat.max_nsrc)+1
+		self.nbands = gdat.nbands
+		self.nloop = gdat.nloop
+		self.nregion = gdat.nregion
+		self.penalty = 1+0.5*gdat.alph*gdat.nbands
+		self.regsize = gdat.regsize
+		self.stars = np.zeros((2+gdat.nbands,gdat.max_nsrc), dtype=np.float32)
+		self.stars[:,0:self.n] = np.random.uniform(size=(2+gdat.nbands,self.n))
+		self.stars[self._X,0:self.n] *= gdat.imsz[0]-1
+		self.stars[self._Y,0:self.n] *= gdat.imsz[1]-1
+		self.verbtype = gdat.verbtype
+		self.nominal_nsrc = gdat.nominal_nsrc
+		self.regions_factor = gdat.regions_factor
+		self.truealpha = gdat.truealpha
+		self.trueminf = gdat.trueminf
+		self.bkg = np.array([gdat.bias for b in xrange(gdat.nbands)])
+		self.gdat = gdat
 		self.dat = dat
 		self.libmmult = libmmult
 
 		for b in xrange(self.nbands-1):
 
-			col_string = self.opt.band_dict[self.opt.bands[0]]+'-'+self.opt.band_dict[self.opt.bands[b+1]]
+			col_string = self.gdat.band_dict[self.gdat.bands[0]]+'-'+self.gdat.band_dict[self.gdat.bands[b+1]]
 			print('col string is ', col_string)
 			self.color_mus.append(self.mus[col_string])
 			self.color_sigs.append(self.sigs[col_string])
 
-		if opt.load_state_timestr is None:
-			for b in xrange(opt.nbands):
+		if gdat.load_state_timestr is None:
+			for b in xrange(gdat.nbands):
 				if b==0:
 					self.stars[self._F+b,0:self.n] **= -1./(self.truealpha - 1.)
 					self.stars[self._F+b,0:self.n] *= self.trueminf
@@ -350,8 +294,8 @@ class Model:
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
 					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
 		else:
-			print 'Loading in catalog from run with timestr='+opt.load_state_timestr+'...'
-			catpath = opt.result_path+'/'+opt.load_state_timestr+'/final_state.npz'
+			print 'Loading in catalog from run with timestr='+gdat.load_state_timestr+'...'
+			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
 			self.stars = np.load(catpath)['cat']
 			self.n = np.count_nonzero(self.stars[self._F,:])
 
@@ -394,7 +338,7 @@ class Model:
 		for b in xrange(self.nbands):
 			if b>0:
 				t4 = time.clock()
-				if self.opt.bands[b] != bands[0]:
+				if self.gdat.bands[b] != bands[0]:
 					xp, yp = self.dat.fast_astrom.transform_q(x, y, b-1)
 					# xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
 				else:
@@ -455,7 +399,7 @@ class Model:
 		
 		n_phon = evalx.size
 
-		if self.opt.verbtype > 1:
+		if self.gdat.verbtype > 1:
 			print 'beginning of run sampler'
 			print 'self.n here'
 			print self.n
@@ -475,7 +419,7 @@ class Model:
 
 		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
 		self.moveweights /= np.sum(self.moveweights)
-		if self.opt.nregion > 1:
+		if self.gdat.nregion > 1:
 			xparities = np.random.randint(2, size=self.nloop)
 			yparities = np.random.randint(2, size=self.nloop)
 		
@@ -612,7 +556,7 @@ class Model:
 
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
 
-		if self.opt.visual:
+		if self.gdat.visual:
 			plt.gcf().clear()
 			plt.figure(1, figsize=(9, 4))
 			plt.clf()
@@ -635,7 +579,7 @@ class Model:
 			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
 			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
 			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
-			if self.opt.weighted_residual:
+			if self.gdat.weighted_residual:
 				plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 			else:
 				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
@@ -653,7 +597,7 @@ class Model:
 			plt.subplot(2,3,5)
 			plt.title('Residual (zoomed in)')
 
-			if self.opt.weighted_residual:
+			if self.gdat.weighted_residual:
 				plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 			else:
 				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
@@ -669,7 +613,7 @@ class Model:
 			dSz = binz_Sz[1:]-binz_Sz[:-1]
 			dNdS = hist[0]
 			n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
-			n_steradian *= self.opt.frac # a number of pixels in the image are not actually observing anything
+			n_steradian *= self.gdat.frac # a number of pixels in the image are not actually observing anything
 			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
 			
 			plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
@@ -714,8 +658,8 @@ class Model:
 	def flux_proposal(self, f0, nw, trueminf=None):
 		if trueminf is None:
 			trueminf = self.trueminf
-		lindf = np.float32(self.err_f/(self.regions_factor*np.sqrt(self.opt.nominal_nsrc*(2+self.nbands))))
-		logdf = np.float32(0.01/np.sqrt(self.opt.nominal_nsrc))
+		lindf = np.float32(self.err_f/(self.regions_factor*np.sqrt(self.gdat.nominal_nsrc*(2+self.nbands))))
+		logdf = np.float32(0.01/np.sqrt(self.gdat.nominal_nsrc))
 		ff = np.log(logdf*logdf*f0 + logdf*np.sqrt(lindf*lindf + logdf*logdf*f0*f0)) / logdf
 		ffmin = np.log(logdf*logdf*trueminf + logdf*np.sqrt(lindf*lindf + logdf*logdf*trueminf*trueminf)) / logdf
 		dff = np.random.normal(size=nw).astype(np.float32)
@@ -791,7 +735,7 @@ class Model:
 
 		factor = np.array(factor) + np.sum(color_factors, axis=0)
 		
-		dpos_rms = np.float32(np.sqrt(self.opt.N_eff/(2*np.pi))*self.err_f/(np.sqrt(self.nominal_nsrc*self.regions_factor*(2+self.nbands))))/(np.maximum(f0[0],pfs[0]))
+		dpos_rms = np.float32(np.sqrt(self.gdat.N_eff/(2*np.pi))*self.err_f/(np.sqrt(self.nominal_nsrc*self.regions_factor*(2+self.nbands))))/(np.maximum(f0[0],pfs[0]))
 
 		if self.verbtype > 1:
 			print 'dpos_rms'
@@ -819,7 +763,7 @@ class Model:
 				print pfs[b]
 		self.bounce_off_edges(starsp)
 
-		proposal = Proposal(self.opt)
+		proposal = Proposal(self.gdat)
 		proposal.add_move_stars(idx_move, stars0, starsp, modl_eval_colors)
 		
 		assert np.isinf(factor).any()==False
@@ -833,7 +777,7 @@ class Model:
 	def birth_death_stars(self):
 		lifeordeath = np.random.randint(2)
 		nbd = (self.nregx * self.nregy) / 4
-		proposal = Proposal(self.opt)
+		proposal = Proposal(self.gdat)
 		# birth
 		if lifeordeath and self.n < self.max_nsrc: # need room for at least one source
 			nbd = min(nbd, self.max_nsrc-self.n) # add nbd sources, or just as many as will fit
@@ -893,7 +837,7 @@ class Model:
 		bright_n = idx_bright.size
 		nms = (self.nregx * self.nregy) / 4
 		goodmove = False
-		proposal = Proposal(self.opt)
+		proposal = Proposal(self.gdat)
 		# split
 		if splitsville and self.n > 0 and self.n < self.max_nsrc and bright_n > 0: # need something to split, but don't exceed nstar
 			nms = min(nms, bright_n, self.max_nsrc-self.n) # need bright source AND room for split source
@@ -1128,24 +1072,24 @@ class Model:
 
 
 
-class samples():
+class Samples():
 
-	def __init__(self, opt):
-		self.nsample = np.zeros(opt.nsamp, dtype=np.int32)
-		self.xsample = np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32)
-		self.ysample = np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32)
-		self.timestats = np.zeros((opt.nsamp, 6, 4), dtype=np.float32)
-		self.diff2_all = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
-		self.accept_all = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
-		self.rtypes = np.zeros((opt.nsamp, opt.nloop), dtype=np.float32)
-		self.accept_stats = np.zeros((opt.nsamp, 4), dtype=np.float32)
-		self.tq_times = np.zeros(opt.nsamp, dtype=np.float32)
-		self.fsample = [np.zeros((opt.nsamp, opt.max_nsrc), dtype=np.float32) for x in xrange(opt.nbands)]
-		self.colorsample = [[] for x in xrange(opt.nbands-1)]
-		self.residuals = np.zeros((opt.nbands, opt.residual_samples, opt.width, opt.height))
-		self.chi2sample = np.zeros((opt.nsamp, opt.nbands), dtype=np.int32)
-		self.nbands = opt.nbands
-		self.opt = opt
+	def __init__(self, gdat):
+		self.nsample = np.zeros(gdat.nsamp, dtype=np.int32)
+		self.xsample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
+		self.ysample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
+		self.timestats = np.zeros((gdat.nsamp, 6, 4), dtype=np.float32)
+		self.diff2_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
+		self.accept_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
+		self.rtypes = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
+		self.accept_stats = np.zeros((gdat.nsamp, 4), dtype=np.float32)
+		self.tq_times = np.zeros(gdat.nsamp, dtype=np.float32)
+		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in xrange(gdat.nbands)]
+		self.colorsample = [[] for x in xrange(gdat.nbands-1)]
+		self.residuals = np.zeros((gdat.nbands, gdat.residual_samples, gdat.width, gdat.height))
+		self.chi2sample = np.zeros((gdat.nsamp, gdat.nbands), dtype=np.int32)
+		self.nbands = gdat.nbands
+		self.gdat = gdat
 
 	def add_sample(self, j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids):
 		
@@ -1161,8 +1105,8 @@ class samples():
 
 		for b in xrange(self.nbands):
 			self.fsample[b][j,:] = model.stars[Model._F+b,:]
-			if self.opt.nsamp - j < self.opt.residual_samples+1:
-				self.residuals[b,-(self.opt.nsamp-j),:,:] = resids[b] 
+			if self.gdat.nsamp - j < self.gdat.residual_samples+1:
+				self.residuals[b,-(self.gdat.nsamp-j),:,:] = resids[b] 
 
 	def save_samples(self, result_path, timestr):
 
@@ -1175,7 +1119,7 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 '''
 class pcat_data():
 
-	def __init__(self, opt):
+	def __init__(self):
 		self.ncs = []
 		self.nbins = []
 		self.psfs = []
@@ -1186,10 +1130,10 @@ class pcat_data():
 		self.masks = []
 		self.exposures = []
 		self.errors = []
-		self.opt = opt
 		self.fast_astrom = wcs_astrometry()
 		self.widths = []
 		self.heights = []
+
 
 	def find_lowest_mod(self, number, mod_number):
 		while number > 0:
@@ -1200,132 +1144,240 @@ class pcat_data():
 				number -= 1
 		return False
 
-	def load_in_data(self, opt):
+	def load_in_data(self, gdat, map_object=None):
 
-		for band in opt.bands:
-			if opt.mock_name is None:
-
-				image, error, exposure, mask, band_dict = load_in_map(opt, band, astrom=self.fast_astrom)
-				opt.band_dict = band_dict
+		for band in gdat.bands:
+			if gdat.mock_name is None:
+				image, error, exposure, mask, band_dict = load_in_map(gdat, band, astrom=self.fast_astrom)
+				gdat.band_dict = band_dict
 			else:
-				image, error, exposure, mask = load_in_mock_map(opt.mock_name, band)
+				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
 			print('median:', np.median(image[image != 0.]))
-			if opt.auto_resize:
+			if gdat.auto_resize:
 				print np.min([image.shape[0], image.shape[1]])
 				smaller_dim = np.min([image.shape[0], image.shape[1]])
 				print('smaller dim is', smaller_dim)
-				opt.width = self.find_lowest_mod(smaller_dim, opt.nregion)
-				opt.height = opt.width
+				gdat.width = self.find_lowest_mod(smaller_dim, gdat.nregion)
+				gdat.height = gdat.width
 
-				self.opt.imsz = (opt.width, opt.height)
+				gdat.imsz = (gdat.width, gdat.height)
 
-			if opt.width > 0:
-				image = image[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-				error = error[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-				exposure = exposure[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-				mask = mask[opt.x0:opt.x0+opt.width,opt.y0:opt.y0+opt.height]
-				self.opt.imsz = (opt.width, opt.height)
+			if gdat.width > 0:
+				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
+				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
+				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
+				mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
+				gdat.imsz = (gdat.width, gdat.height)
 			else:
-				self.opt.imsz = (image.shape[0], image.shape[1])
+				gdat.imsz = (image.shape[0], image.shape[1])
 
 
-			print 'imsz is ', opt.imsz
+			print 'imsz is ', gdat.imsz
 			variance = error**2
 			variance[variance==0.]=np.inf
 			weight = 1. / variance
 
 			print('weights:', np.count_nonzero(weight))
-			print('width/height:', opt.width, opt.height)
+			print('width/height:', gdat.width, gdat.height)
 
-			opt.frac = np.count_nonzero(weight)/float(opt.width*opt.height)
-			print('fraction of image with non-zero weight:', opt.frac)
+			gdat.frac = np.count_nonzero(weight)/float(gdat.width*gdat.height)
+			print('fraction of image with non-zero weight:', gdat.frac)
 			print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
 			
 			self.weights.append(weight.astype(np.float32))
 			self.errors.append(error.astype(np.float32))
-			# self.data_array.append(image.astype(np.float32)) # constant offset, may need to change
-			self.data_array.append(image.astype(np.float32)+opt.mean_offset) # constant offset, may need to change
-			# self.masks.append(mask.astype(np.float32))
+			self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
 			self.exposures.append(exposure.astype(np.float32))
 
-			psf, cf, nc, nbin = get_spire_psf2(pixel_fwhm=opt.psf_pixel_fwhm)
+			psf, cf, nc, nbin = get_spire_psf2(pixel_fwhm=gdat.psf_pixel_fwhm)
 
 			print('sum of PSF is ', np.sum(psf))
 			self.psfs.append(psf)
 			self.cfs.append(cf)
 			self.ncs.append(nc)
 			self.nbins.append(nbin)
-			self.biases.append(opt.bias)
+			self.biases.append(gdat.bias)
 
-		opt.regsize = opt.imsz[0]/opt.nregion
-		opt.regions_factor = 1./float(opt.nregion**2)
-		print('regsize/regions_factor:', opt.regsize, opt.regions_factor)
-		assert opt.imsz[0] % opt.regsize == 0 
-		assert opt.imsz[1] % opt.regsize == 0 
+		gdat.regsize = gdat.imsz[0]/gdat.nregion
+		gdat.regions_factor = 1./float(gdat.nregion**2)
+		print('regsize/regions_factor:', gdat.regsize, gdat.regions_factor)
+		assert gdat.imsz[0] % gdat.regsize == 0 
+		assert gdat.imsz[1] % gdat.regsize == 0 
 
 		pixel_variance = np.median(self.errors[0]**2)
 		print('pixel_variance:', pixel_variance)
-		opt.N_eff = 4*np.pi*(opt.psf_pixel_fwhm/2.355)**2
-		opt.err_f = np.sqrt(opt.N_eff * pixel_variance)
+		gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2
+		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)
 
 
-		return opt
-
-
+		# return gdat
 
 # -------------------- actually execute the thing ----------------
 
-def pcat_main():
+class lion():
 
-	opt = load_opt()
-
-	dat = pcat_data(opt)
-	opt = dat.load_in_data(opt)
-
-	print('width/height:', opt.width, opt.height)
-
-	''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
-	libmmult = npct.load_library('pcat-lion', '.')
-	initialize_c(opt, libmmult)
-
-	#create directory for results, save config file from run
-	frame_dir, newdir = create_directories(opt)
-	opt.frame_dir = frame_dir
-	opt.newdir = newdir
-	save_params(newdir, opt)
-
-	start_time = time.clock()
-
-	samps = samples(opt)
-
-	model = Model(opt, dat, libmmult)
-
-	# run sampler for opt.nsamp thinned states
-
-	for j in xrange(opt.nsamp):
-		print 'Sample', j
-
-		_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts, resids = model.run_sampler()
-		samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids)
-
-	print 'saving...'
-
-	# save catalog ensemble and other diagnostics
-	samps.save_samples(opt.result_path, opt.timestr)
-
-	# save final catalog state
-	np.savez(opt.result_path + '/'+str(opt.timestr)+'/final_state.npz', cat=model.stars)
-
-	dt_total = time.clock() - start_time
-	print 'Full Run Time (s):', np.round(dt_total,3)
-	print 'Time String:', str(opt.timestr)
+	gdat = gdatstrt()
 
 
-# run PCAT!
+	def __init__(self, 
+			# resizes images to largest square dimension modulo nregion
+			auto_resize = True, \
 
-# pcat_main()
+			#specify these if you want to fix the dimension of incoming image
+			width = 0, \
+			height = 0, \
+			
+			# these set x/y coordinate of lower left corner if cropping image
+			x0 = 0, \
+			y0 = 0, \
+
+			#indices of bands used in fit, where 0->250um, 1->350um and 2->500um.
+			band0 = 0, \
+			band1 = None, \
+			band2 = None, \
+			
+			# absolute level subtracted from SPIRE model image, bias and mean_offset are 
+			# redundant at the moment but don't worry for now
+			bias = 0.0, \
+			mean_offset = 0.0035, \
+
+			psf_pixel_fwhm = 3.0, \
+
+			# use if loading data from object and not from saved fits files in directories
+			map_object = None, \
+
+			# Configure these for individual directory structure
+			base_path = '/Users/richardfeder/Documents/multiband_pcat/', \
+			result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results',\
+			
+			# name of cluster being analyzed
+			dataname = 'a0370', \
+
+			# mock dataset name
+			mock_name = None, \
+			
+			# filepath for previous catalog if using as an initial state. loads in .npy files
+			load_state_timestr = None,\
+			
+			# set flag to True if you want posterior plots/catalog samples/etc from run saved
+			save = True, \
+
+			# number of thinned samples
+			nsamp = 500, \
+
+			# factor by which the chain is thinned
+			nloop = 1000, \
+
+			# scalar factor in regularization prior, scales dlogL penalty when adding/subtracting a source
+			alph = 1.0, \
+
+			# scale for merge proposal i.e. how far you look for neighbors to merge
+			kickrange = 1.0, \
+
+			# used in subregion model evaluation
+			margin = 10, \
+
+			# maximum number of sources allowed in the code, might change depending on the image
+			max_nsrc = 2000, \
+
+			# nominal number of sources expected in a given image, helps set sample step sizes during MCMC
+			nominal_nsrc = 1000, \
+
+			# splits up image into subregions to do proposals within
+			nregion = 5, \
+
+			# used when splitting sources and determining colors of resulting objects
+			split_col_sig = 0.25, \
+
+			# number counts power law slope for sources
+			truealpha = 3.0, \
+
+			# minimum flux allowed in fit for SPIRE sources (Jy)
+			trueminf = 0.001, \
+
+			# interactive backend should be loaded before importing pyplot
+			visual = False, \
+
+			# used for visual mode
+			weighted_residual = False, \
+
+			# verbosity during program execution
+			verbtype = 0, \
+
+			# number of residual samples to average for final product
+			residual_samples = 100):
 
 
+		# for strg, valu in args.iteritems():
+		# 	setattr(gdat, strg, valu)
+
+		for attr, valu in locals().iteritems():
+			if '__' not in attr and attr != 'gdat':
+				setattr(self.gdat, attr, valu)
+
+		print('gdat:')
+		print self.gdat
+
+		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
+		self.gdat.bands = []
+		self.gdat.bands.append(self.gdat.band0)
+		if self.gdat.band1 is not None:
+			self.gdat.bands.append(gdat.band1)
+			if self.gdat.band2 is not None:
+				self.gdat.bands.append(gdat.band2)
+		self.gdat.nbands = len(self.gdat.bands)
+
+
+		self.data = pcat_data()
+		self.data.load_in_data(self.gdat, map_object=map_object)
+		# self.gdat = dat.load_in_data(gdat, map_object=map_object)
+
+
+		if self.gdat.save:
+			#create directory for results, save config file from run
+			frame_dir, newdir = create_directories(self.gdat)
+			self.gdat.frame_dir = frame_dir
+			self.gdat.newdir = newdir
+			save_params(newdir, self.gdat)
+
+		print('gdat:')
+		print self.gdat
+
+
+	def main(self):
+
+		''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
+		libmmult = npct.load_library('pcat-lion', '.')
+		initialize_c(self.gdat, libmmult)
+
+		start_time = time.clock()
+
+		samps = Samples(self.gdat)
+		model = Model(self.gdat, self.data, libmmult)
+
+
+		# run sampler for gdat.nsamp thinned states
+
+		for j in xrange(self.gdat.nsamp):
+			print 'Sample', j
+
+			_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts, resids = model.run_sampler()
+			samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids)
+
+
+		if self.gdat.save:
+			print 'saving...'
+
+			# save catalog ensemble and other diagnostics
+			samps.save_samples(self.gdat.result_path, self.gdat.timestr)
+
+			# save final catalog state
+			np.savez(self.gdat.result_path + '/'+str(self.gdat.timestr)+'/final_state.npz', cat=model.stars)
+
+
+		dt_total = time.clock() - start_time
+		print 'Full Run Time (s):', np.round(dt_total,3)
+		print 'Time String:', str(self.gdat.timestr)
 
 
 
