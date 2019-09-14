@@ -83,6 +83,8 @@ def load_in_map(gdat, band=0, astrom=None):
 	if astrom is not None:
 		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+band_dict[band]+'W_nr_1.fits', hdu_idx=3)
 
+
+
 	spire_dat = fits.open(file_path)
 
 
@@ -167,8 +169,8 @@ class Proposal:
 		self.factor = factor
 
 	def in_bounds(self, catalogue):
-		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (self.gdat.imsz[0] -1)), \
-				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.gdat.imsz[1] - 1))
+		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (self.gdat.imsz0[0] -1)), \
+				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.gdat.imsz0[1] - 1))
 
 	def assert_types(self):
 		assert self.xphon.dtype == np.float32
@@ -252,9 +254,10 @@ class Model:
 	def __init__(self, gdat, dat, libmmult=None):
 		self.back = np.zeros(gdat.nbands, dtype=np.float32)
 		self.err_f = gdat.err_f
-		self.imsz = gdat.imsz
+		self.imsz0 = gdat.imsz0 # this is just for first band, where proposals are first made
+		self.imszs = gdat.imszs # this is list of image sizes for all bands, not just first one
 		self.kickrange = gdat.kickrange
-		self.margin = gdat.margin
+		self.margins = np.array(gdat.margins).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
 		self.moveweights = np.array([80., 40., 40.])
 		self.movetypes = ['P *', 'BD *', 'MS *']
@@ -263,11 +266,11 @@ class Model:
 		self.nloop = gdat.nloop
 		self.nregion = gdat.nregion
 		self.penalty = 1+0.5*gdat.alph*gdat.nbands
-		self.regsize = gdat.regsize
+		self.regsizes = np.array(gdat.regsizes).astype(np.int)
 		self.stars = np.zeros((2+gdat.nbands,gdat.max_nsrc), dtype=np.float32)
 		self.stars[:,0:self.n] = np.random.uniform(size=(2+gdat.nbands,self.n))
-		self.stars[self._X,0:self.n] *= gdat.imsz[0]-1
-		self.stars[self._Y,0:self.n] *= gdat.imsz[1]-1
+		self.stars[self._X,0:self.n] *= gdat.imsz0[0]-1
+		self.stars[self._Y,0:self.n] *= gdat.imsz0[1]-1
 		self.verbtype = gdat.verbtype
 		self.nominal_nsrc = gdat.nominal_nsrc
 		self.regions_factor = gdat.regions_factor
@@ -277,6 +280,9 @@ class Model:
 		self.gdat = gdat
 		self.dat = dat
 		self.libmmult = libmmult
+		self.offsetxs = np.zeros(self.nbands).astype(np.int)
+		self.offsetys = np.zeros(self.nbands).astype(np.int)
+		self.margins = np.zeros(self.nbands).astype(np.int)
 
 		for b in xrange(self.nbands-1):
 
@@ -336,27 +342,28 @@ class Model:
 		dmodels = []
 		dt_transf = 0
 		for b in xrange(self.nbands):
+			# print(self.margins[b], self.offsetxs[b], self.offsetys[b], self.regsizes[b])
 			if b>0:
 				t4 = time.clock()
-				if self.gdat.bands[b] != bands[0]:
+				if self.gdat.bands[b] != self.gdat.bands[0]:
 					xp, yp = self.dat.fast_astrom.transform_q(x, y, b-1)
 					# xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
 				else:
 					xp = x
 					yp = y
 				dt_transf += time.clock()-t4
-				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imsz, \
+				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsize, \
-												margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
+												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsizes[b], \
+												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 				diff2s += diff2
 			else:    
 				xp=x
 				yp=y
-				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imsz, \
+				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsize, \
-												margin=self.margin, offsetx=self.offsetx, offsety=self.offsety)
+												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsizes[b], \
+												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 			
 				diff2s = diff2
 			# dmodels.append(dmodel.transpose())
@@ -377,19 +384,37 @@ class Model:
 		dts = np.zeros((4, self.nloop)) # array to store time spent on different proposals
 		diff2_list = np.zeros(self.nloop) 
 
+		''' I'm a bit concerned about setting the offsets for multiple observations with different sizes. 
+		For now what I'll do is choose an offset for the pivot band and then compute scaled offsets for the other bands
+		based on the relative sub region size, this will be off by at most 0.5 pixel, which hopefully shouldn't affect 
+		things too negatively. There might be some edge effects though. '''
+		
 		if self.nregion > 1:
-			self.offsetx = np.random.randint(self.regsize)
-			self.offsety = np.random.randint(self.regsize)
+			self.offsetxs[0] = np.random.randint(self.regsizes[0])
+			self.offsetys[0] = np.random.randint(self.regsizes[0])
+			self.margins[0] = self.gdat.margin
+			
+			for b in xrange(self.gdat.nbands - 1):
+				reg_ratio = float(self.imszs[b+1][0])/float(self.imszs[0][0])
+				self.offsetxs[b+1] = int(self.offsetxs[0]*reg_ratio)
+				self.offsetys[b+1] = int(self.offsetys[0]*reg_ratio)
+				self.margins[b+1] = int(self.margins[0]*reg_ratio)
+				if gdat.verbtype > 1:
+					print(self.offsetxs[b+1], self.offsetys[b+1], self.margins[b+1])
 		else:
-			self.offsetx = 0
-			self.offsety = 0
- 
-		self.nregx = self.imsz[0] / self.regsize + 1
-		self.nregy = self.imsz[1] / self.regsize + 1
+
+ 			self.offsetxs = np.array([0 for b in xrange(self.gdat.nbands)])
+ 			self.offsetys = np.array([0 for b in xrange(self.gdat.nbands)])
+
+
+		self.nregx = self.imsz0[0] / self.regsizes[0] + 1
+		self.nregy = self.imsz0[1] / self.regsizes[0] + 1
 
 		resids = []
 		for b in xrange(self.nbands):
 			resid = self.dat.data_array[b].copy() # residual for zero image is data
+			if gdat.verbtype > 1:
+				print('resid has shape:', resid.shape)
 			resids.append(resid)
 
 
@@ -467,8 +492,12 @@ class Model:
 				dts[1,i] = time.clock() - t2
 				t3 = time.clock()
 				refx, refy = proposal.get_ref_xy()
-				regionx = get_region(refx, self.offsetx, self.regsize)
-				regiony = get_region(refy, self.offsety, self.regsize)
+				# regionx = get_region(refx, self.offsetx, self.regsize)
+				# regiony = get_region(refy, self.offsety, self.regsize)
+				
+				regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
+				regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
+
 				
 				if proposal.factor is not None:
 					dlogP[regiony, regionx] += proposal.factor
@@ -482,9 +511,9 @@ class Model:
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
-					self.libmmult.pcat_imag_acpt(self.imsz[0], self.imsz[1], dmodels[b], dmodel_acpt, acceptreg, self.regsize, self.margin, self.offsetx, self.offsety)
+					self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 					# using this dmodel containing only accepted moves, update logL
-					self.libmmult.pcat_like_eval(self.imsz[0], self.imsz[1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsize, self.margin, self.offsetx, self.offsety)   
+					self.libmmult.pcat_like_eval(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
@@ -566,8 +595,8 @@ class Model:
 			plt.colorbar()
 			sizefac = 10.*136
 			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-			plt.xlim(-0.5, self.imsz[0]-0.5)
-			plt.ylim(-0.5, self.imsz[1]-0.5)
+			plt.xlim(-0.5, self.imsz0[0]-0.5)
+			plt.ylim(-0.5, self.imsz0[1]-0.5)
 			plt.subplot(2,3,2)
 			plt.title('Model')
 			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
@@ -635,24 +664,25 @@ class Model:
 
 
 	def idx_parity_stars(self):
-		return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, self.regsize)
+		return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
+		# return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, self.regsize)
 
 	def bounce_off_edges(self, catalogue): # works on both stars and galaxies
 		mask = catalogue[self._X,:] < 0
 		catalogue[self._X, mask] *= -1
-		mask = catalogue[self._X,:] > (self.imsz[0] - 1)
+		mask = catalogue[self._X,:] > (self.imsz0[0] - 1)
 		catalogue[self._X, mask] *= -1
-		catalogue[self._X, mask] += 2*(self.imsz[0] - 1)
+		catalogue[self._X, mask] += 2*(self.imsz0[0] - 1)
 		mask = catalogue[self._Y,:] < 0
 		catalogue[self._Y, mask] *= -1
-		mask = catalogue[self._Y,:] > (self.imsz[1] - 1)
+		mask = catalogue[self._Y,:] > (self.imsz0[1] - 1)
 		catalogue[self._Y, mask] *= -1
-		catalogue[self._Y, mask] += 2*(self.imsz[1] - 1)
+		catalogue[self._Y, mask] += 2*(self.imsz0[1] - 1)
 		# these are all inplace operations, so no return value
 
 	def in_bounds(self, catalogue):
-		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (self.imsz[0] -1)), \
-				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.imsz[1] - 1))
+		return np.logical_and(np.logical_and(catalogue[self._X,:] > 0, catalogue[self._X,:] < (self.imsz0[0] -1)), \
+				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.imsz0[1] - 1))
 
 
 	def flux_proposal(self, f0, nw, trueminf=None):
@@ -783,11 +813,17 @@ class Model:
 			nbd = min(nbd, self.max_nsrc-self.n) # add nbd sources, or just as many as will fit
 			# mildly violates detailed balance when n close to nstar
 			# want number of regions in each direction, divided by two, rounded up
-			mregx = ((self.imsz[0] / self.regsize + 1) + 1) / 2 # assumes that imsz are multiples of regsize
-			mregy = ((self.imsz[1] / self.regsize + 1) + 1) / 2
+			# mregx = ((self.imsz0[0] / self.regsize + 1) + 1) / 2 # assumes that imsz are multiples of regsize
+			# mregy = ((self.imsz0[1] / self.regsize + 1) + 1) / 2
+			
+			mregx = ((self.imsz0[0] / self.regsizes[0] + 1) + 1) / 2 # assumes that imsz are multiples of regsize
+			mregy = ((self.imsz0[1] / self.regsizes[0] + 1) + 1) / 2
+
 			starsb = np.empty((2+self.nbands, nbd), dtype=np.float32)
-			starsb[self._X,:] = (np.random.randint(mregx, size=nbd)*2 + self.parity_x + np.random.uniform(size=nbd))*self.regsize - self.offsetx
-			starsb[self._Y,:] = (np.random.randint(mregy, size=nbd)*2 + self.parity_y + np.random.uniform(size=nbd))*self.regsize - self.offsety
+			# starsb[self._X,:] = (np.random.randint(mregx, size=nbd)*2 + self.parity_x + np.random.uniform(size=nbd))*self.regsize - self.offsetx
+			# starsb[self._Y,:] = (np.random.randint(mregy, size=nbd)*2 + self.parity_y + np.random.uniform(size=nbd))*self.regsize - self.offsety
+			starsb[self._X,:] = (np.random.randint(mregx, size=nbd)*2 + self.parity_x + np.random.uniform(size=nbd))*self.regsizes[0] - self.offsetxs[0]
+			starsb[self._Y,:] = (np.random.randint(mregy, size=nbd)*2 + self.parity_y + np.random.uniform(size=nbd))*self.regsizes[0] - self.offsetys[0]
 			
 			for b in xrange(self.nbands):
 				if b==0:
@@ -865,7 +901,7 @@ class Model:
 			# color stuff, look at later
 			for b in xrange(self.nbands-1):
 				# changed to split similar fluxes
-				d_color = np.random.normal(0,self.split_col_sig)
+				d_color = np.random.normal(0,self.gdat.split_col_sig)
 				frac_sim = np.exp(d_color/self.k)*fracs[0]/(1-fracs[0]+np.exp(d_color/self.k)*fracs[0])
 				fracs.append(frac_sim)
 
@@ -1027,14 +1063,14 @@ class Model:
 		individual priors we add log factors to get the log prior.'''
 		if goodmove:
 			# first three terms are ratio of flux priors, remaining terms come from how we choose sources to merge, and last term is Jacobian for the transdimensional proposal
-			factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz[0]*self.imsz[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + np.log(invpairs) + np.log(sum_fs[0])
+			factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + np.log(invpairs) + np.log(sum_fs[0])
 
 			for b in xrange(self.nbands-1):
 				stars0_color = fluxes_to_color(stars0[self._F,:], stars0[self._F+b+1,:])
 				starsp_color = fluxes_to_color(starsp[self._F,:], starsp[self._F+b+1,:])
 				dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
 				# added_fac comes from the transition kernel of splitting colors in the manner that we do
-				added_fac = 0.5*np.log(2*np.pi*self.split_col_sig**2)+(dc**2/(2*self.split_col_sig**2))
+				added_fac = 0.5*np.log(2*np.pi*self.gdat.split_col_sig**2)+(dc**2/(2*self.gdat.split_col_sig**2))
 				factor += added_fac
 				
 				if splitsville:
@@ -1062,10 +1098,10 @@ class Model:
 
 			if self.verbtype > 1:
 				print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange)
-				print 'imsz factor', np.log(self.imsz[0]*self.imsz[1]) 
+				print 'imsz factor', np.log(self.imsz0[0]*self.imsz0[1]) 
 				print 'fminratio:', fminratio
 				print 'fmin factor', np.log(1. - 2./fminratio)
-				print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz[0]*self.imsz[1]) + np.log(1. - 2./fminratio)
+				print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio)
 				print 'factor after colors'
 				print factor
 		return proposal
@@ -1146,9 +1182,17 @@ class pcat_data():
 
 	def load_in_data(self, gdat, map_object=None):
 
+		gdat.imszs = []
+		gdat.regsizes = []
+		gdat.margins = []
+
 		for band in gdat.bands:
 			if gdat.mock_name is None:
 				image, error, exposure, mask, band_dict = load_in_map(gdat, band, astrom=self.fast_astrom)
+				
+				if band > 0:
+					self.fast_astrom.fit_astrom_arrays(0, band)
+
 				gdat.band_dict = band_dict
 			else:
 				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
@@ -1160,24 +1204,37 @@ class pcat_data():
 				gdat.width = self.find_lowest_mod(smaller_dim, gdat.nregion)
 				gdat.height = gdat.width
 
-				gdat.imsz = (gdat.width, gdat.height)
+				image_size = (gdat.width, gdat.height)
+
+				# gdat.imsz = (gdat.width, gdat.height)
 
 			if gdat.width > 0:
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
-				gdat.imsz = (gdat.width, gdat.height)
+				
+				image_size = (gdat.width, gdat.height)
+				# gdat.imsz = (gdat.width, gdat.height)
 			else:
-				gdat.imsz = (image.shape[0], image.shape[1])
+				image_size = (image.shape[0], image.shape[1])
+
+				# gdat.imsz = (image.shape[0], image.shape[1])
 
 
-			print 'imsz is ', gdat.imsz
+
+			print 'imsz is ', image_size
+
+			if band==0:
+				gdat.imsz0 = image_size
+			gdat.imszs.append(image_size)
+			gdat.regsizes.append(image_size[0]/gdat.nregion)
+
+
 			variance = error**2
 			variance[variance==0.]=np.inf
 			weight = 1. / variance
 
-			print('weights:', np.count_nonzero(weight))
 			print('width/height:', gdat.width, gdat.height)
 
 			gdat.frac = np.count_nonzero(weight)/float(gdat.width*gdat.height)
@@ -1198,11 +1255,12 @@ class pcat_data():
 			self.nbins.append(nbin)
 			self.biases.append(gdat.bias)
 
-		gdat.regsize = gdat.imsz[0]/gdat.nregion
+
+		# gdat.regsize = gdat.imsz0[0]/gdat.nregion
 		gdat.regions_factor = 1./float(gdat.nregion**2)
-		print('regsize/regions_factor:', gdat.regsize, gdat.regions_factor)
-		assert gdat.imsz[0] % gdat.regsize == 0 
-		assert gdat.imsz[1] % gdat.regsize == 0 
+		print('regsizes/regions_factor:', gdat.regsizes, gdat.regions_factor)
+		assert gdat.imsz0[0] % gdat.regsizes[0] == 0 
+		assert gdat.imsz0[1] % gdat.regsizes[0] == 0 
 
 		pixel_variance = np.median(self.errors[0]**2)
 		print('pixel_variance:', pixel_variance)
@@ -1322,9 +1380,9 @@ class lion():
 		self.gdat.bands = []
 		self.gdat.bands.append(self.gdat.band0)
 		if self.gdat.band1 is not None:
-			self.gdat.bands.append(gdat.band1)
+			self.gdat.bands.append(self.gdat.band1)
 			if self.gdat.band2 is not None:
-				self.gdat.bands.append(gdat.band2)
+				self.gdat.bands.append(self.gdat.band2)
 		self.gdat.nbands = len(self.gdat.bands)
 
 
