@@ -10,15 +10,21 @@ import sys
 import os
 import argparse
 import warnings
+import scipy.stats as stats
 import random
 from astropy.convolution import Gaussian2DKernel
 import scipy.signal
+from scipy.ndimage import gaussian_filter
 from image_eval import psf_poly_fit, image_model_eval
 from helpers import * 
 from fast_astrom import *
 import cPickle as pickle
 np.seterr(divide='ignore', invalid='ignore')
 
+
+class objectview(object):
+    def __init__(self, d):
+        self.__dict__ = d
 
 #generate random seed for initialization
 np.random.seed(20170502)
@@ -30,7 +36,6 @@ class gdatstrt(object):
 	
 	def __setattr__(self, attr, valu):
 		super(gdatstrt, self).__setattr__(attr, valu)
-
 
 
 def save_params(dir, gdat):
@@ -83,12 +88,7 @@ def load_in_map(gdat, band=0, astrom=None):
 	if astrom is not None:
 		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+band_dict[band]+'W_nr_1.fits', hdu_idx=3)
 
-
-
 	spire_dat = fits.open(file_path)
-
-
-
 	image = np.nan_to_num(spire_dat[1].data)
 	error = np.nan_to_num(spire_dat[2].data)
 	exposure = spire_dat[3].data
@@ -98,6 +98,7 @@ def load_in_map(gdat, band=0, astrom=None):
 
 
 def initialize_c(gdat, libmmult):
+
 	if gdat.verbtype > 1:
 		print 'initializing c routines and data structs'
 	if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
@@ -144,6 +145,306 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 	match_x = (get_region(x[0:n], offsetx, regsize) % 2) == parity_x
 	match_y = (get_region(y[0:n], offsety, regsize) % 2) == parity_y
 	return np.flatnonzero(np.logical_and(match_x, match_y))
+
+
+def load_param_dict(timestr):
+	
+	class Structo:
+		def __init__(self, **entries):
+			self.__dict__.update(entries)
+	
+	result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
+	filepath = result_path + timestr
+	filen = open(filepath+'/params.txt','r')
+	print(filen)
+	pdict = pickle.load(filen)
+	print pdict
+	opt = objectview(pdict)
+
+	print('param dict load')
+	return opt, filepath, result_path
+
+
+def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='pdf', gdat=None):
+
+	
+	band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+	lam_dict = dict({0:250, 1:350, 2:500})
+
+	
+	if gdat is None:
+		gdat, filepath, result_path = load_param_dict(timestr)
+		gdat.burn_in_frac = burn_in_frac
+		gdat.boolplotshow = boolplotshow
+		gdat.boolplotsave = boolplotsave
+		gdat.filepath = filepath
+		gdat.result_path = result_path
+		gdat.timestr = timestr
+	else:
+		gdat.result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
+		gdat.filepath = gdat.result_path + gdat.timestr
+	# gdat.auto_resize=False
+
+
+	dat = pcat_data()
+	dat.load_in_data(gdat)
+
+	chain = np.load(gdat.filepath+'/chain.npz')
+
+	nsrcs = chain['n']
+	xsrcs = chain['x']
+	ysrcs = chain['y']
+	fsrcs = chain['f']
+	chi2 = chain['chi2']
+	timestats = chain['times']
+	accept_stats = chain['accept']
+	diff2s = chain['diff2s']
+	# residuals = chain['residuals0']
+	burn_in = int(gdat.nsamp*burn_in_frac)
+	bands = gdat.bands
+
+
+	# ------------------- mean residual ---------------------------
+
+
+	for b in xrange(gdat.nbands):
+
+		residz = chain['residuals'+str(b)]
+		print(residz.shape)
+
+		print dat.weights[0].shape, dat.weights[1].shape
+		median_resid = np.median(residz, axis=0)
+		smoothed_resid = gaussian_filter(median_resid, sigma=3)
+
+		minpct = np.percentile(median_resid[dat.weights[b] != 0.], 5.)
+		maxpct = np.percentile(median_resid[dat.weights[b] != 0.], 95.)
+
+		minpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 5.)
+		maxpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 95.)
+
+
+		plt.figure(figsize=(10, 5))
+		plt.subplot(1,2,1)
+		plt.title('Median Residual -- '+band_dict[bands[b]])
+		# plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=-0.005, vmax=0.005)
+		plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=minpct, vmax=maxpct)
+		# plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
+		plt.colorbar()
+		# plt.scatter(xsrcs[-1], ysrcs[-1], s=1e2*fsrcs[-1], color='r', marker='x', label='Last Sample')
+		plt.legend()
+		plt.subplot(1,2,2)
+		plt.title('Smoothed Residual')
+		# plt.imshow(smoothed_resid, cmap='Greys', vmin=-0.004, vmax=0.0005)
+		plt.imshow(smoothed_resid, cmap='Greys', vmin=minpct_smooth, vmax=maxpct_smooth)
+		plt.colorbar()
+		# plt.scatter(xsrcs[-1], ysrcs[-1], s=1e3*fsrcs[-1], color='r', marker='x', label='Last Sample', alpha=0.5)
+		if boolplotsave:
+			plt.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight')
+		if boolplotshow:
+			plt.show()
+		plt.close()
+
+		median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
+
+
+		plt.figure()
+		plt.title('Median residual 1pt function -- '+band_dict[bands[b]])
+		plt.hist(median_resid_rav, bins=np.linspace(-0.02, 0.02, 50))
+		plt.xlabel('data - model (Jy)')
+		if boolplotsave:
+			plt.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight')
+		if boolplotshow:
+			plt.show()
+		plt.close()
+
+		median_resid = median_resid[30:median_resid.shape[1]-30,30:median_resid.shape[0]-30]
+
+		plt.figure()
+		plt.imshow(median_resid, vmin=-0.01, vmax=0.01, cmap='Greys', interpolation='none')
+		plt.colorbar()
+		if boolplotsave:
+			plt.savefig(gdat.filepath +'/cropped_image.'+plttype, bbox_inches='tight')
+		if boolplotshow:
+			plt.show()
+		plt.close()
+
+	
+
+	# -------------------- CHI2 ------------------------------------
+
+	sample_number = np.arange(burn_in, gdat.nsamp)
+	full_sample = xrange(gdat.nsamp)
+	plt.figure()
+	plt.title('Chi-Squared Distribution over Catalog Samples')
+	for b in xrange(gdat.nbands):
+		plt.plot(sample_number, chi2[burn_in:,b], label=band_dict[bands[b]])
+		plt.axhline(np.min(chi2[burn_in:,b]), linestyle='dashed', alpha=0.5, label=str(np.min(chi2[burn_in:,b]))+' (' + str(band_dict[bands[b]]) + ')')
+	plt.xlabel('Sample')
+	plt.ylabel('Chi2')
+	plt.legend()
+	if boolplotsave:
+		plt.savefig(gdat.filepath + '/chi2_sample.'+plttype, bbox_inches='tight')
+	if boolplotshow:
+		plt.show()
+	plt.close()
+
+	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
+
+	time_array = np.zeros(3, dtype=np.float32)
+	labels = ['Proposal', 'Likelihood', 'Implement']
+	print(timestats[0])
+	for samp in xrange(gdat.nsamp):
+		time_array += np.array([timestats[samp][2][0], timestats[samp][3][0], timestats[samp][4][0]])
+	plt.figure()
+	plt.title('Computational Resources')
+	plt.pie(time_array, labels=labels, autopct='%1.1f%%', shadow=True)
+	if boolplotsave:
+		plt.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight')
+	if boolplotshow:
+		plt.show()
+	plt.close()
+
+
+	# ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
+
+	proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
+	plt.figure()
+	plt.title('Proposal Acceptance Fractions')
+	for x in xrange(len(proposal_types)):
+		if not np.isnan(accept_stats[0,x]):
+			plt.plot(full_sample, accept_stats[:,x], label=proposal_types[x])
+	plt.legend()
+	plt.xlabel('Sample Number')
+	plt.ylabel('Acceptance Fraction')
+	if boolplotsave:
+		plt.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight')
+	if boolplotshow:
+		plt.show()
+	plt.close()
+
+
+
+	# -------------------------------- ITERATE OVER BANDS -------------------------------------
+
+
+	nsrc_fov = []
+	color_post = []
+	# color_post_bins = 10**np.linspace(-1, 2, 20)
+	color_post_bins = np.linspace(-1, 1, 30)
+
+	for b in xrange(gdat.nbands):
+
+		color_post = []
+
+
+		nbins = 20
+		lit_number_counts = np.zeros((gdat.nsamp - burn_in, nbins-1)).astype(np.float32)
+		raw_number_counts = np.zeros((gdat.nsamp - burn_in, nbins-1)).astype(np.float32)
+
+		binz = np.linspace(np.log10(gdat.trueminf)+3., 3., nbins)
+
+		weight = dat.weights[b]
+
+		print(fsrcs.shape)
+		print('burnin/nsamp:', burn_in, gdat.nsamp)
+		
+		for i, j in enumerate(np.arange(burn_in, gdat.nsamp)):
+
+			if b > 0:
+				color_post.append(np.histogram(np.log10(fsrcs[b][j]/fsrcs[0][j]), bins=color_post_bins)[0]+0.01)
+
+				
+
+			# print('nsrcs[j]:', nsrcs[j], j, i)
+			# print np.array([weight[int(xsrcs[j][k]), int(ysrcs[j][k])] for k in xrange(nsrcs[j])])
+			fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in xrange(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
+			nsrc_fov.append(len(fsrcs_in_fov))
+			# print(len(fsrcs[b][j]), len(fsrcs_in_fov))
+
+			hist = np.histogram(np.log10(fsrcs_in_fov)+3, bins=binz)
+
+			# hist = np.histogram(np.log10(fsrcs[b][j])+3, bins=binz)
+			logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
+			binz_Sz = 10**(binz-3)
+			dSz = binz_Sz[1:]-binz_Sz[:-1]
+			dNdS = hist[0]
+			raw_number_counts[i,:] = hist[0]
+			n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+			n_steradian *= gdat.frac # a number of pixels in the image are not actually observing anything
+			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+			lit_number_counts[i,:] = dNdS_S_twop5/n_steradian/dSz
+
+		print(np.mean(lit_number_counts, axis=0))
+		print(np.std(lit_number_counts, axis=0))
+
+		mean = np.mean(lit_number_counts, axis=0)
+
+
+		plt.figure()  
+		plt.errorbar(logSv+3, np.mean(lit_number_counts, axis=0), yerr=np.array([np.abs(mean - np.percentile(lit_number_counts, 16, axis=0)), np.abs(np.percentile(lit_number_counts, 84, axis=0) - mean)]), marker='.')
+		plt.yscale('log')
+		plt.legend()
+		plt.xlabel('log($S_{\\nu}$) (mJy)')
+		plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
+		plt.ylim(1e0, 1e5)
+		plt.xlim(np.log10(gdat.trueminf)+3.-0.5, 2.5)
+		plt.tight_layout()
+		if boolplotsave:
+			plt.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight')
+		if boolplotshow:
+			plt.show()
+		plt.close()
+
+		mean = np.mean(raw_number_counts, axis=0)
+
+		plt.title('Posterior Flux Distribution - ' + str(band_dict[bands[b]]))
+		plt.errorbar(logSv+3, np.mean(raw_number_counts, axis=0), yerr=np.array([np.abs(mean-np.percentile(raw_number_counts, 16, axis=0)), np.abs(np.percentile(raw_number_counts, 84, axis=0)-mean)]), fmt='o', label='Posterior')
+		plt.legend()
+		plt.yscale('log', nonposy='clip')
+		plt.xlabel('log10(Flux) - ' + str(band_dict[bands[b]]))
+		if boolplotsave:
+			plt.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight')
+		if boolplotshow:
+			plt.show()
+		plt.close()
+
+
+		if b > 0:
+			medians = np.median(np.array(color_post), axis=0)
+			medians /= (np.sum(medians)*(color_post_bins[1]-color_post_bins[0]))  
+			err = np.std(np.array(color_post), axis=0)
+			bincentres = [(color_post_bins[i]+color_post_bins[i+1])/2. for i in range(len(color_post_bins)-1)]
+			plt.title('Posterior Color Distribution', fontsize=14)
+			plt.step(bincentres, medians, where='mid', color='b', label='Posterior', alpha=0.5)
+			# plt.errorbar(bincentres, medians/np.sum(medians), yerr=err/np.sum(medians), label='Posterior')
+			# plt.xscale('log')
+			# finevals = np.linspace(-1, 1, 1000)
+			plt.plot(bincentres, stats.norm.pdf(bincentres, -0.8/2.5, 0.5/2.5), label='Prior')
+			plt.xlabel('$\\log_{10}(f_{'+str(lam_dict[bands[b]])+'}/f_{'+str(lam_dict[bands[0]])+'})$', fontsize=14)
+			plt.ylabel('Normalized PDF')
+			plt.legend()
+			if boolplotsave:
+				plt.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b]])+'_'+str(lam_dict[bands[0]])+'.'+plttype, bbox_inches='tight')
+			if boolplotshow:
+				plt.show()
+			plt.close()
+
+
+
+			# ------------------- SOURCE NUMBER ---------------------------
+
+		plt.figure()
+		plt.title('Posterior Source Number Histogram')
+		plt.hist(nsrc_fov, histtype='step', label='Posterior', color='b', bins=15)
+		plt.axvline(np.median(nsrc_fov), label='Median=' + str(np.median(nsrc_fov)), color='b', linestyle='dashed')
+		plt.xlabel('nstar')
+		plt.legend()
+		if boolplotsave:
+			plt.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight')
+		if boolplotshow:
+			plt.show()
+		plt.close()
+
 
    
 class Proposal:
@@ -242,7 +543,7 @@ class Model:
 
 	k =2.5/np.log(10)
 
-	mus = dict({'S-M':0., 'M-L':-0.3, 'L-S':0.0, 'M-S':0.0, 'S-L':0.5, 'L-M':0.2})
+	mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
 	#sigs = dict({'r-i':0.5, 'r-g':5.0, 'r-z':1.0, 'r-r':0.05})
 	sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
 	#mus = dict({'r-i':0.0, 'r-g':0.0}) # for same flux different noise tests, r, i, g are all different realizations of r band
@@ -399,12 +700,12 @@ class Model:
 				self.offsetxs[b+1] = int(self.offsetxs[0]*reg_ratio)
 				self.offsetys[b+1] = int(self.offsetys[0]*reg_ratio)
 				self.margins[b+1] = int(self.margins[0]*reg_ratio)
-				if gdat.verbtype > 1:
+				if self.gdat.verbtype > 1:
 					print(self.offsetxs[b+1], self.offsetys[b+1], self.margins[b+1])
 		else:
 
- 			self.offsetxs = np.array([0 for b in xrange(self.gdat.nbands)])
- 			self.offsetys = np.array([0 for b in xrange(self.gdat.nbands)])
+			self.offsetxs = np.array([0 for b in xrange(self.gdat.nbands)])
+			self.offsetys = np.array([0 for b in xrange(self.gdat.nbands)])
 
 
 		self.nregx = self.imsz0[0] / self.regsizes[0] + 1
@@ -413,7 +714,7 @@ class Model:
 		resids = []
 		for b in xrange(self.nbands):
 			resid = self.dat.data_array[b].copy() # residual for zero image is data
-			if gdat.verbtype > 1:
+			if self.gdat.verbtype > 1:
 				print('resid has shape:', resid.shape)
 			resids.append(resid)
 
@@ -586,81 +887,181 @@ class Model:
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
 
 		if self.gdat.visual:
-			plt.gcf().clear()
-			plt.figure(1, figsize=(9, 4))
-			plt.clf()
-			plt.subplot(2,3,1)
-			plt.title('Data')
-			plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-			plt.colorbar()
-			sizefac = 10.*136
-			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-			plt.xlim(-0.5, self.imsz0[0]-0.5)
-			plt.ylim(-0.5, self.imsz0[1]-0.5)
-			plt.subplot(2,3,2)
-			plt.title('Model')
-			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
-			plt.colorbar()
-			plt.subplot(2,3,3)
-			plt.title('Residual')
-			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
-			# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
-			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
-			# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
-			if self.gdat.weighted_residual:
-				plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+
+			if self.gdat.nbands == 1:
+				self.plot_single_band_frame(resids, models)
 			else:
-				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
+				self.plot_multiband_frame(resids, models)
 
-			plt.colorbar()
-			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids
 
-			plt.subplot(2,3,4)
-			plt.title('Data (zoomed in)')
-			plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-			plt.colorbar()
-			plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-			plt.ylim(90, 140)
-			plt.xlim(70, 120)
-			plt.subplot(2,3,5)
-			plt.title('Residual (zoomed in)')
 
-			if self.gdat.weighted_residual:
-				plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-			else:
-				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
-			plt.colorbar()
-			plt.ylim(90, 140)
-			plt.xlim(70, 120)
-			plt.subplot(2,3,6)
+	def plot_single_band_frame(self, resids, models):
+		plt.gcf().clear()
+		plt.figure(1, figsize=(9, 4))
+		plt.clf()
+		plt.subplot(2,3,1)
+		plt.title('Data')
+		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
+		plt.colorbar()
+		sizefac = 10.*136
+		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+		plt.xlim(-0.5, self.imsz0[0]-0.5)
+		plt.ylim(-0.5, self.imsz0[1]-0.5)
+		plt.subplot(2,3,2)
+		plt.title('Model')
+		plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
+		# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
+		plt.colorbar()
+		plt.subplot(2,3,3)
+		plt.title('Residual')
+		# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+		# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
+		# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
+		# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
+		if self.gdat.weighted_residual:
+			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+		else:
+			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
 
-			binz = np.linspace(np.log10(self.trueminf)+3., np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3.), 20)
-			hist = np.histogram(np.log10(self.stars[self._F, 0:self.n])+3, bins=binz)
-			logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
-			binz_Sz = 10**(binz-3)
-			dSz = binz_Sz[1:]-binz_Sz[:-1]
-			dNdS = hist[0]
+		plt.colorbar()
+		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+
+		plt.subplot(2,3,4)
+		plt.title('Data (zoomed in)')
+		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
+		plt.colorbar()
+		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+		plt.ylim(90, 140)
+		plt.xlim(70, 120)
+		plt.subplot(2,3,5)
+		plt.title('Residual (zoomed in)')
+
+		if self.gdat.weighted_residual:
+			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+		else:
+			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
+		plt.colorbar()
+		plt.ylim(90, 140)
+		plt.xlim(70, 120)
+		plt.subplot(2,3,6)
+
+		binz = np.linspace(np.log10(self.trueminf)+3., np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3.), 20)
+		hist = np.histogram(np.log10(self.stars[self._F, 0:self.n])+3, bins=binz)
+		logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
+		binz_Sz = 10**(binz-3)
+		dSz = binz_Sz[1:]-binz_Sz[:-1]
+		dNdS = hist[0]
+
+		if self.gdat.raw_counts:
+	
+			plt.plot(logSv+3, dNdS, marker='.')
+			plt.ylabel('dN/dS')
+			plt.ylim(5e-1, 3e3)
+
+		else:
 			n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
 			n_steradian *= self.gdat.frac # a number of pixels in the image are not actually observing anything
 			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
-			
 			plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
-			plt.yscale('log')
-			plt.legend()
-			plt.xlabel('log($S_{\\nu}$) (mJy)')
 			plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
 			plt.ylim(1e0, 1e5)
-			plt.xlim(np.log10(self.trueminf)+3.-0.5, 2.5)
-			plt.tight_layout()
-			plt.draw()
-			# if savefig:
-				# plt.savefig(frame_dir + '/frame_' + str(c) + '.png')
-			plt.pause(1e-5)
+
+
+		plt.yscale('log')
+		plt.legend()
+		plt.xlabel('log($S_{\\nu}$) (mJy)')
+		plt.xlim(np.log10(self.trueminf)+3.-0.5, 2.5)
+		plt.tight_layout()
+		plt.draw()
+		# if savefig:
+			# plt.savefig(frame_dir + '/frame_' + str(c) + '.png')
+		plt.pause(1e-5)
+
+	def plot_multiband_frame(self, resids, models):
+		plt.gcf().clear()
+		plt.figure(1, figsize=(9, 4))
+		plt.clf()
+		plt.subplot(2,3,1)
+		plt.title('Data')
+		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
+		plt.colorbar()
+		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+		plt.xlim(-0.5, self.imsz0[0]-0.5)
+		plt.ylim(-0.5, self.imsz0[1]-0.5)
+		plt.subplot(2,3,2)
+		plt.title('Data (second band)')
+		xp, yp = self.dat.fast_astrom.transform_q(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], 0)
+
+		plt.imshow(self.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[1]), vmax=np.percentile(self.dat.data_array[1], 99.9))
+		plt.colorbar()
+		plt.scatter(xp, yp, marker='x', s=self.stars[self._F+1, 0:self.n]*100, color='r')
+		plt.xlim(-0.5, self.imszs[1][0]-0.5)
+		plt.ylim(-0.5, self.imszs[1][1]-0.5)
+
+		plt.subplot(2,3,3)
+		plt.title('Residual')
+		if self.gdat.weighted_residual:
+			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+		else:
+			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
+
+		plt.colorbar()
+		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+
+		plt.subplot(2,3,4)
+		plt.title('Data (zoomed in)')
+		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
+		plt.colorbar()
+		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+		plt.ylim(90, 140)
+		plt.xlim(70, 120)
+		plt.subplot(2,3,5)
+		plt.title('Residual (zoomed in)')
+
+		if self.gdat.weighted_residual:
+			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+		else:
+			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
+		plt.colorbar()
+		plt.ylim(90, 140)
+		plt.xlim(70, 120)
+		plt.subplot(2,3,6)
+
+		binz = np.linspace(np.log10(self.trueminf)+3., np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3.), 20)
+		hist = np.histogram(np.log10(self.stars[self._F, 0:self.n])+3, bins=binz)
+		logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
+		binz_Sz = 10**(binz-3)
+		dSz = binz_Sz[1:]-binz_Sz[:-1]
+		dNdS = hist[0]
+
+		if self.gdat.raw_counts:
+	
+			plt.plot(logSv+3, dNdS, marker='.')
+			plt.ylabel('dN/dS')
+			plt.ylim(5e-1, 3e3)
+
+		else:
+			n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+			n_steradian *= self.gdat.frac # a number of pixels in the image are not actually observing anything
+			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+			plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
+			plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
+			plt.ylim(1e0, 1e5)
+
+
+		plt.yscale('log')
+		plt.legend()
+		plt.xlabel('log($S_{\\nu}$) (mJy)')
+		plt.xlim(np.log10(self.trueminf)+3.-0.5, 2.5)
+		plt.tight_layout()
+		plt.draw()
+		# if savefig:
+			# plt.savefig(frame_dir + '/frame_' + str(c) + '.png')
+		plt.pause(1e-5)
 
 
 
-		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids
 
 
 	def idx_parity_stars(self):
@@ -715,7 +1116,7 @@ class Model:
 			if b==0:
 				pf = self.flux_proposal(f0[b], nw)
 			else:
-				pf = self.flux_proposal(f0[b], nw, trueminf=1) #place a minor minf to avoid negative fluxes in non-pivot bands
+				pf = self.flux_proposal(f0[b], nw, trueminf=0.0001) #place a minor minf to avoid negative fluxes in non-pivot bands
 			pfs.append(pf)
  
 		if (np.array(pfs)<0).any():
@@ -723,13 +1124,11 @@ class Model:
 			print np.array(pfs)[np.array(pfs)<0]
 
 		dlogf = np.log(pfs[0]/f0[0])
-		# print 'average flux difference'
-		# print np.average(np.abs(f0[0]-pfs[0]))
+
 		if self.verbtype > 1:
 			print 'average flux difference'
 			print np.average(np.abs(f0[0]-pfs[0]))
-		# print 'average flux difference'
-		# print np.median(np.abs(f0[0]-pfs[0]))
+
 		factor = -self.truealpha*dlogf
 
 		# print('factor:', factor)
@@ -754,10 +1153,7 @@ class Model:
 			color_factors[b] += (orig_colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
 			modl_eval_colors.append(colors)
 	
-		assert np.isnan(color_factors).any()==False
-
-		if np.isnan(color_factors).any():
-			print 'color factors nan'                
+		assert np.isnan(color_factors).any()==False       
 
 		if self.verbtype > 1:
 			print 'avg abs color_factors:', np.average(np.abs(color_factors))
@@ -813,15 +1209,12 @@ class Model:
 			nbd = min(nbd, self.max_nsrc-self.n) # add nbd sources, or just as many as will fit
 			# mildly violates detailed balance when n close to nstar
 			# want number of regions in each direction, divided by two, rounded up
-			# mregx = ((self.imsz0[0] / self.regsize + 1) + 1) / 2 # assumes that imsz are multiples of regsize
-			# mregy = ((self.imsz0[1] / self.regsize + 1) + 1) / 2
+
 			
 			mregx = ((self.imsz0[0] / self.regsizes[0] + 1) + 1) / 2 # assumes that imsz are multiples of regsize
 			mregy = ((self.imsz0[1] / self.regsizes[0] + 1) + 1) / 2
 
 			starsb = np.empty((2+self.nbands, nbd), dtype=np.float32)
-			# starsb[self._X,:] = (np.random.randint(mregx, size=nbd)*2 + self.parity_x + np.random.uniform(size=nbd))*self.regsize - self.offsetx
-			# starsb[self._Y,:] = (np.random.randint(mregy, size=nbd)*2 + self.parity_y + np.random.uniform(size=nbd))*self.regsize - self.offsety
 			starsb[self._X,:] = (np.random.randint(mregx, size=nbd)*2 + self.parity_x + np.random.uniform(size=nbd))*self.regsizes[0] - self.offsetxs[0]
 			starsb[self._Y,:] = (np.random.randint(mregy, size=nbd)*2 + self.parity_y + np.random.uniform(size=nbd))*self.regsizes[0] - self.offsetys[0]
 			
@@ -1122,7 +1515,9 @@ class Samples():
 		self.tq_times = np.zeros(gdat.nsamp, dtype=np.float32)
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in xrange(gdat.nbands)]
 		self.colorsample = [[] for x in xrange(gdat.nbands-1)]
-		self.residuals = np.zeros((gdat.nbands, gdat.residual_samples, gdat.width, gdat.height))
+		# self.residuals = np.zeros((gdat.nbands, gdat.residual_samples, gdat.width, gdat.height))
+		print 'imsz is spec', gdat.imszs[0][0]
+		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in xrange(gdat.nbands)]
 		self.chi2sample = np.zeros((gdat.nsamp, gdat.nbands), dtype=np.int32)
 		self.nbands = gdat.nbands
 		self.gdat = gdat
@@ -1142,13 +1537,26 @@ class Samples():
 		for b in xrange(self.nbands):
 			self.fsample[b][j,:] = model.stars[Model._F+b,:]
 			if self.gdat.nsamp - j < self.gdat.residual_samples+1:
-				self.residuals[b,-(self.gdat.nsamp-j),:,:] = resids[b] 
+				self.residuals[b][-(self.gdat.nsamp-j),:,:] = resids[b] 
 
 	def save_samples(self, result_path, timestr):
 
-		np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
+		if self.gdat.nbands > 1:
+			if self.gdat.nbands > 2:
+				np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals=self.residuals)
+				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], residuals2=self.residuals[2])
+			else:
+				print('self.residuals[0] has shape', self.residuals[0].shape, self.residuals[1].shape)
+				np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
+				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
+				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1])
+
+
+		else:
+			np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
+				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
+				accepts=self.accept_all, residuals0=self.residuals[0])
 
 ''' This class sets up the data structures for data/data-related information. 
 load_in_data() loads in data, generates the PSF template and computes weights from the noise model
@@ -1189,7 +1597,8 @@ class pcat_data():
 		for band in gdat.bands:
 			if gdat.mock_name is None:
 				image, error, exposure, mask, band_dict = load_in_map(gdat, band, astrom=self.fast_astrom)
-				
+				print('band here is:', band)
+				print image.shape, error.shape
 				if band > 0:
 					self.fast_astrom.fit_astrom_arrays(0, band)
 
@@ -1203,23 +1612,18 @@ class pcat_data():
 				print('smaller dim is', smaller_dim)
 				gdat.width = self.find_lowest_mod(smaller_dim, gdat.nregion)
 				gdat.height = gdat.width
-
 				image_size = (gdat.width, gdat.height)
 
-				# gdat.imsz = (gdat.width, gdat.height)
-
 			if gdat.width > 0:
+				print('gdat width here is ', gdat.width)
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				
 				image_size = (gdat.width, gdat.height)
-				# gdat.imsz = (gdat.width, gdat.height)
 			else:
 				image_size = (image.shape[0], image.shape[1])
-
-				# gdat.imsz = (image.shape[0], image.shape[1])
 
 
 
@@ -1265,7 +1669,7 @@ class pcat_data():
 		pixel_variance = np.median(self.errors[0]**2)
 		print('pixel_variance:', pixel_variance)
 		gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2
-		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)
+		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/5
 
 
 		# return gdat
@@ -1359,15 +1763,25 @@ class lion():
 			# used for visual mode
 			weighted_residual = False, \
 
+			# to show raw number counts set to True
+			raw_counts = False, \
+
 			# verbosity during program execution
 			verbtype = 0, \
 
 			# number of residual samples to average for final product
-			residual_samples = 100):
+			residual_samples = 100, \
+
+			# set to True to automatically make posterior/diagnostic plots after the run 
+			make_post_plots = False, \
+
+			# used for computing posteriors
+			burn_in_frac = 0.6, 
+
+			# save posterior plots
+			bool_plot_save = True):
 
 
-		# for strg, valu in args.iteritems():
-		# 	setattr(gdat, strg, valu)
 
 		for attr, valu in locals().iteritems():
 			if '__' not in attr and attr != 'gdat':
@@ -1432,11 +1846,18 @@ class lion():
 			# save final catalog state
 			np.savez(self.gdat.result_path + '/'+str(self.gdat.timestr)+'/final_state.npz', cat=model.stars)
 
+		if self.gdat.make_post_plots:
+			result_plots(gdat = self.gdat)
 
 		dt_total = time.clock() - start_time
 		print 'Full Run Time (s):', np.round(dt_total,3)
 		print 'Time String:', str(self.gdat.timestr)
 
+# ob = lion(raw_counts=True, auto_resize=True, visual=True)
+# ob = lion(auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+# ob.main()
+
+# result_plots(timestr='20190916-132810')
 
 
 
