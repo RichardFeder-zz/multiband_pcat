@@ -1561,8 +1561,15 @@ class pcat_data():
 		gdat.regsizes = []
 		gdat.margins = []
 
+
 		for band in gdat.bands:
-			if gdat.mock_name is None:
+
+			if map_object is not None:
+			''' Here is where map object would be used to get imagee, error, exposure and mask. 
+				Also need to get the WCS header here ''' 
+				continue
+
+			elif gdat.mock_name is None:
 				image, error, exposure, mask, band_dict = load_in_map(gdat, band, astrom=self.fast_astrom)
 				print('band here is:', band)
 				print(image.shape, error.shape)
@@ -1572,7 +1579,6 @@ class pcat_data():
 				gdat.band_dict = band_dict
 			else:
 				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
-			print('median:', np.median(image[image != 0.]))
 			
 			if gdat.auto_resize:
 				smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
@@ -1781,7 +1787,10 @@ class lion():
 			burn_in_frac = 0.6, 
 
 			# save posterior plots
-			bool_plot_save = True):
+			bool_plot_save = True, \
+
+			# return median model image from last 'residual_samples' samples 
+			return_median_model = False):
 
 
 
@@ -1848,9 +1857,27 @@ class lion():
 		if self.gdat.make_post_plots:
 			result_plots(gdat = self.gdat)
 
+
 		dt_total = time.clock() - start_time
 		print('Full Run Time (s):', np.round(dt_total,3))
 		print('Time String:', str(self.gdat.timestr))
+
+		if return_median_model:
+			models = []
+			for b in xrange(self.gdat.nbands):
+				if b == 0:
+					model_samples = np.array([self.dat.data_array[b]-samps.residuals0[i] for i in xrange(self.gdat.residual_samples)])
+				elif b==1:
+
+				model_samples = np.array([self.dat.data_array[b]-samps.residuals[b][i] for i in xrange(self.gdat.residual_samples)])
+
+				median_model = np.median(model_samples, axis=0)
+				print('median model has shape', median_model.shape)
+				models.append(median_model)
+
+			return models
+
+
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
 ob = lion(band1=1, auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
