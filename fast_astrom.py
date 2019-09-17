@@ -6,7 +6,6 @@ import numpy as np
 def find_nearest_upper_mod(number, mod_number):
     while number < 10000:
         if np.mod(number, mod_number) == 0:
-            print 'got it'
             return number
         else:
             number += 1
@@ -87,7 +86,6 @@ class wcs_astrometry():
         if self.auto_resize:
             big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
             big_pad_dim = find_nearest_upper_mod(big_dim, self.nregion)
-            print 'big dim/ big padded dim is ', big_dim, big_pad_dim
             dim = (big_pad_dim, big_pad_dim)
         else:
             dim = (head['NAXIS1'], head['NAXIS2'])
@@ -114,10 +112,10 @@ class wcs_astrometry():
         dyp = y1 - y0
         
         if self.verbosity > 0:
-            print 'dxp:'
-            print dxp
-            print 'dyp:'
-            print dyp
+            print('dxp:')
+            print(dxp)
+            print('dyp:')
+            print(dyp)
         
         return dxp, dyp
            
@@ -129,20 +127,20 @@ class wcs_astrometry():
         xv, yv = np.meshgrid(x, y)
         
         if self.verbosity > 0:
-            print 'xv:'
-            print xv
-            print 'yv:'
-            print yv
+            print('xv:')
+            print(xv)
+            print('yv:')
+            print(yv)
 
         dxp_dx, dyp_dx = self.get_derivative(idx0, idx1, xv, yv, 0.5, 0.0)
         dxp_dy, dyp_dy = self.get_derivative(idx0, idx1, xv, yv, 0.0, 0.5)
         xp, yp = self.obs_to_obs(idx0, idx1, xv, yv)
         
         if self.verbosity > 0:
-            print 'xp:'
-            print xp
-            print 'yp:'
-            print yp
+            print('xp:')
+            print(xp)
+            print('yp:')
+            print(yp)
         
         fast_arrays = np.array([xp, yp, dxp_dx, dyp_dx, dxp_dy, dyp_dy])
         self.all_fast_arrays.append(fast_arrays)
@@ -158,8 +156,8 @@ class wcs_astrometry():
             ynew = ytrans[yints,xints] + dxs*dypdx[yints,xints] + dys*dypdy[yints,xints] 
             return np.array(xnew).astype(np.float32), np.array(ynew).astype(np.float32)
         except:
-            print np.max(xints), np.max(yints), xtrans.shape
-            print xints, dxs, yints, dys
+            print(np.max(xints), np.max(yints), xtrans.shape)
+            print(xints, dxs, yints, dys)
             raise ValueError('problem accessing elements')
 
 

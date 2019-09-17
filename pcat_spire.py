@@ -41,7 +41,6 @@ class gdatstrt(object):
 def save_params(dir, gdat):
 	# save parameters as dictionary, then pickle them to txt file
 	param_dict = vars(gdat)
-	print param_dict
 	
 	with open(dir+'/params.txt', 'w') as file:
 		file.write(pickle.dumps(param_dict))
@@ -87,7 +86,7 @@ def load_in_map(gdat, band=0, astrom=None):
 def initialize_c(gdat, libmmult):
 
 	if gdat.verbtype > 1:
-		print 'initializing c routines and data structs'
+		print('initializing c routines and data structs')
 	if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 		warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
 	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
@@ -141,7 +140,7 @@ def load_param_dict(timestr):
 	filen = open(filepath+'/params.txt','r')
 	print(filen)
 	pdict = pickle.load(filen)
-	print pdict
+	print(pdict)
 	opt = objectview(pdict)
 
 	print('param dict load')
@@ -195,7 +194,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		residz = chain['residuals'+str(b)]
 		print(residz.shape)
 
-		# print dat.weights[0].shape, dat.weights[1].shape
 		median_resid = np.median(residz, axis=0)
 		smoothed_resid = gaussian_filter(median_resid, sigma=3)
 
@@ -327,9 +325,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		binz = np.linspace(np.log10(gdat.trueminf)+3., 3., nbins)
 
 		weight = dat.weights[b]
-
-		print(fsrcs.shape)
-		print('burnin/nsamp:', burn_in, gdat.nsamp)
 		
 		for i, j in enumerate(np.arange(burn_in, gdat.nsamp)):
 
@@ -337,12 +332,8 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 				color_post.append(np.histogram(np.log10(fsrcs[b][j]/fsrcs[0][j]), bins=color_post_bins)[0]+0.01)
 
 				
-
-			# print('nsrcs[j]:', nsrcs[j], j, i)
-			# print np.array([weight[int(xsrcs[j][k]), int(ysrcs[j][k])] for k in xrange(nsrcs[j])])
 			fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in xrange(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
 			nsrc_fov.append(len(fsrcs_in_fov))
-			# print(len(fsrcs[b][j]), len(fsrcs_in_fov))
 
 			hist = np.histogram(np.log10(fsrcs_in_fov)+3, bins=binz)
 
@@ -356,9 +347,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 			n_steradian *= gdat.frac # a number of pixels in the image are not actually observing anything
 			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
 			lit_number_counts[i,:] = dNdS_S_twop5/n_steradian/dSz
-
-		print(np.mean(lit_number_counts, axis=0))
-		print(np.std(lit_number_counts, axis=0))
 
 		mean = np.mean(lit_number_counts, axis=0)
 
@@ -584,7 +572,7 @@ class Model:
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
 					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
 		else:
-			print 'Loading in catalog from run with timestr='+gdat.load_state_timestr+'...'
+			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...')
 			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
 			self.stars = np.load(catpath)['cat']
 			self.n = np.count_nonzero(self.stars[self._F,:])
@@ -594,7 +582,7 @@ class Model:
    
 	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):    
 		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
-		print 'Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2)
+		print('Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2))
 		dts *= 1000
 
 		accept_fracs = []
@@ -613,10 +601,10 @@ class Model:
 				print '('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])),
 			print
 			if j == 1:
-				print '-'*16
-		print '-'*16
-		print 'Total (s): %0.3f' % (np.sum(statarrays[2:])/1000)
-		print '='*16
+				print('-'*16)
+		print('-'*16)
+		print('Total (s): %0.3f' % (np.sum(statarrays[2:])/1000))
+		print('='*16)
 
 		return timestat_array, accept_fracs
 
@@ -626,7 +614,6 @@ class Model:
 		dmodels = []
 		dt_transf = 0
 		for b in xrange(self.nbands):
-			# print(self.margins[b], self.offsetxs[b], self.offsetys[b], self.regsizes[b])
 			if b>0:
 				t4 = time.clock()
 				if self.gdat.bands[b] != self.gdat.bands[0]:
@@ -709,11 +696,11 @@ class Model:
 		n_phon = evalx.size
 
 		if self.gdat.verbtype > 1:
-			print 'beginning of run sampler'
-			print 'self.n here'
-			print self.n
-			print 'n_phon'
-			print n_phon
+			print('beginning of run sampler')
+			print('self.n here')
+			print(self.n)
+			print('n_phon')
+			print(n_phon)
 
 		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.pcat_model_eval)
 		model = models[0]
@@ -740,7 +727,7 @@ class Model:
 			rtype = rtype_array[i]
 			
 			if self.verbtype > 1:
-				print 'rtype: ', rtype
+				print('rtype: ', rtype)
 			if self.nregion > 1:
 				self.parity_x = xparities[i] # should regions be perturbed randomly or systematically?
 				self.parity_y = yparities[i]
@@ -760,16 +747,9 @@ class Model:
 				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
 				plogL[:,(1-self.parity_x)::2] = float('-inf')
 				dlogP = plogL - logL
-				# print('dlogP:', dlogP)
-				# print('proposal factor:', proposal.factor)
 				if self.verbtype > 1:
-					print 'dlogP'
-					print dlogP
-
-				# print('dlogP:', dlogP)
-				# model = dmodels[0]
-				# print('model:', model)
-				# print(np.max(np.abs(model[model!=0.])), np.std(model[model!=0.]), np.max(proposal.fphon))
+					print('dlogP')
+					print(dlogP)
 				
 				assert np.isnan(dlogP).any() == False
 				
@@ -786,7 +766,7 @@ class Model:
 				if proposal.factor is not None:
 					dlogP[regiony, regionx] += proposal.factor
 				else:
-					print 'proposal factor is None'
+					print('proposal factor is None')
 				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 				acceptprop = acceptreg[regiony, regionx]
 				numaccept = np.count_nonzero(acceptprop)
@@ -843,28 +823,27 @@ class Model:
 					accept[i] = 0
 			else:
 				if self.verbtype > 1:
-					print 'out of bounds'
+					print('out of bounds')
 				outbounds[i] = 1
 
-			# print('weights:', weights[b])
 			for b in xrange(self.nbands):
 				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 					
 			if self.verbtype > 1:
-				print 'end of Loop', i
-				print 'self.n'
-				print self.n
-				print 'diff2'
-				print diff2_list[i]
+				print('end of Loop', i)
+				print('self.n')
+				print(self.n)
+				print('diff2')
+				print(diff2_list[i])
 			
 		chi2 = np.zeros(self.nbands)
 		for b in xrange(self.nbands):
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 			
 		if self.verbtype > 1:
-			print 'end of sample'
-			print 'self.n end'
-			print self.n
+			print('end of sample')
+			print('self.n end')
+			print(self.n)
 
 
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
@@ -1103,25 +1082,23 @@ class Model:
 			pfs.append(pf)
  
 		if (np.array(pfs)<0).any():
-			print 'negative flux!'
-			print np.array(pfs)[np.array(pfs)<0]
+			print('negative flux!')
+			print(np.array(pfs)[np.array(pfs)<0])
 
 		dlogf = np.log(pfs[0]/f0[0])
 
 		if self.verbtype > 1:
-			print 'average flux difference'
-			print np.average(np.abs(f0[0]-pfs[0]))
+			print('average flux difference')
+			print(np.average(np.abs(f0[0]-pfs[0])))
 
 		factor = -self.truealpha*dlogf
 
-		# print('factor:', factor)
-
 		if np.isnan(factor).any():
-			print 'factor nan from flux'
-			print 'number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0]))
+			print('factor nan from flux')
+			print('number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0])))
 			if self.verbtype > 1:
-				print 'factor'
-				print factor
+				print('factor')
+				print(factor)
 			factor[np.isnan(factor)]=0
 
 		''' the loop over bands below computes colors and prior factors in color used when sampling the posterior
@@ -1139,16 +1116,16 @@ class Model:
 		assert np.isnan(color_factors).any()==False       
 
 		if self.verbtype > 1:
-			print 'avg abs color_factors:', np.average(np.abs(color_factors))
-			print 'avg abs flux factor:', np.average(np.abs(factor))
+			print('avg abs color_factors:', np.average(np.abs(color_factors)))
+			print('avg abs flux factor:', np.average(np.abs(factor)))
 
 		factor = np.array(factor) + np.sum(color_factors, axis=0)
 		
 		dpos_rms = np.float32(np.sqrt(self.gdat.N_eff/(2*np.pi))*self.err_f/(np.sqrt(self.nominal_nsrc*self.regions_factor*(2+self.nbands))))/(np.maximum(f0[0],pfs[0]))
 
 		if self.verbtype > 1:
-			print 'dpos_rms'
-			print dpos_rms
+			print('dpos_rms')
+			print(dpos_rms)
 		
 		dpos_rms[dpos_rms < 1e-3] = 1e-3 #do we need this line? perhaps not
 		dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
@@ -1157,19 +1134,19 @@ class Model:
 		starsp[self._Y,:] = stars0[self._Y,:] + dy
 		
 		if self.verbtype > 1:
-			print 'dx'
-			print dx
-			print 'dy'
-			print dy
-			print 'mean dx and mean dy'
-			print np.mean(np.abs(dx)), np.mean(np.abs(dy))
+			print('dx')
+			print(dx)
+			print('dy')
+			print(dy)
+			print('mean dx and mean dy')
+			print(np.mean(np.abs(dx)), np.mean(np.abs(dy)))
 
 		for b in xrange(self.nbands):
 			starsp[self._F+b,:] = pfs[b]
 			if (pfs[b]<0).any():
-				print 'proposal fluxes less than 0'
-				print 'band', b
-				print pfs[b]
+				print('proposal fluxes less than 0')
+				print('band', b)
+				print(pfs[b])
 		self.bounce_off_edges(starsp)
 
 		proposal = Proposal(self.gdat)
@@ -1210,11 +1187,11 @@ class Model:
 					starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)
 			
 					if (starsb[self._F+b,:]<0).any():
-						print 'negative birth star fluxes'
-						print 'new_colors'
-						print new_colors
-						print 'starsb fluxes:'
-						print starsb[self._F+b,:]
+						print('negative birth star fluxes')
+						print('new_colors')
+						print(new_colors)
+						print('starsb fluxes:')
+						print(starsb[self._F+b,:])
 
 			# some sources might be generated outside image
 			inbounds = self.in_bounds(starsb)
@@ -1261,16 +1238,16 @@ class Model:
 			fminratio = stars0[self._F,:] / self.trueminf
  
 			if self.verbtype > 1:
-				print 'stars0 at splitsville start'
-				print stars0
-				print 'fminratio here'
-				print fminratio
-				print 'dx'
-				print dx
-				print 'dy'
-				print dy
-				print 'idx_move'
-				print idx_move
+				print('stars0 at splitsville start')
+				print(stars0)
+				print('fminratio here')
+				print(fminratio)
+				print('dx')
+				print(dx)
+				print('dy')
+				print(dy)
+				print('idx_move')
+				print(idx_move)
 				
 			fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
 			
@@ -1295,21 +1272,21 @@ class Model:
 				starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
 				starsb[self._F+b,:] = stars0[self._F+b,:]*(1-fracs[b])
 				if (starsp[self._F+b,:]<0).any():
-					print 'neg starsp in band', b
-					print 'stars0'
-					print stars0
-					print 'fracs[b]'
-					print fracs[b]
-					print 'starsp[self._F+b,:]'
-					print starsp[self._F+b,:]
+					print('neg starsp in band', b)
+					print('stars0')
+					print(stars0)
+					print('fracs[b]')
+					print(fracs[b])
+					print('starsp[self._F+b,:]')
+					print(starsp[self._F+b,:])
 				if (starsb[self._F+b,:]<0).any():
-					print 'neg starsb in band', b
-					print 'stars0'
-					print stars0
-					print '1-fracs[b]'
-					print (1-fracs[b])
-					print 'starsb[self._F+b,:]'
-					print starsb[self._F+b,:]
+					print('neg starsb in band', b)
+					print('stars0')
+					print(stars0)
+					print('1-fracs[b]')
+					print(1-fracs[b])
+					print('starsb[self._F+b,:]')
+					print(starsb[self._F+b,:])
 			# don't want to think about how to bounce split-merge
 			# don't need to check if above fmin, because of how frac is decided
 			inbounds = np.logical_and(self.in_bounds(starsp), self.in_bounds(starsb))
@@ -1334,15 +1311,15 @@ class Model:
 			
 
 			if self.verbtype > 1:
-				print 'splitsville happening'
-				print 'goodmove:', goodmove
-				print 'invpairs'
-				print invpairs
-				print 'nms:', nms
-				print 'sum_fs'
-				print sum_fs
-				print 'fminratio'
-				print fminratio
+				print('splitsville happening')
+				print('goodmove:', goodmove)
+				print('invpairs')
+				print(invpairs)
+				print('nms:', nms)
+				print('sum_fs')
+				print(sum_fs)
+				print('fminratio')
+				print(fminratio)
 
 			for k in xrange(nms):
 				xtemp = self.stars[self._X, 0:self.n].copy()
@@ -1365,10 +1342,10 @@ class Model:
 			invpairs = np.empty(nms)
 			
 			if self.verbtype > 1:
-				print 'merging two things!'
-				print 'nms:', nms
-				print 'idx_move', idx_move
-				print 'idx_kill', idx_kill
+				print('merging two things!')
+				print('nms:', nms)
+				print('idx_move', idx_move)
+				print('idx_kill', idx_kill)
 				
 			for k in xrange(nms):
 				idx_move[k] = np.random.choice(self.max_nsrc, p=choosable/nchoosable)
@@ -1403,20 +1380,20 @@ class Model:
 			fminratio = sum_fs[0] / self.trueminf
 			
 			if self.verbtype > 1:
-				print 'fminratio'
-				print fminratio
-				print 'nms is now', nms
-				print 'sum_fs[0]', sum_fs[0]
-				print 'all sum_fs:'
-				print sum_fs
-				print 'stars0'
-				print stars0
-				print 'starsk'
-				print starsk
-				print 'idx_move'
-				print idx_move
-				print 'idx_kill'
-				print idx_kill
+				print('fminratio')
+				print(fminratio)
+				print('nms is now', nms)
+				print('sum_fs[0]', sum_fs[0])
+				print('all sum_fs:')
+				print(sum_fs)
+				print('stars0')
+				print(stars0)
+				print('starsk')
+				print(starsk)
+				print('idx_move')
+				print(idx_move)
+				print('idx_kill')
+				print(idx_kill)
 				
 			starsp = np.empty_like(stars0)
 			# place merged source at center of flux of previous two sources
@@ -1473,13 +1450,13 @@ class Model:
 			assert np.isnan(factor).any()==False
 
 			if self.verbtype > 1:
-				print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange)
-				print 'imsz factor', np.log(self.imsz0[0]*self.imsz0[1]) 
-				print 'fminratio:', fminratio
-				print 'fmin factor', np.log(1. - 2./fminratio)
-				print 'kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio)
-				print 'factor after colors'
-				print factor
+				print('kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange))
+				print('imsz factor', np.log(self.imsz0[0]*self.imsz0[1]))
+				print('fminratio:', fminratio)
+				print('fmin factor', np.log(1. - 2./fminratio))
+				print('kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio))
+				print('factor after colors')
+				print(factor)
 		return proposal
 
 
@@ -1499,7 +1476,7 @@ class Samples():
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in xrange(gdat.nbands)]
 		self.colorsample = [[] for x in xrange(gdat.nbands-1)]
 		# self.residuals = np.zeros((gdat.nbands, gdat.residual_samples, gdat.width, gdat.height))
-		print 'imsz is spec', gdat.imszs[0][0]
+		print('imsz is spec', gdat.imszs[0][0])
 		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in xrange(gdat.nbands)]
 		self.chi2sample = np.zeros((gdat.nsamp, gdat.nbands), dtype=np.int32)
 		self.nbands = gdat.nbands
@@ -1565,7 +1542,6 @@ class pcat_data():
 	def find_lowest_mod(self, number, mod_number):
 		while number > 0:
 			if np.mod(number, mod_number) == 0:
-				print 'got it'
 				return number
 			else:
 				number -= 1
@@ -1574,7 +1550,6 @@ class pcat_data():
 	def find_nearest_upper_mod(self, number, mod_number):
 		while number < 10000:
 			if np.mod(number, mod_number) == 0:
-				print 'got it'
 				return number
 			else:
 				number += 1
@@ -1590,7 +1565,7 @@ class pcat_data():
 			if gdat.mock_name is None:
 				image, error, exposure, mask, band_dict = load_in_map(gdat, band, astrom=self.fast_astrom)
 				print('band here is:', band)
-				print image.shape, error.shape
+				print(image.shape, error.shape)
 				if band > 0:
 					self.fast_astrom.fit_astrom_arrays(0, band)
 
@@ -1659,11 +1634,6 @@ class pcat_data():
 				self.errors.append(error.astype(np.float32))
 				self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
 				self.exposures.append(exposure.astype(np.float32))
-
-
-
-
-			print 'imsz is ', image_size
 
 			if band==0:
 				gdat.imsz0 = image_size
@@ -1820,7 +1790,7 @@ class lion():
 				setattr(self.gdat, attr, valu)
 
 		print('gdat:')
-		print self.gdat
+		print(self.gdat)
 
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = []
@@ -1860,14 +1830,14 @@ class lion():
 		# run sampler for gdat.nsamp thinned states
 
 		for j in xrange(self.gdat.nsamp):
-			print 'Sample', j
+			print('Sample', j)
 
 			_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts, resids = model.run_sampler()
 			samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids)
 
 
 		if self.gdat.save:
-			print 'saving...'
+			print('saving...')
 
 			# save catalog ensemble and other diagnostics
 			samps.save_samples(self.gdat.result_path, self.gdat.timestr)
@@ -1879,8 +1849,8 @@ class lion():
 			result_plots(gdat = self.gdat)
 
 		dt_total = time.clock() - start_time
-		print 'Full Run Time (s):', np.round(dt_total,3)
-		print 'Time String:', str(self.gdat.timestr)
+		print('Full Run Time (s):', np.round(dt_total,3))
+		print('Time String:', str(self.gdat.timestr))
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
 ob = lion(band1=1, auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
