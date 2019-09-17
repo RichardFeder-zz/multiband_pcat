@@ -56,21 +56,8 @@ def fluxes_to_color(flux1, flux2):
 	return 2.5*np.log10(flux1/flux2)
 
 
-
-def get_spire_psf(pixel_fwhm=3, nbin=5):
-
-	gaussian_2D_kernel = Gaussian2DKernel(pixel_fwhm, x_size=25, y_size=25)
-	nc = gaussian_2D_kernel.shape[0]
-	psf = np.zeros((nc*2,nc*2)).astype(np.float32)
-	psf[0:nc,0:nc] = gaussian_2D_kernel.array
-	psf = scipy.misc.imresize(psf, (nc*2*nbin, nc*2*nbin), mode='F')
-	psfnew = np.array(psf[0:nc*nbin, 0:nc*nbin]).astype(np.float32)
-	cf = psf_poly_fit(psfnew, nbin=nbin)
-	return psfnew, cf, nc, nbin
-
-def get_spire_psf2(pixel_fwhm=3., nbin=5):
+def get_gaussian_psf_template(pixel_fwhm=3., nbin=5):
 	nc = 25
-	print('pixel fwhm in get spire psf2:', pixel_fwhm/2.355)
 	psfnew = Gaussian2DKernel((pixel_fwhm/2.355)*nbin, x_size=125, y_size=125).array.astype(np.float32)
 	psfnew *= nc
 	cf = psf_poly_fit(psfnew, nbin=nbin)
@@ -149,10 +136,6 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 
 def load_param_dict(timestr):
 	
-	class Structo:
-		def __init__(self, **entries):
-			self.__dict__.update(entries)
-	
 	result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
 	filepath = result_path + timestr
 	filen = open(filepath+'/params.txt','r')
@@ -206,13 +189,13 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 	# ------------------- mean residual ---------------------------
 
-
+	print(gdat.nbands)
 	for b in xrange(gdat.nbands):
 
 		residz = chain['residuals'+str(b)]
 		print(residz.shape)
 
-		print dat.weights[0].shape, dat.weights[1].shape
+		# print dat.weights[0].shape, dat.weights[1].shape
 		median_resid = np.median(residz, axis=0)
 		smoothed_resid = gaussian_filter(median_resid, sigma=3)
 
@@ -1563,7 +1546,7 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 '''
 class pcat_data():
 
-	def __init__(self):
+	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs = []
 		self.nbins = []
 		self.psfs = []
@@ -1574,7 +1557,7 @@ class pcat_data():
 		self.masks = []
 		self.exposures = []
 		self.errors = []
-		self.fast_astrom = wcs_astrometry()
+		self.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
 		self.widths = []
 		self.heights = []
 
@@ -1586,6 +1569,15 @@ class pcat_data():
 				return number
 			else:
 				number -= 1
+		return False
+
+	def find_nearest_upper_mod(self, number, mod_number):
+		while number < 10000:
+			if np.mod(number, mod_number) == 0:
+				print 'got it'
+				return number
+			else:
+				number += 1
 		return False
 
 	def load_in_data(self, gdat, map_object=None):
@@ -1606,24 +1598,68 @@ class pcat_data():
 			else:
 				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
 			print('median:', np.median(image[image != 0.]))
+			
 			if gdat.auto_resize:
-				print np.min([image.shape[0], image.shape[1]])
-				smaller_dim = np.min([image.shape[0], image.shape[1]])
+				smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
+				larger_dim = np.max([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0])
+
 				print('smaller dim is', smaller_dim)
-				gdat.width = self.find_lowest_mod(smaller_dim, gdat.nregion)
+				print('larger dim is ', larger_dim)
+
+				gdat.width = self.find_nearest_upper_mod(larger_dim, gdat.nregion)
+				# gdat.width = self.find_lowest_mod(smaller_dim, gdat.nregion)
 				gdat.height = gdat.width
 				image_size = (gdat.width, gdat.height)
 
-			if gdat.width > 0:
-				print('gdat width here is ', gdat.width)
+
+				padded_image = np.zeros(shape=(gdat.width, gdat.height))
+				padded_error = np.zeros(shape=(gdat.width, gdat.height))
+				padded_exposure = np.zeros(shape=(gdat.width, gdat.height))
+				padded_mask = np.zeros(shape=(gdat.width, gdat.height))
+
+				padded_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:, gdat.y0:]
+				padded_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:, gdat.y0:]
+				padded_exposure[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = exposure[gdat.x0:, gdat.y0:]
+				padded_mask[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = mask[gdat.x0:, gdat.y0:]
+
+				variance = padded_error**2
+
+				variance[variance==0.]=np.inf
+				weight = 1. / variance
+
+				self.weights.append(weight.astype(np.float32))
+				self.errors.append(padded_error.astype(np.float32))
+				self.data_array.append(padded_image.astype(np.float32)+gdat.mean_offset)
+				self.exposures.append(padded_exposure.astype(np.float32))
+
+
+
+			elif gdat.width > 0:
+
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
-				
 				image_size = (gdat.width, gdat.height)
+				variance = error**2
+				variance[variance==0.]=np.inf
+				weight = 1. / variance
+				self.weights.append(weight.astype(np.float32))
+				self.errors.append(error.astype(np.float32))
+				self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
+				self.exposures.append(exposure.astype(np.float32))
+
 			else:
 				image_size = (image.shape[0], image.shape[1])
+				variance = error**2
+				variance[variance==0.]=np.inf
+				weight = 1. / variance
+
+				self.weights.append(weight.astype(np.float32))
+				self.errors.append(error.astype(np.float32))
+				self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
+				self.exposures.append(exposure.astype(np.float32))
+
 
 
 
@@ -1635,22 +1671,18 @@ class pcat_data():
 			gdat.regsizes.append(image_size[0]/gdat.nregion)
 
 
-			variance = error**2
-			variance[variance==0.]=np.inf
-			weight = 1. / variance
-
-			print('width/height:', gdat.width, gdat.height)
+			# variance = error**2
+			# variance[variance==0.]=np.inf
+			# weight = 1. / variance
 
 			gdat.frac = np.count_nonzero(weight)/float(gdat.width*gdat.height)
-			print('fraction of image with non-zero weight:', gdat.frac)
-			print(np.min(weight), np.max(weight), np.isinf(weight).any(), np.isnan(weight).any())
 			
-			self.weights.append(weight.astype(np.float32))
-			self.errors.append(error.astype(np.float32))
-			self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
-			self.exposures.append(exposure.astype(np.float32))
+			# self.weights.append(weight.astype(np.float32))
+			# self.errors.append(error.astype(np.float32))
+			# self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
+			# self.exposures.append(exposure.astype(np.float32))
 
-			psf, cf, nc, nbin = get_spire_psf2(pixel_fwhm=gdat.psf_pixel_fwhm)
+			psf, cf, nc, nbin = get_gaussian_psf_template(pixel_fwhm=gdat.psf_pixel_fwhm)
 
 			print('sum of PSF is ', np.sum(psf))
 			self.psfs.append(psf)
@@ -1800,7 +1832,7 @@ class lion():
 		self.gdat.nbands = len(self.gdat.bands)
 
 
-		self.data = pcat_data()
+		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
 		self.data.load_in_data(self.gdat, map_object=map_object)
 		# self.gdat = dat.load_in_data(gdat, map_object=map_object)
 
@@ -1811,9 +1843,6 @@ class lion():
 			self.gdat.frame_dir = frame_dir
 			self.gdat.newdir = newdir
 			save_params(newdir, self.gdat)
-
-		print('gdat:')
-		print self.gdat
 
 
 	def main(self):
@@ -1854,10 +1883,10 @@ class lion():
 		print 'Time String:', str(self.gdat.timestr)
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
-# ob = lion(auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
-# ob.main()
+ob = lion(band1=1, auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+ob.main()
 
-# result_plots(timestr='20190916-132810')
+# result_plots(timestr='20190916-150243', plttype='png')
 
 
 

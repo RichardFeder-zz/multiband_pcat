@@ -2,6 +2,16 @@ from astropy import wcs
 from astropy.io import fits
 import numpy as np
 
+
+def find_nearest_upper_mod(number, mod_number):
+    while number < 10000:
+        if np.mod(number, mod_number) == 0:
+            print 'got it'
+            return number
+        else:
+            number += 1
+    return False
+
 class wcs_astrometry():
     ''' This class will contain the WCS header and other information necessary to construct arrays for fast 
     astrometric transformations. 
@@ -51,11 +61,13 @@ class wcs_astrometry():
     base_path = '/Users/richardfeder/Documents/multiband_pcat/Data/spire/'
 
     
-    def __init__(self):
+    def __init__(self, auto_resize=False, nregion=1):
         self.wcs_objs = []
         self.filenames = []
         self.all_fast_arrays = []
         self.dims = []
+        self.auto_resize = auto_resize
+        self.nregion = nregion
     
     def change_verbosity(self, verbtype):
         self.verbosity = verbtype
@@ -70,8 +82,15 @@ class wcs_astrometry():
         if hdu_idx is None:
             hdu_idx = 0
             
-        head = f[hdu_idx].header        
-        dim = (head['NAXIS1'], head['NAXIS2'])
+        head = f[hdu_idx].header  
+
+        if self.auto_resize:
+            big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
+            big_pad_dim = find_nearest_upper_mod(big_dim, self.nregion)
+            print 'big dim/ big padded dim is ', big_dim, big_pad_dim
+            dim = (big_pad_dim, big_pad_dim)
+        else:
+            dim = (head['NAXIS1'], head['NAXIS2'])
         self.dims.append(dim)
         wcs_obj = wcs.WCS(head)
         self.wcs_objs.append(wcs_obj)
@@ -139,6 +158,7 @@ class wcs_astrometry():
             ynew = ytrans[yints,xints] + dxs*dypdx[yints,xints] + dys*dypdy[yints,xints] 
             return np.array(xnew).astype(np.float32), np.array(ynew).astype(np.float32)
         except:
+            print np.max(xints), np.max(yints), xtrans.shape
             print xints, dxs, yints, dys
             raise ValueError('problem accessing elements')
 
