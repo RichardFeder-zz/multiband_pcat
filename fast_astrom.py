@@ -74,14 +74,15 @@ class wcs_astrometry():
     def change_base_path(self, basepath):
         self.base_path = basepath
         
-    def load_wcs_header_and_dim(self, filename, hdu_idx=None):
-        self.filenames.append(filename)
-        
-        f = fits.open(self.base_path + filename)
-        if hdu_idx is None:
-            hdu_idx = 0
+    def load_wcs_header_and_dim(self, filename=None, head=None, hdu_idx=None):
+        if head is None:
+            self.filenames.append(filename)
             
-        head = f[hdu_idx].header  
+            f = fits.open(self.base_path + filename)
+            if hdu_idx is None:
+                hdu_idx = 0
+                
+            head = f[hdu_idx].header  
 
         if self.auto_resize:
             big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
