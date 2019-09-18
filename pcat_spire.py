@@ -87,18 +87,22 @@ def initialize_c(gdat, libmmult):
 
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
+		
+	if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
+		warnings.warn('blas.c modified after compiled blas.so', Warning)		
 	if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 		warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
+	
 	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
 	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
 	array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
-	libmmult.pcat_model_eval.restype = None
-	libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+	libmmult.clib_eval_modl.restype = None
+	libmmult.clib_eval_modl.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 	array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
-	libmmult.pcat_imag_acpt.restype = None
-	libmmult.pcat_imag_acpt.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
-	libmmult.pcat_like_eval.restype = None
-	libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+	libmmult.clib_updt_modl.restype = None
+	libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
+	libmmult.clib_eval_llik.restype = None
+	libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
 
 def create_directories(gdat):
@@ -625,7 +629,7 @@ class Model:
 				dt_transf += time.clock()-t4
 				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsizes[b], \
+												ref=ref[b], lib=self.libmmult.clib_eval_modl, regsize=self.regsizes[b], \
 												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 				diff2s += diff2
 			else:    
@@ -633,7 +637,7 @@ class Model:
 				yp=y
 				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-												ref=ref[b], lib=self.libmmult.pcat_model_eval, regsize=self.regsizes[b], \
+												ref=ref[b], lib=self.libmmult.clib_eval_modl, regsize=self.regsizes[b], \
 												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 			
 				diff2s = diff2
@@ -702,7 +706,7 @@ class Model:
 			print('n_phon')
 			print(n_phon)
 
-		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.pcat_model_eval)
+		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.clib_eval_modl)
 		model = models[0]
 		logL = -0.5*diff2s
 	   
@@ -741,7 +745,7 @@ class Model:
 			
 			if proposal.goodmove:
 				t2 = time.clock()
-				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.pcat_model_eval)
+				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.clib_eval_modl)
 
 				plogL = -0.5*diff2s                
 				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
@@ -775,9 +779,9 @@ class Model:
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
-					self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
+					self.libmmult.clib_updt_modl(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 					# using this dmodel containing only accepted moves, update logL
-					self.libmmult.pcat_like_eval(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
+					self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
@@ -1565,7 +1569,7 @@ class pcat_data():
 		for band in gdat.bands:
 
 			if map_object is not None:
-			''' Here is where map object would be used to get imagee, error, exposure and mask. 
+				''' Here is where map object would be used to get imagee, error, exposure and mask. 
 				Also need to get the WCS header here ''' 
 				continue
 
@@ -1827,7 +1831,7 @@ class lion():
 	def main(self):
 
 		''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
-		libmmult = npct.load_library('pcat-lion', '.')
+		libmmult = npct.load_library('blas', '.')
 		initialize_c(self.gdat, libmmult)
 
 		start_time = time.clock()
@@ -1868,8 +1872,7 @@ class lion():
 				if b == 0:
 					model_samples = np.array([self.dat.data_array[b]-samps.residuals0[i] for i in xrange(self.gdat.residual_samples)])
 				elif b==1:
-
-				model_samples = np.array([self.dat.data_array[b]-samps.residuals[b][i] for i in xrange(self.gdat.residual_samples)])
+					model_samples = np.array([self.dat.data_array[b]-samps.residuals[b][i] for i in xrange(self.gdat.residual_samples)])
 
 				median_model = np.median(model_samples, axis=0)
 				print('median model has shape', median_model.shape)
@@ -1880,7 +1883,7 @@ class lion():
 
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
-ob = lion(band1=1, auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+ob = lion(auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
 ob.main()
 
 # result_plots(timestr='20190916-150243', plttype='png')
