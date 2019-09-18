@@ -64,15 +64,14 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5):
 
 
 def load_in_map(gdat, band=0, astrom=None):
-	band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise+sz.fits'
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+band_dict[band]+'W_sim0200.fits'
-	file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+band_dict[band]+'W_nr_1.fits'
+	file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits'
 	print('file_path:', file_path)
 
 	if astrom is not None:
-		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+band_dict[band]+'W_nr_1.fits', hdu_idx=3)
+		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
 
 	spire_dat = fits.open(file_path)
 	image = np.nan_to_num(spire_dat[1].data)
@@ -80,7 +79,7 @@ def load_in_map(gdat, band=0, astrom=None):
 	exposure = spire_dat[3].data
 	mask = spire_dat[4].data
 
-	return image, error, exposure, mask, band_dict
+	return image, error, exposure, mask
 
 
 def initialize_c(gdat, libmmult):
@@ -90,8 +89,6 @@ def initialize_c(gdat, libmmult):
 		
 	if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
 		warnings.warn('blas.c modified after compiled blas.so', Warning)		
-	if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
-		warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
 	
 	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
 	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
@@ -1480,7 +1477,6 @@ class Samples():
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in xrange(gdat.nbands)]
 		self.colorsample = [[] for x in xrange(gdat.nbands-1)]
 		# self.residuals = np.zeros((gdat.nbands, gdat.residual_samples, gdat.width, gdat.height))
-		print('imsz is spec', gdat.imszs[0][0])
 		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in xrange(gdat.nbands)]
 		self.chi2sample = np.zeros((gdat.nsamp, gdat.nbands), dtype=np.int32)
 		self.nbands = gdat.nbands
@@ -1569,18 +1565,23 @@ class pcat_data():
 		for band in gdat.bands:
 
 			if map_object is not None:
-				''' Here is where map object would be used to get imagee, error, exposure and mask. 
-				Also need to get the WCS header here ''' 
+
+				obj = map_object[band]
+				image = obj['signal']
+				error = obj['error']
+				exposure = obj['exp']
+				mask = obj['mask']
+				gdat.psf_pixel_fwhm = obj['widtha']
+				astrom.load_wcs_header_and_dim(head=obj['shead'])
+
 				continue
 
 			elif gdat.mock_name is None:
-				image, error, exposure, mask, band_dict = load_in_map(gdat, band, astrom=self.fast_astrom)
-				print('band here is:', band)
-				print(image.shape, error.shape)
+				image, error, exposure, mask = load_in_map(gdat, band, astrom=self.fast_astrom)
+				
 				if band > 0:
 					self.fast_astrom.fit_astrom_arrays(0, band)
 
-				gdat.band_dict = band_dict
 			else:
 				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
 			
@@ -1651,17 +1652,8 @@ class pcat_data():
 			gdat.regsizes.append(image_size[0]/gdat.nregion)
 
 
-			# variance = error**2
-			# variance[variance==0.]=np.inf
-			# weight = 1. / variance
-
 			gdat.frac = np.count_nonzero(weight)/float(gdat.width*gdat.height)
 			
-			# self.weights.append(weight.astype(np.float32))
-			# self.errors.append(error.astype(np.float32))
-			# self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
-			# self.exposures.append(exposure.astype(np.float32))
-
 			psf, cf, nc, nbin = get_gaussian_psf_template(pixel_fwhm=gdat.psf_pixel_fwhm)
 
 			print('sum of PSF is ', np.sum(psf))
@@ -1674,7 +1666,6 @@ class pcat_data():
 
 		# gdat.regsize = gdat.imsz0[0]/gdat.nregion
 		gdat.regions_factor = 1./float(gdat.nregion**2)
-		print('regsizes/regions_factor:', gdat.regsizes, gdat.regions_factor)
 		assert gdat.imsz0[0] % gdat.regsizes[0] == 0 
 		assert gdat.imsz0[1] % gdat.regsizes[0] == 0 
 
@@ -1802,8 +1793,9 @@ class lion():
 			if '__' not in attr and attr != 'gdat':
 				setattr(self.gdat, attr, valu)
 
-		print('gdat:')
-		print(self.gdat)
+		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
+		if map_object is not None:
+			self.gdat.dataname = obj['name']
 
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = []
@@ -1814,11 +1806,8 @@ class lion():
 				self.gdat.bands.append(self.gdat.band2)
 		self.gdat.nbands = len(self.gdat.bands)
 
-
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
 		self.data.load_in_data(self.gdat, map_object=map_object)
-		# self.gdat = dat.load_in_data(gdat, map_object=map_object)
-
 
 		if self.gdat.save:
 			#create directory for results, save config file from run
@@ -1866,28 +1855,23 @@ class lion():
 		print('Full Run Time (s):', np.round(dt_total,3))
 		print('Time String:', str(self.gdat.timestr))
 
-		if return_median_model:
+		if self.gdat.return_median_model:
 			models = []
 			for b in xrange(self.gdat.nbands):
-				if b == 0:
-					model_samples = np.array([self.dat.data_array[b]-samps.residuals0[i] for i in xrange(self.gdat.residual_samples)])
-				elif b==1:
-					model_samples = np.array([self.dat.data_array[b]-samps.residuals[b][i] for i in xrange(self.gdat.residual_samples)])
-
+				model_samples = np.array([self.data.data_array[b]-samps.residuals[b][i] for i in xrange(self.gdat.residual_samples)])
 				median_model = np.median(model_samples, axis=0)
-				print('median model has shape', median_model.shape)
 				models.append(median_model)
 
 			return models
 
 
+'''These lines below here are to instantiate the script without having to load an updated 
+version of the lion module every time I make a change, but when Lion is wrapped within another pipeline
+these should be moved out of the script and into the pipeline'''
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
-ob = lion(auto_resize=True, visual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
-ob.main()
-
-# result_plots(timestr='20190916-150243', plttype='png')
-
+ob = lion(band1=1, auto_resize=True, visual=True, return_median_model=True, make_post_plots=True, nsamp=1, residual_samples=1)
+x = ob.main()
 
 
 
