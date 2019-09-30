@@ -44,6 +44,7 @@ class gdatstrt(object):
 def save_params(dir, gdat):
 	# save parameters as dictionary, then pickle them to txt file
 	param_dict = vars(gdat)
+	print('param_dict:')
 
 	with open(dir+'/params.txt', 'w') as file:
 		file.write(str(param_dict))
@@ -71,10 +72,14 @@ def load_in_map(gdat, band=0, astrom=None):
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+band_dict[band]+'W_sim0200.fits'
 	file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits'
+	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits'
+
 	print('file_path:', file_path)
 
 	if astrom is not None:
+		print 'loading from ', gdat.band_dict[band]
 		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
+		# astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits', hdu_idx=3)
 
 	spire_dat = fits.open(file_path)
 	image = np.nan_to_num(spire_dat[1].data)
@@ -85,11 +90,12 @@ def load_in_map(gdat, band=0, astrom=None):
 	return image, error, exposure, mask
 
 
-def initialize_c(gdat, libmmult):
+def initialize_c(gdat, libmmult, cblas=False):
 
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
 
+<<<<<<< HEAD
 	if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
 		warnings.warn('blas.c modified after compiled blas.so', Warning)
 
@@ -103,6 +109,37 @@ def initialize_c(gdat, libmmult):
 	libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
 	libmmult.clib_eval_llik.restype = None
 	libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+=======
+	if cblas:
+		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
+			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
+
+		array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
+		array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
+		array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
+		libmmult.pcat_model_eval.restype = None
+		libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+		array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
+		libmmult.pcat_imag_acpt.restype = None
+		libmmult.pcat_imag_acpt.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
+		libmmult.pcat_like_eval.restype = None
+		libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+
+	else:
+		if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
+			warnings.warn('blas.c modified after compiled blas.so', Warning)
+
+		array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
+		array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
+		array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
+		libmmult.clib_eval_modl.restype = None
+		libmmult.clib_eval_modl.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+		array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
+		libmmult.clib_updt_modl.restype = None
+		libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
+		libmmult.clib_eval_llik.restype = None
+		libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+>>>>>>> upstream/master
 
 
 def create_directories(gdat):
@@ -316,24 +353,27 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	color_post = []
 	# color_post_bins = 10**np.linspace(-1, 2, 20)
 	color_post_bins = np.linspace(-1, 1, 30)
+	color_lin_post_bins = np.linspace(0.0, 5.0, 30)
 
 	for b in range(gdat.nbands):
 
 		color_post = []
+		color_lin_post = []
 
 
 		nbins = 20
 		lit_number_counts = np.zeros((gdat.nsamp - burn_in, nbins-1)).astype(np.float32)
 		raw_number_counts = np.zeros((gdat.nsamp - burn_in, nbins-1)).astype(np.float32)
 
-		binz = np.linspace(np.log10(gdat.trueminf)+3., 3., nbins)
+		binz = np.linspace(np.log10(gdat.trueminf)+3.-1., 3., nbins)
 
 		weight = dat.weights[b]
 
 		for i, j in enumerate(np.arange(burn_in, gdat.nsamp)):
 
 			if b > 0:
-				color_post.append(np.histogram(np.log10(fsrcs[b][j]/fsrcs[0][j]), bins=color_post_bins)[0]+0.01)
+				color_post.append(np.histogram(np.log10(fsrcs[0][j]/fsrcs[0][j]), bins=color_post_bins)[0]+0.01)
+				color_lin_post.append(np.histogram(fsrcs[b-1][j]/fsrcs[b][j], bins=color_lin_post_bins)[0]+0.01)
 
 
 			fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
@@ -362,7 +402,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		plt.xlabel('log($S_{\\nu}$) (mJy)')
 		plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
 		plt.ylim(1e0, 1e5)
-		plt.xlim(np.log10(gdat.trueminf)+3.-0.5, 2.5)
+		plt.xlim(np.log10(gdat.trueminf)+3.-0.5-1.0, 2.5)
 		plt.tight_layout()
 		if boolplotsave:
 			plt.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight')
@@ -387,19 +427,27 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		if b > 0:
 			medians = np.median(np.array(color_post), axis=0)
 			medians /= (np.sum(medians)*(color_post_bins[1]-color_post_bins[0]))
+			lin_medians = np.median(np.array(color_lin_post), axis=0)
+			lin_medians /= (np.sum(lin_medians)*(color_lin_post_bins[1]-color_lin_post_bins[0]))
 			err = np.std(np.array(color_post), axis=0)
 			bincentres = [(color_post_bins[i]+color_post_bins[i+1])/2. for i in range(len(color_post_bins)-1)]
+			lin_bincentres = [(color_lin_post_bins[i]+color_lin_post_bins[i+1])/2. for i in range(len(color_lin_post_bins)-1)]
+
 			plt.title('Posterior Color Distribution', fontsize=14)
-			plt.step(bincentres, medians, where='mid', color='b', label='Posterior', alpha=0.5)
+			# plt.step(bincentres, medians, where='mid', color='b', label='Posterior', alpha=0.5)
+			plt.step(lin_bincentres, lin_medians, where='mid', color='b', label='Posterior', alpha=0.5)
+
 			# plt.errorbar(bincentres, medians/np.sum(medians), yerr=err/np.sum(medians), label='Posterior')
 			# plt.xscale('log')
 			# finevals = np.linspace(-1, 1, 1000)
-			plt.plot(bincentres, stats.norm.pdf(bincentres, -0.8/2.5, 0.5/2.5), label='Prior')
-			plt.xlabel('$\\log_{10}(f_{'+str(lam_dict[bands[b]])+'}/f_{'+str(lam_dict[bands[0]])+'})$', fontsize=14)
+			# plt.plot(bincentres, stats.norm.pdf(bincentres, -0.8/2.5, 0.5/2.5), label='Prior')
+			# plt.xlabel('$\\log_{10}(f_{'+str(lam_dict[bands[b]])+'}/f_{'+str(lam_dict[bands[0]])+'})$', fontsize=14)
+			plt.xlabel('$S_{'+str(lam_dict[bands[b-1]])+'}/S_{'+str(lam_dict[bands[b]])+'}$', fontsize=14)
+
 			plt.ylabel('Normalized PDF')
 			plt.legend()
 			if boolplotsave:
-				plt.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b]])+'_'+str(lam_dict[bands[0]])+'.'+plttype, bbox_inches='tight')
+				plt.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight')
 			if boolplotshow:
 				plt.show()
 			plt.close()
@@ -520,7 +568,7 @@ class Model:
 
 	mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
 	#sigs = dict({'r-i':0.5, 'r-g':5.0, 'r-z':1.0, 'r-r':0.05})
-	sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
+	sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
 	#mus = dict({'r-i':0.0, 'r-g':0.0}) # for same flux different noise tests, r, i, g are all different realizations of r band
 	#sigs = dict({'r-i':0.5, 'r-g':0.5})
 	color_mus, color_sigs = [], []
@@ -622,14 +670,14 @@ class Model:
 				t4 = time.clock()
 				if self.gdat.bands[b] != self.gdat.bands[0]:
 					xp, yp = self.dat.fast_astrom.transform_q(x, y, b-1)
-					# xp, yp = transform_q(x, y, pixel_transfer_mats[b-1])
 				else:
 					xp = x
 					yp = y
 				dt_transf += time.clock()-t4
+
 				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-												ref=ref[b], lib=self.libmmult.clib_eval_modl, regsize=self.regsizes[b], \
+												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 				diff2s += diff2
 			else:
@@ -637,7 +685,7 @@ class Model:
 				yp=y
 				dmodel, diff2 = image_model_eval(xp, yp, 25*f[b], self.bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-												ref=ref[b], lib=self.libmmult.clib_eval_modl, regsize=self.regsizes[b], \
+												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 
 				diff2s = diff2
@@ -706,7 +754,13 @@ class Model:
 			print('n_phon')
 			print(n_phon)
 
-		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.clib_eval_modl)
+
+		if self.gdat.cblas:
+			lib = self.libmmult.pcat_model_eval
+		else:
+			lib = self.libmmult.clib_eval_modl
+
+		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib)
 		model = models[0]
 		logL = -0.5*diff2s
 
@@ -745,7 +799,13 @@ class Model:
 
 			if proposal.goodmove:
 				t2 = time.clock()
-				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=self.libmmult.clib_eval_modl)
+
+				if self.gdat.cblas:
+					lib = self.libmmult.pcat_model_eval
+				else:
+					lib = self.libmmult.clib_eval_modl
+
+				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib)
 
 				plogL = -0.5*diff2s
 				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
@@ -754,7 +814,7 @@ class Model:
 				if self.verbtype > 1:
 					print('dlogP')
 					print(dlogP)
-				print('dlogP: ',dlogP)    
+				print('dlogP: ',dlogP)
 				assert np.isnan(dlogP).any() == False
 
 				dts[1,i] = time.clock() - t2
@@ -779,9 +839,16 @@ class Model:
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
-					self.libmmult.clib_updt_modl(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
-					# using this dmodel containing only accepted moves, update logL
-					self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
+					if self.gdat.cblas:
+
+						self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
+						# using this dmodel containing only accepted moves, update logL
+						self.libmmult.pcat_like_eval(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
+					else:
+
+						self.libmmult.clib_updt_modl(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
+						# using this dmodel containing only accepted moves, update logL
+						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
@@ -958,6 +1025,7 @@ class Model:
 		plt.subplot(2,3,2)
 		plt.title('Data (second band)')
 		xp, yp = self.dat.fast_astrom.transform_q(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], 0)
+		# xd, yd = self.dat.fast_astrom.transform_q(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], 1)
 
 		plt.imshow(self.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[1]), vmax=np.percentile(self.dat.data_array[1], 99.9))
 		plt.colorbar()
@@ -970,10 +1038,12 @@ class Model:
 		if self.gdat.weighted_residual:
 			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 		else:
-			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
+			plt.imshow(resids[1], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[1][self.dat.weights[1] != 0.], 5), vmax=np.percentile(resids[1][self.dat.weights[1] != 0.], 95))
+		# plt.imshow(self.dat.data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[2]), vmax=np.percentile(self.dat.data_array[2], 99.9))
 
 		plt.colorbar()
-		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
+		# plt.scatter(xd, yd, marker='x', s=self.stars[self._F+1, 0:self.n]*100, color='r')
+		# plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
 
 		plt.subplot(2,3,4)
 		plt.title('Data (zoomed in)')
@@ -982,6 +1052,14 @@ class Model:
 		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
 		plt.ylim(90, 140)
 		plt.xlim(70, 120)
+		# plt.title('Residual')
+		# if self.gdat.weighted_residual:
+		# 	plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+		# else:
+		# 	plt.imshow(resids[2], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[2][self.dat.weights[2] != 0.], 5), vmax=np.percentile(resids[2][self.dat.weights[2] != 0.], 95))
+
+		# plt.colorbar()
+		# plt.scatter(xd, yd, marker='x', s=self.stars[self._F+2, 0:self.n]*100, color='r')
 		plt.subplot(2,3,5)
 		plt.title('Residual (zoomed in)')
 
@@ -1025,8 +1103,6 @@ class Model:
 		# if savefig:
 			# plt.savefig(frame_dir + '/frame_' + str(c) + '.png')
 		plt.pause(1e-5)
-
-
 
 
 
@@ -1564,27 +1640,30 @@ class pcat_data():
 		gdat.regsizes = []
 		gdat.margins = []
 
-
-		for band in gdat.bands:
+		for i, band in enumerate(gdat.bands):
+			print 'band:', band
 
 			if map_object is not None:
 				obj = map_object[band]
-				gdat.dataname = obj['name']
 				image = obj['signal']
 				error = obj['error']
-				exposure = obj['exp']
-				mask = obj['mask']
-				gdat.psf_pixel_fwhm = obj['widtha']
-				# astrom.load_wcs_header_and_dim(head=obj['shead'])
-				wcs_astrometry().load_wcs_header_and_dim(head=obj['shead'])
 
-				# continue
+				exposure = obj['exp'].data
+				mask = obj['mask']
+				print('pixsize:', obj['pixsize'])
+				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize']# gives it in arcseconds and neet to convert to pixels
+				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'])
+				gdat.dataname = obj['name']
+				if i > 0:
+					self.fast_astrom.fit_astrom_arrays(0, i)
 
 			elif gdat.mock_name is None:
 				image, error, exposure, mask = load_in_map(gdat, band, astrom=self.fast_astrom)
 
-				if band > 0:
-					self.fast_astrom.fit_astrom_arrays(0, band)
+				if i > 0:
+					print 'we have more than one band:', gdat.bands[0], band
+					# self.fast_astrom.fit_astrom_arrays(gdat.bands[0], i)
+					self.fast_astrom.fit_astrom_arrays(0, i)
 
 			else:
 				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
@@ -1650,7 +1729,7 @@ class pcat_data():
 				self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, may need to change
 				self.exposures.append(exposure.astype(np.float32))
 
-			if band==0:
+			if i==0:
 				gdat.imsz0 = image_size
 			gdat.imszs.append(image_size)
 			gdat.regsizes.append(image_size[0]/gdat.nregion)
@@ -1670,6 +1749,7 @@ class pcat_data():
 
 		# gdat.regsize = gdat.imsz0[0]/gdat.nregion
 		gdat.regions_factor = 1./float(gdat.nregion**2)
+		print(gdat.imsz0[0], gdat.regsizes[0], gdat.regions_factor)
 		assert gdat.imsz0[0] % gdat.regsizes[0] == 0
 		assert gdat.imsz0[1] % gdat.regsizes[0] == 0
 
@@ -1789,16 +1869,18 @@ class lion():
 			bool_plot_save = True, \
 
 			# return median model image from last 'residual_samples' samples
-			return_median_model = False):
+			return_median_model = False, \
+
+			# set to True if using CBLAS library
+			cblas=False):
 
 
 
 		for attr, valu in locals().items():
-			if '__' not in attr and attr != 'gdat':
+			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
 
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
-
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = []
 		self.gdat.bands.append(self.gdat.band0)
@@ -1809,21 +1891,34 @@ class lion():
 		self.gdat.nbands = len(self.gdat.bands)
 
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
+
+
+
 		self.data.load_in_data(self.gdat, map_object=map_object)
+
 
 		if self.gdat.save:
 			#create directory for results, save config file from run
 			frame_dir, newdir = create_directories(self.gdat)
+
 			self.gdat.frame_dir = frame_dir
 			self.gdat.newdir = newdir
+			# print('self.gdat:')
+			# print self.gdat.__dict__
+			# print('before save params')
 			save_params(newdir, self.gdat)
+			# print('after save params')
 
 
 	def main(self):
 
 		''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
-		libmmult = npct.load_library('blas','.')
-		initialize_c(self.gdat, libmmult)
+		if self.gdat.cblas:
+			libmmult = npct.load_library('pcat-lion', '.')
+		else:
+			libmmult = npct.load_library('blas', '.')
+
+		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
 
 		start_time = time.clock()
 
@@ -1872,5 +1967,8 @@ version of the lion module every time I make a change, but when Lion is wrapped 
 these should be moved out of the script and into the pipeline'''
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
-# ob = lion(band1=1, auto_resize=True, visual=True, return_median_model=True, make_post_plots=True, nsamp=1, residual_samples=1)
-# x = ob.main()
+# ob = lion(band0=0, band1=2, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob = lion(band0=0, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob.main()
+
+# result_plots(timestr='20190919-113227', burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
