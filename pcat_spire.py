@@ -77,7 +77,7 @@ def load_in_map(gdat, band=0, astrom=None):
 	print('file_path:', file_path)
 
 	if astrom is not None:
-		print 'loading from ', gdat.band_dict[band]
+		print('loading from ', gdat.band_dict[band])
 		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
 		# astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits', hdu_idx=3)
 
@@ -95,21 +95,6 @@ def initialize_c(gdat, libmmult, cblas=False):
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
 
-<<<<<<< HEAD
-	if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
-		warnings.warn('blas.c modified after compiled blas.so', Warning)
-
-	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
-	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
-	array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
-	libmmult.clib_eval_modl.restype = None
-	libmmult.clib_eval_modl.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-	array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
-	libmmult.clib_updt_modl.restype = None
-	libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
-	libmmult.clib_eval_llik.restype = None
-	libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-=======
 	if cblas:
 		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
@@ -139,7 +124,6 @@ def initialize_c(gdat, libmmult, cblas=False):
 		libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
 		libmmult.clib_eval_llik.restype = None
 		libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
->>>>>>> upstream/master
 
 
 def create_directories(gdat):
@@ -166,11 +150,17 @@ def neighbours(x,y,neigh,i,generate=False):
 		return neighbours
 
 def get_region(x, offsetx, regsize):
-	return np.floor(x + offsetx).astype(np.int) / regsize
+	# return np.floor(x + offsetx).astype(np.int) / int(regsize)
+	arr = np.floor(x + offsetx).astype(np.int)
+	return np.asarray([int(s/int(regsize)) for s in arr])
 
 def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
+	print('================ idx_parity =================')
 	match_x = (get_region(x[0:n], offsetx, regsize) % 2) == parity_x
 	match_y = (get_region(y[0:n], offsety, regsize) % 2) == parity_y
+	print(get_region(x[0:n], offsetx, int(regsize)))
+	print(get_region(y[0:n], offsety, int(regsize)))
+	print('==============================================')
 	return np.flatnonzero(np.logical_and(match_x, match_y))
 
 
@@ -744,15 +734,16 @@ class Model:
 		evalx = self.stars[self._X,0:self.n]
 		evaly = self.stars[self._Y,0:self.n]
 		evalf = self.stars[self._F:,0:self.n]
+		# print('evalx:',evalx)
+		# print('evaly:',evaly)
+		# print('evalf:',evalf)
 
 		n_phon = evalx.size
 
 		if self.gdat.verbtype > 1:
 			print('beginning of run sampler')
-			print('self.n here')
-			print(self.n)
-			print('n_phon')
-			print(n_phon)
+			print('self.n: ',self.n)
+			print('n_phon: ',n_phon)
 
 
 		if self.gdat.cblas:
@@ -763,6 +754,8 @@ class Model:
 		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib)
 		model = models[0]
 		logL = -0.5*diff2s
+		# print('models:',models)
+		# print('diff2s:',diff2s)
 
 		for b in range(self.nbands):
 			resids[b] -= models[b]
@@ -804,7 +797,9 @@ class Model:
 					lib = self.libmmult.pcat_model_eval
 				else:
 					lib = self.libmmult.clib_eval_modl
-
+				# print('xphon:',proposal.xphon)
+				# print('yphon:',proposal.yphon)
+				# print('fphon:',proposal.fphon)
 				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib)
 
 				plogL = -0.5*diff2s
@@ -820,18 +815,17 @@ class Model:
 				dts[1,i] = time.clock() - t2
 				t3 = time.clock()
 				refx, refy = proposal.get_ref_xy()
-				# regionx = get_region(refx, self.offsetx, self.regsize)
-				# regiony = get_region(refy, self.offsety, self.regsize)
-
+				# regionx = get_region(refx, self.offsetxs, self.regsizes)
+				# regiony = get_region(refy, self.offsetys, self.regsizes)
 				regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
 				regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
-
+				print(regionx,regiony)
 
 				if proposal.factor is not None:
 					dlogP[regiony, regionx] += proposal.factor
 				else:
 					print('proposal factor is None')
-				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
+				acceptreg = (np.log(np.random.uniform(size=(int(self.nregy), int(self.nregx)))) < dlogP).astype(np.int32)
 				acceptprop = acceptreg[regiony, regionx]
 				numaccept = np.count_nonzero(acceptprop)
 				''' for each band compute the delta log likelihood between states, theen add these together'''
@@ -1107,6 +1101,7 @@ class Model:
 
 
 	def idx_parity_stars(self):
+		print('long print: ',self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
 		return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
 		# return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, self.regsize)
 
@@ -1146,6 +1141,7 @@ class Model:
 
 	def move_stars(self):
 		idx_move = self.idx_parity_stars()
+		print('idx_move: ',idx_move)
 		nw = idx_move.size
 		stars0 = self.stars.take(idx_move, axis=1)
 		starsp = np.empty_like(stars0)
@@ -1160,7 +1156,8 @@ class Model:
 			else:
 				pf = self.flux_proposal(f0[b], nw, trueminf=0.0001) #place a minor minf to avoid negative fluxes in non-pivot bands
 			pfs.append(pf)
-
+		print('pfs :',pfs)
+		print('f0 :',f0)
 		if (np.array(pfs)<0).any():
 			print('negative flux!')
 			print(np.array(pfs)[np.array(pfs)<0])
@@ -1236,6 +1233,9 @@ class Model:
 		assert np.isnan(factor).any()==False
 
 		proposal.set_factor(factor)
+		print('factor: ',factor)
+		print('xphon: ',proposal.xphon)
+		print('fphon: ',proposal.fphon)
 		return proposal
 
 
@@ -1246,14 +1246,13 @@ class Model:
 		proposal = Proposal(self.gdat)
 		# birth
 		if lifeordeath and self.n < self.max_nsrc: # need room for at least one source
-			nbd = min(nbd, self.max_nsrc-self.n) # add nbd sources, or just as many as will fit
+			nbd = int(min(nbd, self.max_nsrc-self.n)) # add nbd sources, or just as many as will fit
 			# mildly violates detailed balance when n close to nstar
 			# want number of regions in each direction, divided by two, rounded up
 
 
-			mregx = ((self.imsz0[0] / self.regsizes[0] + 1) + 1) / 2 # assumes that imsz are multiples of regsize
-			mregy = ((self.imsz0[1] / self.regsizes[0] + 1) + 1) / 2
-
+			mregx = int(((self.imsz0[0] / self.regsizes[0] + 1) + 1) / 2) # assumes that imsz are multiples of regsize
+			mregy = int(((self.imsz0[1] / self.regsizes[0] + 1) + 1) / 2)
 			starsb = np.empty((2+self.nbands, nbd), dtype=np.float32)
 			starsb[self._X,:] = (np.random.randint(mregx, size=nbd)*2 + self.parity_x + np.random.uniform(size=nbd))*self.regsizes[0] - self.offsetxs[0]
 			starsb[self._Y,:] = (np.random.randint(mregy, size=nbd)*2 + self.parity_y + np.random.uniform(size=nbd))*self.regsizes[0] - self.offsetys[0]
@@ -1287,7 +1286,7 @@ class Model:
 		# does region based death obey detailed balance?
 		elif not lifeordeath and self.n > 0: # need something to kill
 			idx_reg = self.idx_parity_stars()
-			nbd = min(nbd, idx_reg.size) # kill nbd sources, or however many sources remain
+			nbd = int(min(nbd, idx_reg.size)) # kill nbd sources, or however many sources remain
 			if nbd > 0:
 				idx_kill = np.random.choice(idx_reg, size=nbd, replace=False)
 				starsk = self.stars.take(idx_kill, axis=1)
@@ -1304,7 +1303,7 @@ class Model:
 		fracs, sum_fs = [],[]
 		idx_bright = idx_reg.take(np.flatnonzero(self.stars[self._F, :].take(idx_reg) > 2*self.trueminf)) # in region!
 		bright_n = idx_bright.size
-		nms = (self.nregx * self.nregy) / 4
+		nms = int((self.nregx * self.nregy) / 4)
 		goodmove = False
 		proposal = Proposal(self.gdat)
 		# split
@@ -1413,7 +1412,7 @@ class Model:
 			invpairs *= 0.5
 		# merge
 		elif not splitsville and idx_reg.size > 1: # need two things to merge!
-			nms = min(nms, idx_reg.size/2)
+			nms = int(min(nms, idx_reg.size/2))
 			idx_move = np.empty(nms, dtype=np.int)
 			idx_kill = np.empty(nms, dtype=np.int)
 			choosable = np.zeros(self.max_nsrc, dtype=np.bool)
@@ -1641,12 +1640,12 @@ class pcat_data():
 		gdat.margins = []
 
 		for i, band in enumerate(gdat.bands):
-			print 'band:', band
+			print('band:', band)
 
 			if map_object is not None:
 				obj = map_object[band]
-				image = obj['signal']
-				error = obj['error']
+				image = np.nan_to_num(obj['signal'])
+				error = np.nan_to_num(obj['error'])
 
 				exposure = obj['exp'].data
 				mask = obj['mask']
@@ -1661,7 +1660,7 @@ class pcat_data():
 				image, error, exposure, mask = load_in_map(gdat, band, astrom=self.fast_astrom)
 
 				if i > 0:
-					print 'we have more than one band:', gdat.bands[0], band
+					print('we have more than one band:', gdat.bands[0], band)
 					# self.fast_astrom.fit_astrom_arrays(gdat.bands[0], i)
 					self.fast_astrom.fit_astrom_arrays(0, i)
 
@@ -1768,7 +1767,7 @@ class lion():
 	gdat = gdatstrt()
 
 
-	def __init__(self,
+	def __init__(self, cblas = False,\
 			# resizes images to largest square dimension modulo nregion
 			auto_resize = True, \
 
@@ -1854,7 +1853,7 @@ class lion():
 			raw_counts = False, \
 
 			# verbosity during program execution
-			verbtype = 0, \
+			verbtype = 2, \
 
 			# number of residual samples to average for final product
 			residual_samples = 100, \
@@ -1872,9 +1871,7 @@ class lion():
 			return_median_model = False, \
 
 			# set to True if using CBLAS library
-			cblas=False):
-
-
+			):
 
 		for attr, valu in locals().items():
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
@@ -1917,7 +1914,6 @@ class lion():
 			libmmult = npct.load_library('pcat-lion', '.')
 		else:
 			libmmult = npct.load_library('blas', '.')
-
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
 
 		start_time = time.clock()
@@ -1970,5 +1966,12 @@ these should be moved out of the script and into the pipeline'''
 # ob = lion(band0=0, band1=2, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob.main()
-
 # result_plots(timestr='20190919-113227', burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+
+# filename = ['a0370_PSW_nr_1.fits', 'a0370_PMW_nr_1.fits', 'a0370_PLW_nr_1.fits'] #this is a list of the filenames.
+# dir = '/data/butler/SPIRE/hermes_clusters/' #change this to whatever your directory for keeping files is
+# sys.path.append('/home/butler/rsz/')
+# from create_map_obj import create_map_obj
+# maps = create_map_obj(filename, dir)
+# ob = lion(band0=0, map_object=maps, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100)
+# ob.main()
