@@ -151,7 +151,7 @@ def neighbours(x,y,neigh,i,generate=False):
 		return neighbours
 
 def get_region(x, offsetx, regsize):
-	return np.floor(x + offsetx).astype(np.int) / regsize
+	return (np.floor(x + offsetx).astype(np.int) / regsize).astype(np.int)
 
 def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 	match_x = (get_region(x[0:n], offsetx, regsize) % 2) == parity_x
