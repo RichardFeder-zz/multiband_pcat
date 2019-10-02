@@ -1,5 +1,6 @@
 import numpy as np
 import numpy.ctypeslib as npct
+import ctypes
 from ctypes import c_int, c_double
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
@@ -21,7 +22,8 @@ from fast_astrom import *
 import pickle
 sys.path.append('../utilities')
 import config
-
+# import cPickle as pickle
+import pickle
 np.seterr(divide='ignore', invalid='ignore')
 
 
@@ -150,9 +152,7 @@ def neighbours(x,y,neigh,i,generate=False):
 		return neighbours
 
 def get_region(x, offsetx, regsize):
-	# return np.floor(x + offsetx).astype(np.int) / int(regsize)
-	arr = np.floor(x + offsetx).astype(np.int)
-	return np.asarray([int(s/int(regsize)) for s in arr])
+	return (np.floor(x + offsetx).astype(np.int) / regsize).astype(np.int)
 
 def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 	print('================ idx_parity =================')
@@ -223,7 +223,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	for b in range(gdat.nbands):
 
 		residz = chain['residuals'+str(b)]
-		print(residz.shape)
 
 		median_resid = np.median(residz, axis=0)
 		smoothed_resid = gaussian_filter(median_resid, sigma=3)
@@ -364,7 +363,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 			if b > 0:
 				color_post.append(np.histogram(np.log10(fsrcs[0][j]/fsrcs[0][j]), bins=color_post_bins)[0]+0.01)
 				color_lin_post.append(np.histogram(fsrcs[b-1][j]/fsrcs[b][j], bins=color_lin_post_bins)[0]+0.01)
-
 
 			fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
 			nsrc_fov.append(len(fsrcs_in_fov))
@@ -541,8 +539,7 @@ class Proposal:
 			refx = xk if xk.ndim == 1 else xk[:,0]
 			refy = yk if yk.ndim == 1 else yk[:,0]
 			return refx, refy
-		elif self.eps_shift is not None:
-			return self.stars0[self._X,:], self.stars0[self._Y,:]
+
 
 
 
@@ -635,13 +632,15 @@ class Model:
 			timestat_array[j][0] = np.sum(statarrays[j])/1000
 			if j==0:
 				accept_fracs.append(np.sum(statarrays[j])/1000)
-			print(statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000)),
+
+			#print statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000),
 			for k in range(len(self.movetypes)):
 				if j==0:
 					accept_fracs.append(np.mean(statarrays[j][movetype==k]))
 				timestat_array[j][1+k] = np.mean(statarrays[j][movetype==k])
-				print('('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k]))),
-			print
+
+				#print '('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])),
+
 			if j == 1:
 				print('-'*16)
 		print('-'*16)
@@ -655,6 +654,7 @@ class Model:
 	def pcat_multiband_eval(self, x, y, f, nc, cf, weights, ref, lib):
 		dmodels = []
 		dt_transf = 0
+
 		for b in range(self.nbands):
 			if b>0:
 				t4 = time.clock()
@@ -720,8 +720,8 @@ class Model:
 			self.offsetys = np.array([0 for b in range(self.gdat.nbands)])
 
 
-		self.nregx = self.imsz0[0] / self.regsizes[0] + 1
-		self.nregy = self.imsz0[1] / self.regsizes[0] + 1
+		self.nregx = int(self.imsz0[0] / self.regsizes[0] + 1)
+		self.nregy = int(self.imsz0[1] / self.regsizes[0] + 1)
 
 		resids = []
 		for b in range(self.nbands):
@@ -754,8 +754,6 @@ class Model:
 		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib)
 		model = models[0]
 		logL = -0.5*diff2s
-		# print('models:',models)
-		# print('diff2s:',diff2s)
 
 		for b in range(self.nbands):
 			resids[b] -= models[b]
@@ -815,8 +813,7 @@ class Model:
 				dts[1,i] = time.clock() - t2
 				t3 = time.clock()
 				refx, refy = proposal.get_ref_xy()
-				# regionx = get_region(refx, self.offsetxs, self.regsizes)
-				# regiony = get_region(refy, self.offsetys, self.regsizes)
+
 				regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
 				regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
 				print(regionx,regiony)
@@ -1250,7 +1247,6 @@ class Model:
 			# mildly violates detailed balance when n close to nstar
 			# want number of regions in each direction, divided by two, rounded up
 
-
 			mregx = int(((self.imsz0[0] / self.regsizes[0] + 1) + 1) / 2) # assumes that imsz are multiples of regsize
 			mregy = int(((self.imsz0[1] / self.regsizes[0] + 1) + 1) / 2)
 			starsb = np.empty((2+self.nbands, nbd), dtype=np.float32)
@@ -1347,7 +1343,6 @@ class Model:
 			starsb[self._Y,:] = stars0[self._Y,:] - fracs[0]*dy
 
 			for b in range(self.nbands):
-
 				starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
 				starsb[self._F+b,:] = stars0[self._F+b,:]*(1-fracs[b])
 				if (starsp[self._F+b,:]<0).any():
@@ -1653,6 +1648,7 @@ class pcat_data():
 				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize']# gives it in arcseconds and neet to convert to pixels
 				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'])
 				gdat.dataname = obj['name']
+				print('gdat.dataname:', gdat.dataname)
 				if i > 0:
 					self.fast_astrom.fit_astrom_arrays(0, i)
 
@@ -1873,7 +1869,9 @@ class lion():
 			# set to True if using CBLAS library
 			):
 
+
 		for attr, valu in locals().items():
+
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
 
@@ -1897,14 +1895,9 @@ class lion():
 		if self.gdat.save:
 			#create directory for results, save config file from run
 			frame_dir, newdir = create_directories(self.gdat)
-
 			self.gdat.frame_dir = frame_dir
 			self.gdat.newdir = newdir
-			# print('self.gdat:')
-			# print self.gdat.__dict__
-			# print('before save params')
 			save_params(newdir, self.gdat)
-			# print('after save params')
 
 
 	def main(self):
@@ -1913,7 +1906,10 @@ class lion():
 		if self.gdat.cblas:
 			libmmult = npct.load_library('pcat-lion', '.')
 		else:
-			libmmult = npct.load_library('blas', '.')
+			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
+			# libmmult = npct.load_library('blas', '.')
+			# libmmult = npct.load_library('blas', self.gdat.base_path+'pcat-lion-master/')
+
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
 
 		start_time = time.clock()

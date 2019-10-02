@@ -10,13 +10,15 @@ def psf_poly_fit(psf0, nbin):
         psf[0:npix, 0:npix] = psf0
 
         # make design matrix for each nbin x nbin region
+        # print(type(npix), type(nbin))
         nc = int(npix/nbin) # dimension of original psf
-        nx = int(nbin)+1
+        nx = nbin+1
         y, x = np.mgrid[0:nx, 0:nx] / np.float32(nbin)
         x = x.flatten()
         y = y.flatten()
         A = np.column_stack([np.full(nx*nx, 1, dtype=np.float32), x, y, x*x, x*y, y*y, x*x*x, x*x*y, x*y*y, y*y*y]).astype(np.float32)
         # output array of coefficients
+
         cf = np.zeros((A.shape[1], nc, nc), dtype=np.float32)
 
         # loop over original psf pixels and get fit coefficients
@@ -55,8 +57,8 @@ def image_model_eval(x, y, f, back, imsz, nc, cf, regsize=None, margin=0, offset
     nstar = x.size
     rad = nc/2 # 12 for nc = 25
 
-    nregy = int(imsz[1]/regsize) + 1 # assumes imsz % regsize = 0?
-    nregx = int(imsz[0]/regsize) + 1
+    nregy = int(imsz[1]/regsize + 1) # assumes imsz % regsize = 0?
+    nregx = int(imsz[0]/regsize + 1)
 
     ix = np.ceil(x).astype(np.int32)
     dx = ix - x
@@ -69,7 +71,7 @@ def image_model_eval(x, y, f, back, imsz, nc, cf, regsize=None, margin=0, offset
         recon2 = np.dot(dd, cf).reshape((nstar,nc,nc))
         recon = np.zeros((nstar,nc,nc), dtype=np.float32)
         recon[:,:,:] = recon2[:,:,:]
-        for i in xrange(nstar):
+        for i in range(nstar):
             image[iy[i]:iy[i]+rad+rad+1,ix[i]:ix[i]+rad+rad+1] += recon[i,:,:]
 
         image = image[rad:imsz[1]+rad,rad:imsz[0]+rad]
