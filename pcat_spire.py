@@ -96,7 +96,7 @@ def initialize_c(gdat, libmmult, cblas=False):
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
 
-	if cblas:
+	if cblas or openblas:
 		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)		
 				
@@ -628,12 +628,12 @@ class Model:
 			timestat_array[j][0] = np.sum(statarrays[j])/1000
 			if j==0:
 				accept_fracs.append(np.sum(statarrays[j])/1000)
-			#print statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000),
+			print statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000),
 			for k in range(len(self.movetypes)):
 				if j==0:
 					accept_fracs.append(np.mean(statarrays[j][movetype==k]))
 				timestat_array[j][1+k] = np.mean(statarrays[j][movetype==k])
-				#print '('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])),
+				print '('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])),
 			print
 			if j == 1:
 				print('-'*16)
@@ -904,7 +904,7 @@ class Model:
 		if self.gdat.visual:
 
 			if self.gdat.nbands == 1:
-				self.plot_single_band_frame(resids, models)
+				self.plot_single_band_frame(resids, models) 
 			else:
 				self.plot_multiband_frame(resids, models)
 
@@ -1858,7 +1858,10 @@ class lion():
 			return_median_model = False, \
 
 			# set to True if using CBLAS library
-			cblas=False):
+			cblas=False, \
+
+			# set to True if using OpenBLAS library for non-Intel processors
+			openblas=False):
 
 
 		for attr, valu in locals().items():
@@ -1951,8 +1954,8 @@ these should be moved out of the script and into the pipeline'''
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
 # ob = lion(band0=0, band1=2, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob = lion(band0=0, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob.main()
+ob = lion(band0=0, openblas=True, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100)
+ob.main()
 
 # result_plots(timestr='20190919-113227', burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
