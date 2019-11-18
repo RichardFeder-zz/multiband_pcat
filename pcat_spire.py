@@ -96,7 +96,8 @@ def initialize_c(gdat, libmmult, cblas=False):
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
 
-	if cblas or openblas:
+	if cblas or gdat.openblas:
+		print('were in here now')
 		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)		
 				
@@ -112,6 +113,7 @@ def initialize_c(gdat, libmmult, cblas=False):
 		libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
 	else:
+		print('were actually here')
 		if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
 			warnings.warn('blas.c modified after compiled blas.so', Warning)		
 		
@@ -540,9 +542,7 @@ class Proposal:
 
 
 class Model:
-	# trueminf = np.float32(236) # minimum flux for source in ADU, might need to change
-	#truealpha = np.float32(2) # power law flux slope parameter, might need to change
-	
+
 	_X = 0
 	_Y = 1
 	_F = 2
@@ -739,7 +739,7 @@ class Model:
 			print(n_phon)
 
 
-		if self.gdat.cblas:
+		if self.gdat.cblas or self.gdat.openblas:
 			lib = self.libmmult.pcat_model_eval
 		else:
 			lib = self.libmmult.clib_eval_modl
@@ -749,7 +749,9 @@ class Model:
 		logL = -0.5*diff2s
 	   
 		for b in range(self.nbands):
+			print('resids shape, models shape:', resids[b].shape, models[b].shape)
 			resids[b] -= models[b]
+			# resids[b] -= np.transpose(models[b])
 		
 		'''the proposals here are: move_stars (P) which changes the parameters of existing model sources, 
 		birth/death (BD) and merge/split (MS). Don't worry about perturb_astrometry. 
@@ -784,7 +786,7 @@ class Model:
 			if proposal.goodmove:
 				t2 = time.clock()
 
-				if self.gdat.cblas:
+				if self.gdat.cblas or self.gdat.openblas:
 					lib = self.libmmult.pcat_model_eval
 				else:
 					lib = self.libmmult.clib_eval_modl
@@ -821,7 +823,7 @@ class Model:
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
-					if self.gdat.cblas:
+					if self.gdat.cblas or self.gdat.openblas:
 
 						self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 						# using this dmodel containing only accepted moves, update logL
@@ -833,6 +835,7 @@ class Model:
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
 					resids[b] -= dmodel_acpt
+					# resids[b] -= np.transpose(dmodel_acpt)
 					models[b] += dmodel_acpt
 
 					if b==0:
@@ -881,6 +884,8 @@ class Model:
 
 			for b in range(self.nbands):
 				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
+				# diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-np.transpose(models[b]))*(self.dat.data_array[b]-np.transpose(models[b])))
+
 					
 			if self.verbtype > 1:
 				print('end of Loop', i)
@@ -892,6 +897,7 @@ class Model:
 		chi2 = np.zeros(self.nbands)
 		for b in range(self.nbands):
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
+			# chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-np.transpose(models[b]))*(self.dat.data_array[b]-np.transpose(models[b])))
 			
 		if self.verbtype > 1:
 			print('end of sample')
@@ -1231,7 +1237,6 @@ class Model:
 			nbd = int(min(nbd, self.max_nsrc-self.n)) # add nbd sources, or just as many as will fit
 			# mildly violates detailed balance when n close to nstar
 			# want number of regions in each direction, divided by two, rounded up
-
 			
 			mregx = int(((self.imsz0[0] / self.regsizes[0] + 1) + 1) / 2) # assumes that imsz are multiples of regsize
 			mregy = int(((self.imsz0[1] / self.regsizes[0] + 1) + 1) / 2)
@@ -1257,8 +1262,19 @@ class Model:
 
 			# some sources might be generated outside image
 			inbounds = self.in_bounds(starsb)
+
 			starsb = starsb.compress(inbounds, axis=1)
+			# fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
+
+			not_in_mask = np.array([self.dat.weights[0][int(starsb[self._X,k]), int(starsb[self._Y, k])] > 0 for k in range(starsb.shape[1])])
+			# not_in_mask = self.dat.weights[0][starsb[int(self._X), int(self._Y)]] > 0
+
+			# print('not_in_mask:')
+			# print(not_in_mask)
+
+			starsb = starsb.compress(not_in_mask, axis=1)
 			factor = np.full(starsb.shape[1], -self.penalty)
+
 			proposal.add_birth_stars(starsb)
 			proposal.set_factor(factor)
 			
@@ -1756,7 +1772,7 @@ class lion():
 
 	def __init__(self, 
 			# resizes images to largest square dimension modulo nregion
-			auto_resize = True, \
+			auto_resize = False, \
 
 			#specify these if you want to fix the dimension of incoming image
 			width = 0, \
@@ -1836,7 +1852,7 @@ class lion():
 			# used for visual mode
 			weighted_residual = False, \
 
-			# to show raw number counts set to True
+                     # to show raw number counts set to True
 			raw_counts = False, \
 
 			# verbosity during program execution
@@ -1896,13 +1912,18 @@ class lion():
 
 	def main(self):
 
-		''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
+		''' Here is where we initialize the C libraries and instantiate the arrays that will store our 
+		thinned samples and other stats. We want the MKL routine if possible, then OpenBLAS, then regular C,
+		with that order in priority.'''
+		
 		if self.gdat.cblas:
 			libmmult = npct.load_library('pcat-lion', '.')
+		elif self.gdat.openblas:
+			# libmmult = ctypes.cdll['pcat-lion-openblas.so']
+			libmmult = npct.load_library('pcat-lion-openblas', '.')
 		else:
 			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
 			# libmmult = npct.load_library('blas', '.')
-			# libmmult = npct.load_library('blas', self.gdat.base_path+'pcat-lion-master/')
 
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
 
@@ -1910,7 +1931,6 @@ class lion():
 
 		samps = Samples(self.gdat)
 		model = Model(self.gdat, self.data, libmmult)
-
 
 		# run sampler for gdat.nsamp thinned states
 
@@ -1954,8 +1974,10 @@ these should be moved out of the script and into the pipeline'''
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
 # ob = lion(band0=0, band1=2, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-ob = lion(band0=0, openblas=True, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100)
-ob.main()
+# ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
+# ob = lion(band0=0, openblas=True, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
+
+# ob.main()
 
 # result_plots(timestr='20190919-113227', burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
