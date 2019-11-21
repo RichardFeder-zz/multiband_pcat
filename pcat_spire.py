@@ -79,14 +79,19 @@ def load_in_map(gdat, band=0, astrom=None):
 
 	if astrom is not None:
 		print('loading from ', gdat.band_dict[band])
-		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
+		# astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
 		# astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits', hdu_idx=3)
 
 	spire_dat = fits.open(file_path)
 	image = np.nan_to_num(spire_dat[1].data)
+	# image = np.nan_to_num(spire_dat[0].data)*1e-3
+	# error = np.sqrt(image)*5e-2
+	# error = np.random.normal()
 	error = np.nan_to_num(spire_dat[2].data)
 	exposure = spire_dat[3].data
 	mask = spire_dat[4].data
+	# exposure = np.sqrt(image)
+	# mask = np.sqrt(image)
 
 	return image, error, exposure, mask
 
@@ -96,8 +101,8 @@ def initialize_c(gdat, libmmult, cblas=False):
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
 
-	if cblas or gdat.openblas:
-		print('were in here now')
+	# if cblas or gdat.openblas:
+	if cblas:
 		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)		
 				
@@ -113,7 +118,6 @@ def initialize_c(gdat, libmmult, cblas=False):
 		libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
 	else:
-		print('were actually here')
 		if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
 			warnings.warn('blas.c modified after compiled blas.so', Warning)		
 		
@@ -165,7 +169,7 @@ def load_param_dict(timestr):
 	
 	result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
 	filepath = result_path + timestr
-	filen = open(filepath+'/params.txt','r')
+	filen = open(filepath+'/params.txt','rb')
 	print(filen)
 	pdict = pickle.load(filen)
 	print(pdict)
@@ -175,7 +179,7 @@ def load_param_dict(timestr):
 	return opt, filepath, result_path
 
 
-def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='pdf', gdat=None):
+def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None):
 
 	
 	band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
@@ -183,6 +187,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 	
 	if gdat is None:
+		# print('who')
 		gdat, filepath, result_path = load_param_dict(timestr)
 		gdat.burn_in_frac = burn_in_frac
 		gdat.boolplotshow = boolplotshow
@@ -190,11 +195,13 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		gdat.filepath = filepath
 		gdat.result_path = result_path
 		gdat.timestr = timestr
+
 	else:
 		gdat.result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
 		gdat.filepath = gdat.result_path + gdat.timestr
 	# gdat.auto_resize=False
-
+	# result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
+	# filepath = result_path + timestr
 
 	dat = pcat_data()
 	dat.load_in_data(gdat)
@@ -210,14 +217,16 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	accept_stats = chain['accept']
 	diff2s = chain['diff2s']
 	# residuals = chain['residuals0']
+	# burn_in = int(500*burn_in_frac)
 	burn_in = int(gdat.nsamp*burn_in_frac)
 	bands = gdat.bands
-
+	# bands = [0]
 
 	# ------------------- mean residual ---------------------------
 
 	print(gdat.nbands)
 	for b in range(gdat.nbands):
+	# for b in range(1):
 
 		residz = chain['residuals'+str(b)]
 
@@ -230,24 +239,48 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		minpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 5.)
 		maxpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 95.)
 
+		
+		plt.figure(figsize=(10, 5))
+		plt.subplot(1,2,1)
+		plt.title('Last Residual -- '+band_dict[bands[b]])
+		# plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=-0.005, vmax=0.005)
+		plt.imshow(residz[-1], interpolation='none', cmap='Greys', vmin=minpct, vmax=maxpct, origin='lower')
+		# plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
+		plt.colorbar()
+		plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample')
+		plt.legend()
+		plt.subplot(1,2,2)
+		plt.title('Smoothed Residual')
+		# plt.imshow(smoothed_resid, cmap='Greys', vmin=-0.004, vmax=0.0005)
+		plt.imshow(gaussian_filter(residz[-1], sigma=3), cmap='Greys', vmin=minpct_smooth, vmax=maxpct_smooth, origin='lower')
+		plt.colorbar()
+		plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample', alpha=0.5)
+		if boolplotsave:
+			# plt.savefig(filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight')
+			plt.savefig(gdat.filepath +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		if boolplotshow:
+			plt.show()
+		plt.close()
+
 
 		plt.figure(figsize=(10, 5))
 		plt.subplot(1,2,1)
 		plt.title('Median Residual -- '+band_dict[bands[b]])
 		# plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=-0.005, vmax=0.005)
-		plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=minpct, vmax=maxpct)
+		plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=minpct, vmax=maxpct, origin='lower')
 		# plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
 		plt.colorbar()
-		# plt.scatter(xsrcs[-1], ysrcs[-1], s=1e2*fsrcs[-1], color='r', marker='x', label='Last Sample')
+		plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample')
 		plt.legend()
 		plt.subplot(1,2,2)
 		plt.title('Smoothed Residual')
 		# plt.imshow(smoothed_resid, cmap='Greys', vmin=-0.004, vmax=0.0005)
-		plt.imshow(smoothed_resid, cmap='Greys', vmin=minpct_smooth, vmax=maxpct_smooth)
+		plt.imshow(smoothed_resid, cmap='Greys', vmin=minpct_smooth, vmax=maxpct_smooth, origin='lower')
 		plt.colorbar()
-		# plt.scatter(xsrcs[-1], ysrcs[-1], s=1e3*fsrcs[-1], color='r', marker='x', label='Last Sample', alpha=0.5)
+		plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample', alpha=0.5)
 		if boolplotsave:
-			plt.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight')
+			# plt.savefig(filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight')
+			plt.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 		if boolplotshow:
 			plt.show()
 		plt.close()
@@ -260,7 +293,8 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		plt.hist(median_resid_rav, bins=np.linspace(-0.02, 0.02, 50))
 		plt.xlabel('data - model (Jy)')
 		if boolplotsave:
-			plt.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight')
+			# plt.savefig(filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight')
+			plt.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 		if boolplotshow:
 			plt.show()
 		plt.close()
@@ -271,7 +305,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		plt.imshow(median_resid, vmin=-0.01, vmax=0.01, cmap='Greys', interpolation='none')
 		plt.colorbar()
 		if boolplotsave:
-			plt.savefig(gdat.filepath +'/cropped_image.'+plttype, bbox_inches='tight')
+			plt.savefig(gdat.filepath +'/cropped_image.'+plttype, bbox_inches='tight', dpi=300)
 		if boolplotshow:
 			plt.show()
 		plt.close()
@@ -291,7 +325,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	plt.ylabel('Chi2')
 	plt.legend()
 	if boolplotsave:
-		plt.savefig(gdat.filepath + '/chi2_sample.'+plttype, bbox_inches='tight')
+		plt.savefig(gdat.filepath + '/chi2_sample.'+plttype, bbox_inches='tight', dpi=300)
 	if boolplotshow:
 		plt.show()
 	plt.close()
@@ -307,7 +341,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	plt.title('Computational Resources')
 	plt.pie(time_array, labels=labels, autopct='%1.1f%%', shadow=True)
 	if boolplotsave:
-		plt.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight')
+		plt.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight', dpi=300)
 	if boolplotshow:
 		plt.show()
 	plt.close()
@@ -325,7 +359,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	plt.xlabel('Sample Number')
 	plt.ylabel('Acceptance Fraction')
 	if boolplotsave:
-		plt.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight')
+		plt.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=300)
 	if boolplotshow:
 		plt.show()
 	plt.close()
@@ -391,7 +425,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		plt.xlim(np.log10(gdat.trueminf)+3.-0.5-1.0, 2.5)
 		plt.tight_layout()
 		if boolplotsave:
-			plt.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight')
+			plt.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 		if boolplotshow:
 			plt.show()
 		plt.close()
@@ -404,7 +438,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		plt.yscale('log', nonposy='clip')
 		plt.xlabel('log10(Flux) - ' + str(band_dict[bands[b]]))
 		if boolplotsave:
-			plt.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight')
+			plt.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 		if boolplotshow:
 			plt.show()
 		plt.close()
@@ -433,7 +467,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 			plt.ylabel('Normalized PDF')
 			plt.legend()
 			if boolplotsave:
-				plt.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight')
+				plt.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 			if boolplotshow:
 				plt.show()
 			plt.close()
@@ -449,7 +483,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		plt.xlabel('nstar')
 		plt.legend()
 		if boolplotsave:
-			plt.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight')
+			plt.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=300)
 		if boolplotshow:
 			plt.show()
 		plt.close()
@@ -567,6 +601,7 @@ class Model:
 		self.margins = np.array(gdat.margins).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
 		self.moveweights = np.array([80., 40., 40.])
+		# self.moveweights = np.array([0., 40., 0.])
 		self.movetypes = ['P *', 'BD *', 'MS *']
 		self.n = np.random.randint(gdat.max_nsrc)+1
 		self.nbands = gdat.nbands
@@ -739,7 +774,8 @@ class Model:
 			print(n_phon)
 
 
-		if self.gdat.cblas or self.gdat.openblas:
+		# if self.gdat.cblas or self.gdat.openblas:
+		if self.gdat.cblas:
 			lib = self.libmmult.pcat_model_eval
 		else:
 			lib = self.libmmult.clib_eval_modl
@@ -786,7 +822,8 @@ class Model:
 			if proposal.goodmove:
 				t2 = time.clock()
 
-				if self.gdat.cblas or self.gdat.openblas:
+				# if self.gdat.cblas or self.gdat.openblas:
+				if self.gdat.cblas:
 					lib = self.libmmult.pcat_model_eval
 				else:
 					lib = self.libmmult.clib_eval_modl
@@ -823,7 +860,8 @@ class Model:
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
-					if self.gdat.cblas or self.gdat.openblas:
+					# if self.gdat.cblas or self.gdat.openblas:
+					if self.gdat.cblas:
 
 						self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 						# using this dmodel containing only accepted moves, update logL
@@ -1264,13 +1302,10 @@ class Model:
 			inbounds = self.in_bounds(starsb)
 
 			starsb = starsb.compress(inbounds, axis=1)
-			# fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
+			
+			# checking for what is in mask takes on average 50 us with scatter depending on how many sources there are being proposed
+			not_in_mask = np.array([self.dat.weights[0][int(starsb[self._Y,k]), int(starsb[self._X, k])] > 0 for k in range(starsb.shape[1])])
 
-			not_in_mask = np.array([self.dat.weights[0][int(starsb[self._X,k]), int(starsb[self._Y, k])] > 0 for k in range(starsb.shape[1])])
-			# not_in_mask = self.dat.weights[0][starsb[int(self._X), int(self._Y)]] > 0
-
-			# print('not_in_mask:')
-			# print(not_in_mask)
 
 			starsb = starsb.compress(not_in_mask, axis=1)
 			factor = np.full(starsb.shape[1], -self.penalty)
@@ -1706,7 +1741,7 @@ class pcat_data():
 
 
 			elif gdat.width > 0:
-
+				print('were here now')
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
@@ -1852,7 +1887,7 @@ class lion():
 			# used for visual mode
 			weighted_residual = False, \
 
-                     # to show raw number counts set to True
+            # to show raw number counts set to True
 			raw_counts = False, \
 
 			# verbosity during program execution
@@ -1920,7 +1955,8 @@ class lion():
 			libmmult = npct.load_library('pcat-lion', '.')
 		elif self.gdat.openblas:
 			# libmmult = ctypes.cdll['pcat-lion-openblas.so']
-			libmmult = npct.load_library('pcat-lion-openblas', '.')
+			# libmmult = npct.load_library('pcat-lion-openblas', '.')
+			libmmult = npct.load_library('blas-open', '.')
 		else:
 			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
 			# libmmult = npct.load_library('blas', '.')
@@ -1973,13 +2009,18 @@ version of the lion module every time I make a change, but when Lion is wrapped 
 these should be moved out of the script and into the pipeline'''
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
-# ob = lion(band0=0, band1=2, cblas=True, auto_resize=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+ob = lion(band0=0, cblas=True, visual=True, weighted_residual=True, auto_resize=True, make_post_plots=True, nsamp=500, residual_samples=100)
+# ob_lensed = lion(band0=0, cblas=True, visual=True, auto_resize=False, mean_offset=0.0, width=150, height=150, dataname='lensedmap_a0370', weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+ob.main()
+# ob_unlensed = lion(band0=0, cblas=True, visual=False, auto_resize=False, trueminf=0.001, nregion=3, mean_offset=0.0, width=60, height=60, dataname='nonlensedmap_a0370', weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=50)
 # ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
-# ob = lion(band0=0, openblas=True, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
+# ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
-# ob.main()
+# ob_unlensed.main()
 
-# result_plots(timestr='20190919-113227', burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# ob_lensed.main()
+
+# result_plots(timestr='20190907-154547', burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 
 
