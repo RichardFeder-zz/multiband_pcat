@@ -70,26 +70,29 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5):
 
 
 def load_in_map(gdat, band=0, astrom=None):
-	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise+sz.fits'
-	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
-	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+band_dict[band]+'W_sim0200.fits'
-	file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits'
-	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits'
+    file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits'
 
-	print('file_path:', file_path)
+    # file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise+sz.fits'
+    # file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
+    # file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+band_dict[band]+'W_sim0200.fits'
+    #file_path = gdat.base_path+'/pcat_results/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits'
 
-	if astrom is not None:
-		print('loading from ', gdat.band_dict[band])
-		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
+    #file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits'
+
+    print('file_path:', file_path)
+
+    if astrom is not None:
+        print('loading from ', gdat.band_dict[band])
+        astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
 		# astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits', hdu_idx=3)
 
-	spire_dat = fits.open(file_path)
-	image = np.nan_to_num(spire_dat[1].data)
-	error = np.nan_to_num(spire_dat[2].data)
-	exposure = spire_dat[3].data
-	mask = spire_dat[4].data
+    spire_dat = fits.open(file_path)
+    image = np.nan_to_num(spire_dat[1].data)
+    error = np.nan_to_num(spire_dat[2].data)
+    exposure = spire_dat[3].data
+    mask = spire_dat[4].data
 
-	return image, error, exposure, mask
+    return image, error, exposure, mask
 
 
 def initialize_c(gdat, libmmult, cblas=False):
@@ -98,7 +101,7 @@ def initialize_c(gdat, libmmult, cblas=False):
 		print('initializing c routines and data structs')
 
 	if cblas:
-		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
+		if os.path.getmtime('pcat-lion-openblas.c') > os.path.getmtime('pcat-lion-openblas.so'):
 			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)
 
 		array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
@@ -155,12 +158,12 @@ def get_region(x, offsetx, regsize):
 	return (np.floor(x + offsetx).astype(np.int) / regsize).astype(np.int)
 
 def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
-	print('================ idx_parity =================')
+	#print('================ idx_parity =================')
 	match_x = (get_region(x[0:n], offsetx, regsize) % 2) == parity_x
 	match_y = (get_region(y[0:n], offsety, regsize) % 2) == parity_y
-	print(get_region(x[0:n], offsetx, int(regsize)))
-	print(get_region(y[0:n], offsety, int(regsize)))
-	print('==============================================')
+	#print(get_region(x[0:n], offsetx, int(regsize)))
+	#print(get_region(y[0:n], offsety, int(regsize)))
+	#print('==============================================')
 	return np.flatnonzero(np.logical_and(match_x, match_y))
 
 
@@ -633,13 +636,13 @@ class Model:
 			if j==0:
 				accept_fracs.append(np.sum(statarrays[j])/1000)
 
-			#print statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000),
+			print(statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000),)
 			for k in range(len(self.movetypes)):
 				if j==0:
 					accept_fracs.append(np.mean(statarrays[j][movetype==k]))
 				timestat_array[j][1+k] = np.mean(statarrays[j][movetype==k])
 
-				#print '('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])),
+				print('('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])),)
 
 			if j == 1:
 				print('-'*16)
@@ -745,23 +748,19 @@ class Model:
 			print('self.n: ',self.n)
 			print('n_phon: ',n_phon)
 
-
 		if self.gdat.cblas:
 			lib = self.libmmult.pcat_model_eval
 		else:
 			lib = self.libmmult.clib_eval_modl
-
 		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib)
 		model = models[0]
 		logL = -0.5*diff2s
-
 		for b in range(self.nbands):
 			resids[b] -= models[b]
 
 		'''the proposals here are: move_stars (P) which changes the parameters of existing model sources,
 		birth/death (BD) and merge/split (MS). Don't worry about perturb_astrometry.
 		The moveweights array, once normalized, determines the probability of choosing a given proposal. '''
-
 		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
 		self.moveweights /= np.sum(self.moveweights)
 		if self.gdat.nregion > 1:
@@ -807,7 +806,6 @@ class Model:
 				if self.verbtype > 1:
 					print('dlogP')
 					print(dlogP)
-				print('dlogP: ',dlogP)
 				assert np.isnan(dlogP).any() == False
 
 				dts[1,i] = time.clock() - t2
@@ -816,7 +814,6 @@ class Model:
 
 				regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
 				regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
-				print(regionx,regiony)
 
 				if proposal.factor is not None:
 					dlogP[regiony, regionx] += proposal.factor
@@ -1098,7 +1095,6 @@ class Model:
 
 
 	def idx_parity_stars(self):
-		print('long print: ',self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
 		return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
 		# return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, self.regsize)
 
@@ -1138,7 +1134,6 @@ class Model:
 
 	def move_stars(self):
 		idx_move = self.idx_parity_stars()
-		print('idx_move: ',idx_move)
 		nw = idx_move.size
 		stars0 = self.stars.take(idx_move, axis=1)
 		starsp = np.empty_like(stars0)
@@ -1153,8 +1148,6 @@ class Model:
 			else:
 				pf = self.flux_proposal(f0[b], nw, trueminf=0.0001) #place a minor minf to avoid negative fluxes in non-pivot bands
 			pfs.append(pf)
-		print('pfs :',pfs)
-		print('f0 :',f0)
 		if (np.array(pfs)<0).any():
 			print('negative flux!')
 			print(np.array(pfs)[np.array(pfs)<0])
@@ -1230,9 +1223,7 @@ class Model:
 		assert np.isnan(factor).any()==False
 
 		proposal.set_factor(factor)
-		print('factor: ',factor)
-		print('xphon: ',proposal.xphon)
-		print('fphon: ',proposal.fphon)
+
 		return proposal
 
 
@@ -1776,7 +1767,7 @@ class lion():
 			y0 = 0, \
 
 			#indices of bands used in fit, where 0->250um, 1->350um and 2->500um.
-			band0 = 0, \
+			band0 = None, \
 			band1 = None, \
 			band2 = None, \
 
@@ -1791,7 +1782,7 @@ class lion():
 			map_object = None, \
 
 			# Configure these for individual directory structure
-			base_path = config.HOME + 'multiband_pcat/', \
+			base_path = config.HOME + 'multiband_pcat', \
 			result_path = config.HOME + 'multiband_pcat/pcat_results',\
 
 			# name of cluster being analyzed
@@ -1849,7 +1840,7 @@ class lion():
 			raw_counts = False, \
 
 			# verbosity during program execution
-			verbtype = 2, \
+			verbtype = 0, \
 
 			# number of residual samples to average for final product
 			residual_samples = 100, \
@@ -1864,7 +1855,7 @@ class lion():
 			bool_plot_save = True, \
 
 			# return median model image from last 'residual_samples' samples
-			return_median_model = False, \
+			return_median_model = True, \
 
 			# set to True if using CBLAS library
 			):
@@ -1874,7 +1865,7 @@ class lion():
 
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
-
+		print('verbtype is:', self.gdat.verbtype)
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = []
@@ -1904,10 +1895,13 @@ class lion():
 
 		''' Here is where we initialize the C libraries and instantiate the arrays that will store our thinned samples and other stats '''
 		if self.gdat.cblas:
-			libmmult = npct.load_library('pcat-lion', '.')
+                    #pth = os.path.dirname(__file__)
+                    #print('path is ', pth)
+                    libmmult = ctypes.cdll["/home/butler/rsz/multiband_pcat/pcat-lion-openblas.so"]
+		    #libmmult = npct.load_library('pcat-lion', '.')
 		else:
-			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
-			# libmmult = npct.load_library('blas', '.')
+			# libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
+			libmmult = npct.load_library('blas', '.')
 			# libmmult = npct.load_library('blas', self.gdat.base_path+'pcat-lion-master/')
 
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
@@ -1946,12 +1940,20 @@ class lion():
 
 		if self.gdat.return_median_model:
 			models = []
+			# resid = np.asarray(samps.residuals)
+			median_resid = []
+			# print('residsual shape:',resid.shape)
+			# print('how many bands?:',self.gdat.nbands)
 			for b in range(self.gdat.nbands):
 				model_samples = np.array([self.data.data_array[b]-samps.residuals[b][i] for i in range(self.gdat.residual_samples)])
 				median_model = np.median(model_samples, axis=0)
 				models.append(median_model)
+				median_residuals = np.median(samps.residuals[b],axis=0)
+				median_resid.append(median_residuals)
 
-			return models
+			# median_resid = np.asarray(median_resid)
+			# print(median_resid.shape)
+			return median_resid
 
 
 '''These lines below here are to instantiate the script without having to load an updated
