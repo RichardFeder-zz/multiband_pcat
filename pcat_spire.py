@@ -67,7 +67,7 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 	if normalization == 'max':
 		print('Normalizing PSF by kernel maximum')
 		psfnew /= np.max(psfnew)
-		psfnew /= 4*np.pi*(3./2.355)**2
+		psfnew /= 4*np.pi*(pixel_fwhm/2.355)**2
 	else:
 		print('Normalizing PSF by kernel sum')
 		psfnew *= nc
