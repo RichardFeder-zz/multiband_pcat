@@ -78,18 +78,32 @@ class wcs_astrometry():
         if head is None:
             self.filenames.append(filename)
             
-            f = fits.open(self.base_path + filename)
+            f = fits.open(filename)
+
             if hdu_idx is None:
                 hdu_idx = 0
                 
-            head = f[hdu_idx].header  
+            head = f[hdu_idx].header
 
         if self.auto_resize:
-            big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
+            try:
+                big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
+            except:
+                print('didnt work upping it')
+                hdu_idx += 1
+                head = f[hdu_idx].header
+                big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
+
             big_pad_dim = find_nearest_upper_mod(big_dim, self.nregion)
             dim = (big_pad_dim, big_pad_dim)
         else:
-            dim = (head['NAXIS1'], head['NAXIS2'])
+            try:
+                dim = (head['NAXIS1'], head['NAXIS2'])
+            except:
+                hdu_idx += 1
+                head = f[hdu_idx].header
+                dim = (head['NAXIS1'], head['NAXIS2'])
+        print('dim:', dim)
         self.dims.append(dim)
         wcs_obj = wcs.WCS(head)
         self.wcs_objs.append(wcs_obj)
@@ -121,6 +135,8 @@ class wcs_astrometry():
         return dxp, dyp
            
     def fit_astrom_arrays(self, idx0, idx1):
+        print('idx0:', idx0)
+        print(self.dims)
         
         x = np.arange(0, self.dims[idx0][0])
         y = np.arange(0, self.dims[idx0][1])

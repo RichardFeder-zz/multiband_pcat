@@ -80,14 +80,23 @@ def load_in_map(gdat, band=0, astrom=None):
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_sim200P'+band_dict[band]+'W_noise.fits'
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W_sim0200.fits'
 	# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits'
-	file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits'
+	if gdat.file_path is None:
+		file_path = gdat.data_path+gdat.dataname+'/'+gdat.dataname+'_'+gdat.tail_name+'.fits'
+	else:
+		file_path = gdat.file_path
+		# file_path = gdat.base_path+'/Data/spire/'+gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits'
+
+	print('band is ', gdat.band_dict[band])
+	file_path = file_path.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
+
 
 	print('file_path:', file_path)
 
 	if astrom is not None:
 		print('loading from ', gdat.band_dict[band])
 		# astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W_nr_1.fits', hdu_idx=3)
-		astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits', hdu_idx=3)
+		astrom.load_wcs_header_and_dim(file_path)
+		# astrom.load_wcs_header_and_dim(gdat.dataname+'_P'+gdat.band_dict[band]+'W.fits', hdu_idx=3)
 
 	spire_dat = fits.open(file_path)
 	image = np.nan_to_num(spire_dat[1].data)
@@ -1709,7 +1718,7 @@ class pcat_data():
 				number += 1
 		return False
 
-	def load_in_data(self, gdat, map_object=None):
+	def load_in_data(self, gdat, map_object=None, tail_name=None):
 
 		gdat.imszs = []
 		gdat.regsizes = []
@@ -1736,6 +1745,7 @@ class pcat_data():
 
 
 			elif gdat.mock_name is None:
+
 				image, error, exposure, mask = load_in_map(gdat, band, astrom=self.fast_astrom)
 
 				if i > 0:
@@ -1777,7 +1787,8 @@ class pcat_data():
 
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(padded_error.astype(np.float32))
-				self.data_array.append(padded_image.astype(np.float32)+gdat.mean_offset) # constant offset, will need to change
+				self.data_array.append(padded_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
+				# self.data_array.append(padded_image.astype(np.float32)-gdat.mean_offset) # constant offset, will need to change
 				# self.data_array.append(padded_image.astype(np.float32))
 				self.exposures.append(padded_exposure.astype(np.float32))
 
@@ -1797,7 +1808,8 @@ class pcat_data():
 				weight = 1. / variance
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
-				self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, will need to change
+				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
+				# self.data_array.append(image.astype(np.float32)+gdat.mean_offset) # constant offset, will need to change
 				# self.data_array.append(image.astype(np.float32))
 				print('image maximum is ', np.max(image))
 
@@ -1812,7 +1824,9 @@ class pcat_data():
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
 				#self.data_array.append(image.astype(np.float32)) # constant offset, will need to change
-				self.data_array.append(image.astype(np.float32)+gdat.mean_offset) 
+				# self.data_array.append(image.astype(np.float32)+gdat.mean_offset) 
+				bandself.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) 
+
 				# self.exposures.append(exposure.astype(np.float32))
 
 
@@ -1879,7 +1893,7 @@ class lion():
 			# absolute level subtracted from SPIRE model image, bias and mean_offset are 
 			# redundant at the moment but don't worry for now
 			bias = 0.0, \
-			mean_offset = 0.0035, \
+			mean_offsets = [-0.0035], \
 
 			psf_pixel_fwhm = 3.0, \
 
@@ -1890,7 +1904,14 @@ class lion():
 			base_path = '/Users/richardfeder/Documents/multiband_pcat/', \
 			result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results',\
 			
-			# name of cluster being analyzed
+			# the tail name can be configured when reading files from a specific dataset if the name space changes.
+			# the default tail name should be for PSW, as this is picked up in a later routine and modified to the appropriate band.
+			tail_name = 'PSW_sim2300', \
+			
+			# file_path can be provided if only one image is desired with a specific path not consistent with the larger directory structure
+			file_path = None, \
+			
+			# name of cluster being analyzed. If there is no map object, the location of files is assumed to be "data_repo/dataname/dataname_tailname.fits"
 			dataname = 'a0370', \
 
 			# mock dataset name
@@ -1977,18 +1998,13 @@ class lion():
 
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
-		self.gdat.bands = []
-		self.gdat.bands.append(self.gdat.band0)
-		if self.gdat.band1 is not None:
-			self.gdat.bands.append(self.gdat.band1)
-			if self.gdat.band2 is not None:
-				self.gdat.bands.append(self.gdat.band2)
+		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
 
+		self.gdat.data_path = self.gdat.base_path+'/Data/spire/'
+		print('data path is ', self.gdat.data_path)
+
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
-
-
-
 		self.data.load_in_data(self.gdat, map_object=map_object)
 
 
@@ -2070,10 +2086,14 @@ version of the lion module every time I make a change, but when Lion is wrapped 
 these should be moved out of the script and into the pipeline'''
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
-# ob = lion(band0=0, cblas=True, visual=True, mean_offset=0.0035, auto_resize=False, x0=70, y0=70, width=100, height=100, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
+
+
+# ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=True, dataname='a0370', tail_name='PSW_nr_1', mean_offsets=[0.0, 0.0, 0.0], auto_resize=False, x0=70, y0=70, width=100, height=100, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
+
+ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=True, dataname='rxj1347', mean_offsets=[0.006, 0.012, 0.026], auto_resize=True, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
 
 # ob = lion(band0=0, cblas=True, visual=False, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=500, residual_samples=100)
-# ob.main()
+ob.main()
 
 # ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
