@@ -16,6 +16,8 @@ from image_eval import psf_poly_fit, image_model_eval
 from fast_astrom import *
 import pickle
 from spire_data_utils import *
+from spire_roc import *
+from spire_plotting_fns import *
 
 np.seterr(divide='ignore', invalid='ignore')
 
@@ -124,11 +126,12 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 	return np.flatnonzero(np.logical_and(match_x, match_y))
 
 
-def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None):
+def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4):
 
 	
 	band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
 	lam_dict = dict({0:250, 1:350, 2:500})
+
 
 	
 	if gdat is None:
@@ -146,6 +149,33 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	# gdat.auto_resize=False
 	# result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
 	# filepath = result_path + timestr
+
+
+	roc = cross_match_roc(filetype='.npy')
+	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
+
+	for i, band in enumerate(gdat.bands):
+		print(band)
+
+		if cattype=='SIDES':
+			ref_path = datapath+'sides_cat_P'+gdat.band_dict[band]+'W_20.npy'
+			print('ref path:', ref_path)
+			roc.load_cat(path=ref_path)
+			print(roc.mock_cat)
+			if i==0:
+				cat_fluxes = np.zeros(shape=(gdat.nbands, len(roc.mock_cat['flux'])))
+				print('cat fluxes has shape', cat_fluxes.shape)
+			cat_fluxes[i,:] = roc.mock_cat['flux']
+
+
+	print('cat fluxes has shape:', cat_fluxes.shape)
+
+
+	flux_mask = (cat_fluxes[0,:] > min_flux_refcat)
+	cat_fluxes = cat_fluxes[:,flux_mask]
+
+	print('cat fluxes now has shape', cat_fluxes.shape)
+
 
 	dat = pcat_data(gdat.auto_resize, nregion=gdat.nregion)
 	dat.load_in_data(gdat)
@@ -179,148 +209,61 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		minpct = np.percentile(median_resid[dat.weights[b] != 0.], 5.)
 		maxpct = np.percentile(median_resid[dat.weights[b] != 0.], 95.)
 
-		minpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 5.)
-		maxpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 95.)
+		# minpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 5.)
+		# maxpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 99.)
+		maxpct_smooth = 0.005
+		minpct_smooth = -0.005
 
-		
-		plt.figure(figsize=(10, 5))
-		plt.subplot(1,2,1)
-		plt.title('Last Residual -- '+band_dict[bands[b]])
-		# plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=-0.005, vmax=0.005)
-		plt.imshow(residz[-1], interpolation='none', cmap='Greys', vmin=minpct, vmax=maxpct, origin='lower')
-		# plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
-		plt.colorbar()
-		# plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample')
-		plt.legend()
-		plt.subplot(1,2,2)
-		plt.title('Smoothed Residual')
-		# plt.imshow(smoothed_resid, cmap='Greys', vmin=-0.004, vmax=0.0005)
-		plt.imshow(gaussian_filter(residz[-1], sigma=3), cmap='Greys', vmin=minpct_smooth, vmax=maxpct_smooth, origin='lower')
-		plt.colorbar()
-		plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample', alpha=0.5)
-		if boolplotsave:
-			# plt.savefig(filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight')
-			plt.savefig(gdat.filepath +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-		if boolplotshow:
-			plt.show()
-		plt.close()
+		f_last = plot_residual_map(residz[-1], mode='last', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
+		f_last.savefig(gdat.filepath +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 
-		plt.figure(figsize=(10, 5))
-		plt.subplot(1,2,1)
-		plt.title('Median Residual -- '+band_dict[bands[b]])
-		# plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=-0.005, vmax=0.005)
-		plt.imshow(median_resid, interpolation='none', cmap='Greys', vmin=minpct, vmax=maxpct, origin='lower')
-		# plt.imshow(mean_resid, interpolation='none', cmap='Greys', vmin=np.percentile(mean_resid, 1), vmax=np.percentile(mean_resid, 99))
-		plt.colorbar()
-		# plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample')
-		plt.legend()
-		plt.subplot(1,2,2)
-		plt.title('Smoothed Residual')
-		# plt.imshow(smoothed_resid, cmap='Greys', vmin=-0.004, vmax=0.0005)
-		plt.imshow(smoothed_resid, cmap='Greys', vmin=minpct_smooth, vmax=maxpct_smooth, origin='lower')
-		plt.colorbar()
-		plt.scatter(xsrcs[-1], ysrcs[-1], s=1, color='r', marker='x', label='Last Sample', alpha=0.5)
-		if boolplotsave:
-			# plt.savefig(filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight')
-			plt.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-		if boolplotshow:
-			plt.show()
-		plt.close()
+		f_median = plot_residual_map(median_resid, mode='median', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
+		f_median.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
 
 		median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
 
+		f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', band=band_dict[bands[b]], show=False)
+		f_1pt_resid.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
-		plt.figure()
-		plt.title('Median residual 1pt function -- '+band_dict[bands[b]])
-		plt.hist(median_resid_rav, bins=np.linspace(-0.02, 0.02, 50))
-		plt.xlabel('data - model (Jy)')
-		if boolplotsave:
-			# plt.savefig(filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight')
-			plt.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-		if boolplotshow:
-			plt.show()
-		plt.close()
-
-		median_resid = median_resid[30:median_resid.shape[1]-30,30:median_resid.shape[0]-30]
-
-		plt.figure()
-		plt.imshow(median_resid, vmin=-0.01, vmax=0.01, cmap='Greys', interpolation='none')
-		plt.colorbar()
-		if boolplotsave:
-			plt.savefig(gdat.filepath +'/cropped_image.'+plttype, bbox_inches='tight', dpi=300)
-		if boolplotshow:
-			plt.show()
-		plt.close()
-
-	
+		plt.close()	
 
 	# -------------------- CHI2 ------------------------------------
 
 	sample_number = np.arange(burn_in, gdat.nsamp)
 	full_sample = range(gdat.nsamp)
-	plt.figure()
-	plt.title('Chi-Squared Distribution over Catalog Samples')
+
+
 	for b in range(gdat.nbands):
-		plt.plot(sample_number, chi2[burn_in:,b], label=band_dict[bands[b]])
-		plt.axhline(np.min(chi2[burn_in:,b]), linestyle='dashed', alpha=0.5, label=str(np.min(chi2[burn_in:,b]))+' (' + str(band_dict[bands[b]]) + ')')
-	plt.xlabel('Sample')
-	plt.ylabel('Chi2')
-	plt.legend()
-	if boolplotsave:
-		plt.savefig(gdat.filepath + '/chi2_sample.'+plttype, bbox_inches='tight', dpi=300)
-	if boolplotshow:
-		plt.show()
-	plt.close()
+		fchi = plot_chi_squared(chi2[:,b], sample_number, band=band_dict[bands[b]], show=False)
+		fchi.savefig(gdat.filepath + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		plt.close()
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
 
-	time_array = np.zeros(3, dtype=np.float32)
 	labels = ['Proposal', 'Likelihood', 'Implement']
-	print(timestats[0])
-	for samp in range(gdat.nsamp):
-		time_array += np.array([timestats[samp][2][0], timestats[samp][3][0], timestats[samp][4][0]])
-	plt.figure()
-	plt.title('Computational Resources')
-	plt.pie(time_array, labels=labels, autopct='%1.1f%%', shadow=True)
-	if boolplotsave:
-		plt.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight', dpi=300)
-	if boolplotshow:
-		plt.show()
-	plt.close()
 
+	f_comp = plot_comp_resources(timestats, gdat.nsamp, labels=labels)
+	f_comp.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight', dpi=300)
+	plt.close()
 
 	# ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
 
 	proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
-	plt.figure()
-	plt.title('Proposal Acceptance Fractions')
-	for x in range(len(proposal_types)):
-		if not np.isnan(accept_stats[0,x]):
-			plt.plot(full_sample, accept_stats[:,x], label=proposal_types[x])
-	plt.legend()
-	plt.xlabel('Sample Number')
-	plt.ylabel('Acceptance Fraction')
-	if boolplotsave:
-		plt.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=300)
-	if boolplotshow:
-		plt.show()
-	plt.close()
 
+	f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types)
+	f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=300)
 
 
 	# -------------------------------- ITERATE OVER BANDS -------------------------------------
 
 
 	nsrc_fov = []
-	color_post = []
-	# color_post_bins = 10**np.linspace(-1, 2, 20)
-	color_post_bins = np.linspace(-1, 1, 30)
 	color_lin_post_bins = np.linspace(0.0, 5.0, 30)
 
 	for b in range(gdat.nbands):
 
-		color_post = []
 		color_lin_post = []
 
 
@@ -333,10 +276,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		weight = dat.weights[b]
 		
 		for i, j in enumerate(np.arange(burn_in, gdat.nsamp)):
-
-			if b > 0:
-				color_post.append(np.histogram(np.log10(fsrcs[0][j]/fsrcs[0][j]), bins=color_post_bins)[0]+0.01)
-				color_lin_post.append(np.histogram(fsrcs[b-1][j]/fsrcs[b][j], bins=color_lin_post_bins)[0]+0.01)
 	
 			# fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
 			fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0.])
@@ -344,8 +283,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 			nsrc_fov.append(len(fsrcs_in_fov))
 
 			hist = np.histogram(np.log10(fsrcs_in_fov)+3, bins=binz)
-
-			# hist = np.histogram(np.log10(fsrcs[b][j])+3, bins=binz)
 			logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
 			binz_Sz = 10**(binz-3)
 			dSz = binz_Sz[1:]-binz_Sz[:-1]
@@ -356,84 +293,27 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
 			lit_number_counts[i,:] = dNdS_S_twop5/n_steradian/dSz
 
-		mean = np.mean(lit_number_counts, axis=0)
 
+		f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=band_dict[bands[b]])
+		f_post_number_cts.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
-		plt.figure()  
-		plt.errorbar(logSv+3, np.mean(lit_number_counts, axis=0), yerr=np.array([np.abs(mean - np.percentile(lit_number_counts, 16, axis=0)), np.abs(np.percentile(lit_number_counts, 84, axis=0) - mean)]), marker='.')
-		plt.yscale('log')
-		plt.legend()
-		plt.xlabel('log($S_{\\nu}$) (mJy)')
-		plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-		plt.ylim(1e0, 1e5)
-		plt.xlim(np.log10(gdat.trueminf)+3.-0.5-1.0, 2.5)
-		plt.tight_layout()
-		if boolplotsave:
-			plt.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
-		if boolplotshow:
-			plt.show()
-		plt.close()
-
-		mean = np.mean(raw_number_counts, axis=0)
-
-		plt.title('Posterior Flux Distribution - ' + str(band_dict[bands[b]]))
-		plt.errorbar(logSv+3, np.mean(raw_number_counts, axis=0), yerr=np.array([np.abs(mean-np.percentile(raw_number_counts, 16, axis=0)), np.abs(np.percentile(raw_number_counts, 84, axis=0)-mean)]), fmt='o', label='Posterior')
-		plt.legend()
-		plt.yscale('log', nonposy='clip')
-		plt.xlabel('log10(Flux) - ' + str(band_dict[bands[b]]))
-		if boolplotsave:
-			plt.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
-		if boolplotshow:
-			plt.show()
-		plt.close()
-
+		f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=band_dict[bands[b]])
+		f_post_flux_dist.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		if b > 0:
-			medians = np.median(np.array(color_post), axis=0)
-			medians /= (np.sum(medians)*(color_post_bins[1]-color_post_bins[0]))  
-			lin_medians = np.median(np.array(color_lin_post), axis=0)
-			lin_medians /= (np.sum(lin_medians)*(color_lin_post_bins[1]-color_lin_post_bins[0]))  
-			err = np.std(np.array(color_post), axis=0)
-			bincentres = [(color_post_bins[i]+color_post_bins[i+1])/2. for i in range(len(color_post_bins)-1)]
-			lin_bincentres = [(color_lin_post_bins[i]+color_lin_post_bins[i+1])/2. for i in range(len(color_lin_post_bins)-1)]
 
-			plt.title('Posterior Color Distribution', fontsize=14)
-			# plt.step(bincentres, medians, where='mid', color='b', label='Posterior', alpha=0.5)
-			plt.step(lin_bincentres, lin_medians, where='mid', color='b', label='Posterior', alpha=0.5)
-
-			# plt.errorbar(bincentres, medians/np.sum(medians), yerr=err/np.sum(medians), label='Posterior')
-			# plt.xscale('log')
-			# finevals = np.linspace(-1, 1, 1000)
-			# plt.plot(bincentres, stats.norm.pdf(bincentres, -0.8/2.5, 0.5/2.5), label='Prior')
-			# plt.xlabel('$\\log_{10}(f_{'+str(lam_dict[bands[b]])+'}/f_{'+str(lam_dict[bands[0]])+'})$', fontsize=14)
-			plt.xlabel('$S_{'+str(lam_dict[bands[b-1]])+'}/S_{'+str(lam_dict[bands[b]])+'}$', fontsize=14)
-
-			plt.ylabel('Normalized PDF')
-			plt.legend()
-			if boolplotsave:
-				plt.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
-			if boolplotshow:
-				plt.show()
-			plt.close()
-
+			f_color_post = plot_color_posterior(fsrcs, b-1, b, lam_dict, mock_truth_fluxes=cat_fluxes)
+			f_color_post.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 
 			# ------------------- SOURCE NUMBER ---------------------------
 
-		plt.figure()
-		plt.title('Posterior Source Number Histogram')
-		plt.hist(nsrc_fov, histtype='step', label='Posterior', color='b', bins=15)
-		plt.axvline(np.median(nsrc_fov), label='Median=' + str(np.median(nsrc_fov)), color='b', linestyle='dashed')
-		plt.xlabel('nstar')
-		plt.legend()
-		if boolplotsave:
-			plt.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=300)
-		if boolplotshow:
-			plt.show()
-		plt.close()
+
+		f_nsrc = plot_src_number_posterior(nsrc_fov)
+		f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=300)
 
 
-   
+
 class Proposal:
 	_X = 0
 	_Y = 1
@@ -534,7 +414,12 @@ class Model:
 	pixel_per_beam = 2*np.pi*((3)/2.355)**2
 
 	mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
-	sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
+	# sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
+	sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
+
+	# flat_val = 20
+	# sigs = dict({'S-M':flat_val, 'M-L':flat_val, 'L-S':flat_val, 'M-S':flat_val, 'S-L':flat_val, 'L-M':flat_val}) #very broad color prior
+
 	color_mus, color_sigs = [], []
 	
 	''' the init function sets all of the data structures used for the catalog, 
@@ -1628,7 +1513,7 @@ class lion():
 			# absolute level subtracted from SPIRE model image, bias and mean_offset are 
 			# redundant at the moment but don't worry for now
 			bias = 0.0, \
-			mean_offsets = [-0.0035], \
+			mean_offsets = [0.0035], \
 
 			psf_pixel_fwhm = 3.0, \
 
@@ -1824,21 +1709,18 @@ these should be moved out of the script and into the pipeline'''
 
 
 # # ob = lion(band0=0, cblas=True, visual=False, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=500, residual_samples=100)
+# ob = lion(band0=2, cblas=True, visual=False, dataname='rxj1347', mean_offsets=[0.018, 0.026], auto_resize=True, trueminf=0.002 , nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
 
-ob = lion(band0=0, cblas=True, visual=False, dataname='rxj1347', mean_offsets=[0.003, 0.012, 0.026], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
-ob.main()
+#three band
+# ob = lion(band0=0, band1=1, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+# ob.main()
 
 # ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20191204-154130', burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200311-020627', burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)
 # ob_goodsn.main()
-
-
-
-
-

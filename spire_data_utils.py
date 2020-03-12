@@ -2,7 +2,11 @@ from fast_astrom import *
 import numpy as np
 from astropy.convolution import Gaussian2DKernel
 from image_eval import psf_poly_fit, image_model_eval
+import pickle
 
+class objectview(object):
+	def __init__(self, d):
+		self.__dict__ = d
 
 def get_gaussian_psf_template_3_5_20(pixel_fwhm = 3., nbin=5):
 	nc = nbin**2
