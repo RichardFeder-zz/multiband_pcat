@@ -161,7 +161,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 			ref_path = datapath+'sides_cat_P'+gdat.band_dict[band]+'W_20.npy'
 			print('ref path:', ref_path)
 			roc.load_cat(path=ref_path)
-			print(roc.mock_cat)
 			if i==0:
 				cat_fluxes = np.zeros(shape=(gdat.nbands, len(roc.mock_cat['flux'])))
 				print('cat fluxes has shape', cat_fluxes.shape)
@@ -458,13 +457,16 @@ class Model:
 		self.stars[:,0:self.n] = np.random.uniform(size=(2+gdat.nbands,self.n))
 		self.stars[self._X,0:self.n] *= gdat.imsz0[0]-1
 		self.stars[self._Y,0:self.n] *= gdat.imsz0[1]-1
-		
+
+
 		self.truealpha = gdat.truealpha
 		self.trueminf = gdat.trueminf
 
 		self.verbtype = gdat.verbtype
 
 		self.bkg = np.array([gdat.bias for b in range(gdat.nbands)])
+		self.dback = np.zeros_like(self.bkg)
+		print('self.dback has shape', self.dback.shape)
 		# self.bkg = np.array([-gdat.mean_offset for b in range(gdat.nbands)]).astype(np.float32)
 		
 		for b in range(self.nbands-1):
@@ -520,7 +522,7 @@ class Model:
 		return timestat_array, accept_fracs
 
 
-	def pcat_multiband_eval(self, x, y, f, nc, cf, weights, ref, lib, beam_fac=1.):
+	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1.):
 		dmodels = []
 		dt_transf = 0
 
@@ -534,17 +536,20 @@ class Model:
 					xp = x
 					yp = y
 				dt_transf += time.clock()-t4
-				
-				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], self.bkg[b], self.imszs[b], \
+				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
+				# dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], self.bkg[b], self.imszs[b], \
+				# 								nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
+				# 								ref=ref[b], lib=lib, regsize=self.regsizes[b], \
+				# 								margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 				diff2s += diff2
 			else:    
 				xp=x
 				yp=y
 
-				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], self.bkg[b], self.imszs[b], \
+				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
@@ -625,10 +630,11 @@ class Model:
 		else:
 			lib = self.libmmult.clib_eval_modl
 
-		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
 		model = models[0]
 
 		logL = -0.5*diff2s
+
 	   
 		for b in range(self.nbands):
 			# print('resids shape, models shape:', resids[b].shape, models[b].shape)
@@ -677,16 +683,16 @@ class Model:
 					lib = self.libmmult.clib_eval_modl
 					# lib = None
 
-				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
 				# print('dmodels here:')
 				# print(dmodels)
 				plogL = -0.5*diff2s                
 				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
 				plogL[:,(1-self.parity_x)::2] = float('-inf')
 				dlogP = plogL - logL
-				if self.verbtype > 1:
-					print('dlogP')
-					print(dlogP)
+				# if self.verbtype > 1:
+					# print('dlogP')
+					# print(dlogP)
 				
 				assert np.isnan(dlogP).any() == False
 				
@@ -696,7 +702,9 @@ class Model:
 
 				regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
 				regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
-
+				if self.verbtype > 1:
+					print('proposal factor has shape:', proposal.factor.shape, regionx.shape, regiony.shape)
+					print('proposal factor:', proposal.factor)
 				
 				if proposal.factor is not None:
 					dlogP[regiony, regionx] += proposal.factor
@@ -757,6 +765,9 @@ class Model:
 					self.stars[:, 0:self.max_nsrc-num_kill] = np.delete(self.stars, idx_kill_a, axis=1)
 					self.stars[:, self.max_nsrc-num_kill:] = 0
 					self.n -= num_kill
+
+				#if proposal.perturb_background is not None:
+				#	self.bkg[proposal.back_idx] += self.dback
 
 
 				dts[2,i] = time.clock() - t3
@@ -1004,6 +1015,12 @@ class Model:
 				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.imsz0[1] - 1))
 
 
+	def perturb_background(self):
+		bkg_idx = np.random.choice(self.nbands)
+		dback = np.random.normal(0., scale=self.bkg_sigma[bkg_idx])
+		print('bkg idx is ', bkg_idx, 'and dback is ', dback)
+		return bkg_idx, dback
+
 	def flux_proposal(self, f0, nw, trueminf=None):
 		if trueminf is None:
 			trueminf = self.trueminf
@@ -1094,7 +1111,7 @@ class Model:
 			print(dx)
 			print('dy')
 			print(dy)
-			print('mean dx and mean dy')
+			print('mean absolute dx and mean absolute dy')
 			print(np.mean(np.abs(dx)), np.mean(np.abs(dy)))
 
 		for b in range(self.nbands):
@@ -1709,11 +1726,12 @@ these should be moved out of the script and into the pipeline'''
 
 
 # # ob = lion(band0=0, cblas=True, visual=False, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=500, residual_samples=100)
-# ob = lion(band0=2, cblas=True, visual=False, dataname='rxj1347', mean_offsets=[0.018, 0.026], auto_resize=True, trueminf=0.002 , nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+# ob = lion(band0=0, cblas=True, visual=False, dataname='rxj1347', mean_offsets=[0.001], max_nsrc=3000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 
+ob = lion(band0=0, cblas=True, visual=False, verbtype=0, dataname='rxj1347', mean_offsets=[0.00], bias=-0.001, max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 #three band
 # ob = lion(band0=0, band1=1, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
-# ob.main()
+ob.main()
 
 # ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
