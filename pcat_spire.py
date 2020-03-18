@@ -195,6 +195,9 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	bands = gdat.bands
 	# bands = [0]
 
+	if gdat.float_background is not None:
+		bkgs = chain['bkg']
+
 	# ------------------- mean residual ---------------------------
 
 	for b in range(gdat.nbands):
@@ -235,9 +238,20 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 
 	for b in range(gdat.nbands):
+
 		fchi = plot_chi_squared(chi2[:,b], sample_number, band=band_dict[bands[b]], show=False)
 		fchi.savefig(gdat.filepath + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 		plt.close()
+
+	# ------------------------- BACKGROUND AMPLITUDE ---------------------
+	if gdat.float_background:
+		for b in range(gdat.nbands):
+			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False)
+			f_bkg_chain.savefig(gdat.filepath+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
+			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False)
+			f_bkg_post.savefig(gdat.filepath+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
 
@@ -324,6 +338,7 @@ class Proposal:
 		self.idx_kill = None
 		self.factor = None
 		self.goodmove = False
+		self.change_bkg_bool = False
 		self.dback = np.zeros(gdat.nbands, dtype=np.float32)
 		self.xphon = np.array([], dtype=np.float32)
 		self.yphon = np.array([], dtype=np.float32)
@@ -381,9 +396,11 @@ class Proposal:
 			starsk = starsk.reshape((starsk.shape[0], starsk.shape[1]*starsk.shape[2]))
 		self.__add_phonions_stars(starsk, remove=True)
 
-	def perturb_background(self):
-		# TODO
-		pass
+	def change_bkg(self):
+		self.goodmove = True
+		self.change_bkg_bool = True
+
+	# 	self.change_bkg = True
 
 	def get_ref_xy(self):
 		if self.idx_move is not None:
@@ -398,6 +415,9 @@ class Proposal:
 			refx = xk if xk.ndim == 1 else xk[:,0]
 			refy = yk if yk.ndim == 1 else yk[:,0]
 			return refx, refy
+		elif self.change_bkg_bool:
+			return self.stars0[self._X,:], self.stars0[self._Y,:]
+
 
 
 
@@ -413,8 +433,8 @@ class Model:
 	pixel_per_beam = 2*np.pi*((3)/2.355)**2
 
 	mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
-	# sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
-	sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
+	sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
+	# sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
 
 	# flat_val = 20
 	# sigs = dict({'S-M':flat_val, 'M-L':flat_val, 'L-S':flat_val, 'M-S':flat_val, 'S-L':flat_val, 'L-M':flat_val}) #very broad color prior
@@ -437,8 +457,10 @@ class Model:
 
 		self.margins = np.zeros(gdat.nbands).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
-		self.moveweights = np.array([80., 40., 40., 0.])
-		# self.moveweights = np.array([0., 40., 0.])
+		self.moveweights = np.array([80., 40., 40., 20.])
+		if not self.gdat.float_background:
+			self.moveweights[3] = 0.
+
 		self.movetypes = ['P *', 'BD *', 'MS *', 'BKG']
 		self.n = np.random.randint(gdat.max_nsrc)+1
 		self.nbands = gdat.nbands
@@ -463,8 +485,13 @@ class Model:
 		self.trueminf = gdat.trueminf
 
 		self.verbtype = gdat.verbtype
+		self.bkg = np.array(gdat.bias)
+		# self.bkg = np.array([gdat.bias for b in range(gdat.nbands)])
 
-		self.bkg = np.array([gdat.bias for b in range(gdat.nbands)])
+		self.bkg_sigs = 5*np.array([np.nanmedian(self.dat.errors[b])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
+		self.bkg_mus = self.bkg.copy()
+		print('bkg_sigs is ', self.bkg_sigs, 'bkg_mus is ', self.bkg_mus)
+
 		self.dback = np.zeros_like(self.bkg)
 		print('self.dback has shape', self.dback.shape)
 		# self.bkg = np.array([-gdat.mean_offset for b in range(gdat.nbands)]).astype(np.float32)
@@ -574,6 +601,7 @@ class Model:
 		outbounds = np.zeros(self.nloop)
 		dts = np.zeros((4, self.nloop)) # array to store time spent on different proposals
 		diff2_list = np.zeros(self.nloop) 
+		dbacks = np.zeros(self.nloop)
 
 		''' I'm a bit concerned about setting the offsets for multiple observations with different sizes. 
 		For now what I'll do is choose an offset for the pivot band and then compute scaled offsets for the other bands
@@ -623,8 +651,8 @@ class Model:
 			print('n_phon')
 			print(n_phon)
 
+		print('at beginning of sampler, self.dback is ', self.dback, 'and self.bkg is ', self.bkg)
 
-		# if self.gdat.cblas or self.gdat.openblas:
 		if self.gdat.cblas:
 			lib = self.libmmult.pcat_model_eval
 		else:
@@ -637,17 +665,14 @@ class Model:
 
 	   
 		for b in range(self.nbands):
-			# print('resids shape, models shape:', resids[b].shape, models[b].shape)
 			resids[b] -= models[b]
 
-			# print('resids[b]::', resids[b])
-			# resids[b] -= np.transpose(models[b])
 		
 		'''the proposals here are: move_stars (P) which changes the parameters of existing model sources, 
 		birth/death (BD) and merge/split (MS). Don't worry about perturb_astrometry. 
 		The moveweights array, once normalized, determines the probability of choosing a given proposal. '''
 
-		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars]
+		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_background]
 		self.moveweights /= np.sum(self.moveweights)
 		if self.gdat.nregion > 1:
 			xparities = np.random.randint(2, size=self.nloop)
@@ -671,6 +696,9 @@ class Model:
 
 			#proposal types
 			proposal = movefns[rtype]()
+
+			# if rtype==3:
+				# print('proposal.dback here is ', proposal.dback)
 			dts[0,i] = time.clock() - t1
 			
 			if proposal.goodmove:
@@ -681,44 +709,52 @@ class Model:
 					lib = self.libmmult.pcat_model_eval
 				else:
 					lib = self.libmmult.clib_eval_modl
-					# lib = None
 
-				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
-				# print('dmodels here:')
-				# print(dmodels)
+				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+
+				# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+
 				plogL = -0.5*diff2s                
 				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
 				plogL[:,(1-self.parity_x)::2] = float('-inf')
 				dlogP = plogL - logL
-				# if self.verbtype > 1:
-					# print('dlogP')
-					# print(dlogP)
+
 				
 				assert np.isnan(dlogP).any() == False
 				
 				dts[1,i] = time.clock() - t2
 				t3 = time.clock()
-				refx, refy = proposal.get_ref_xy()
-
-				regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
-				regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
-				if self.verbtype > 1:
-					print('proposal factor has shape:', proposal.factor.shape, regionx.shape, regiony.shape)
-					print('proposal factor:', proposal.factor)
 				
-				if proposal.factor is not None:
-					dlogP[regiony, regionx] += proposal.factor
+				if rtype != 3:
+					refx, refy = proposal.get_ref_xy()
+
+					regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
+					regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
+					if self.verbtype > 1:
+						print('proposal factor has shape:', proposal.factor.shape, regionx.shape, regiony.shape)
+						print('proposal factor:', proposal.factor)
+					
+					if proposal.factor is not None:
+						dlogP[regiony, regionx] += proposal.factor
+					else:
+						print('proposal factor is None')
+
 				else:
-					print('proposal factor is None')
+
+					dlogP += proposal.factor
+				
+
 				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
-				acceptprop = acceptreg[regiony, regionx]
-				numaccept = np.count_nonzero(acceptprop)
+				
+				if rtype != 3:
+					acceptprop = acceptreg[regiony, regionx]
+					numaccept = np.count_nonzero(acceptprop)
+				
 				''' for each band compute the delta log likelihood between states, theen add these together'''
 				for b in range(self.nbands):
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
-					# if self.gdat.cblas or self.gdat.openblas:
 					if self.gdat.cblas:
 
 						self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
@@ -766,16 +802,23 @@ class Model:
 					self.stars[:, self.max_nsrc-num_kill:] = 0
 					self.n -= num_kill
 
-				#if proposal.perturb_background is not None:
-				#	self.bkg[proposal.back_idx] += self.dback
-
+				if proposal.change_bkg_bool:
+					if np.sum(acceptreg) > 0:
+						self.dback += proposal.dback
 
 				dts[2,i] = time.clock() - t3
 
-				if acceptprop.size > 0:
-					accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
+				if rtype != 3:
+					if acceptprop.size > 0:
+						accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
+					else:
+						accept[i] = 0
 				else:
-					accept[i] = 0
+					if np.sum(acceptreg)>0:
+						accept[i] = 1
+					else:
+						accept[i] = 0
+			
 			else:
 				if self.verbtype > 1:
 					print('out of bounds')
@@ -793,6 +836,7 @@ class Model:
 				print('diff2')
 				print(diff2_list[i])
 			
+		# this is ater nloop iterations
 		chi2 = np.zeros(self.nbands)
 		for b in range(self.nbands):
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
@@ -802,6 +846,10 @@ class Model:
 			print('end of sample')
 			print('self.n end')
 			print(self.n)
+
+		self.bkg += self.dback
+		print('at the end of nloop, self.dback is', self.dback, 'so self.bkg is now ', self.bkg)
+		self.dback = np.zeros_like(self.bkg)
 
 
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
@@ -995,7 +1043,6 @@ class Model:
 
 	def idx_parity_stars(self):
 		return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
-		# return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetx, self.offsety, self.parity_x, self.parity_y, self.regsize)
 
 	def bounce_off_edges(self, catalogue): # works on both stars and galaxies
 		mask = catalogue[self._X,:] < 0
@@ -1016,10 +1063,25 @@ class Model:
 
 
 	def perturb_background(self):
+		proposal = Proposal(self.gdat)
+		# I want this proposal to return the original dback + the proposed change. If the proposal gets approved later on
+		# then model.dback will be set to the updated state
 		bkg_idx = np.random.choice(self.nbands)
-		dback = np.random.normal(0., scale=self.bkg_sigma[bkg_idx])
-		print('bkg idx is ', bkg_idx, 'and dback is ', dback)
-		return bkg_idx, dback
+		dback = np.random.normal(0., scale=self.bkg_sigs[bkg_idx])
+		# print('bkg idx is ', bkg_idx, 'and dback is ', dback)
+
+		proposal.dback[bkg_idx] = dback
+		# print('proposal.dback:', proposal.dback)
+
+		bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
+		bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
+		# print('bkg_factor:', bkg_factor)
+
+		proposal.set_factor(bkg_factor)
+		proposal.change_bkg()
+		# proposal.change_bkg = True
+
+		return proposal
 
 	def flux_proposal(self, f0, nw, trueminf=None):
 		if trueminf is None:
@@ -1082,6 +1144,8 @@ class Model:
 			orig_colors = fluxes_to_color(f0[0], f0[b+1])
 			colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
 			orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
+
+
 			color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
 			color_factors[b] += (orig_colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
 			modl_eval_colors.append(colors)
@@ -1454,8 +1518,8 @@ class Samples():
 		self.accept_stats = np.zeros((gdat.nsamp, 5), dtype=np.float32)
 		self.tq_times = np.zeros(gdat.nsamp, dtype=np.float32)
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in range(gdat.nbands)]
+		self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands))
 		self.colorsample = [[] for x in range(gdat.nbands-1)]
-		# self.residuals = np.zeros((gdat.nbands, gdat.residual_samples, gdat.width, gdat.height))
 		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in range(gdat.nbands)]
 		self.model_images = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in range(gdat.nbands)]
 
@@ -1474,6 +1538,7 @@ class Samples():
 		self.accept_stats[j,:] = accept_fracs
 		self.chi2sample[j] = chi2_all
 		self.timestats[j,:] = statarrays
+		self.bkg_sample[j,:] = model.bkg
 
 
 		for b in range(self.nbands):
@@ -1488,18 +1553,18 @@ class Samples():
 			if self.gdat.nbands > 2:
 				np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], residuals2=self.residuals[2])
+				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], residuals2=self.residuals[2], bkg=self.bkg_sample)
 			else:
 				print('self.residuals[0] has shape', self.residuals[0].shape, self.residuals[1].shape)
 				np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1])
+				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], bkg=self.bkg_sample)
 
 
 		else:
 			np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals0=self.residuals[0], model_images=self.model_images[0])
+				accepts=self.accept_all, residuals0=self.residuals[0], model_images=self.model_images[0], bkg=self.bkg_sample)
 
 
 # -------------------- actually execute the thing ----------------
@@ -1529,8 +1594,10 @@ class lion():
 			
 			# absolute level subtracted from SPIRE model image, bias and mean_offset are 
 			# redundant at the moment but don't worry for now
-			bias = 0.0, \
+			bias = [0.0], \
 			mean_offsets = [0.0035], \
+			# boolean 
+			float_background = False, \
 
 			psf_pixel_fwhm = 3.0, \
 
@@ -1728,8 +1795,8 @@ these should be moved out of the script and into the pipeline'''
 # # ob = lion(band0=0, cblas=True, visual=False, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=500, residual_samples=100)
 # ob = lion(band0=0, cblas=True, visual=False, dataname='rxj1347', mean_offsets=[0.001], max_nsrc=3000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 
-ob = lion(band0=0, cblas=True, visual=False, verbtype=0, dataname='rxj1347', mean_offsets=[0.00], bias=-0.001, max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-#three band
+ob = lion(band0=1, band1=2, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.00, 0.00], bias=[0.005, 0.011], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=1, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+# three band
 # ob = lion(band0=0, band1=1, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
 ob.main()
 
@@ -1737,7 +1804,7 @@ ob.main()
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200311-020627', burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200317-145958', burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)

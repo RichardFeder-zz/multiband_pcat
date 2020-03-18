@@ -4,6 +4,49 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 
+def scotts_rule_bins(samples):
+	n = len(samples)
+	print('n:', n)
+	bin_width = 3.5*np.std(samples)/n**(1./3.)
+	print(bin_width)
+	k = np.ceil((np.max(samples)-np.min(samples))/bin_width)
+	print('number of bins:', k)
+
+
+	bins = np.linspace(np.min(samples), np.max(samples), k)
+	return bins
+
+def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False):
+
+	f = plt.figure()
+	if title:
+		plt.title('Uniform background level - '+str(band))
+
+	plt.plot(np.arange(len(bkg_samples)), bkg_samples, label=band)
+	plt.xlabel('Sample index')
+	plt.ylabel('Background amplitude [Jy/beam]')
+	plt.legend()
+	
+	if show:
+		plt.show()
+
+	return f
+
+def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False):
+	f = plt.figure()
+	if title:
+		plt.title('Uniform background level - '+str(band))
+
+	plt.hist(bkg_samples, label=band, histtype='step', bins=scotts_rule_bins(bkg_samples))
+	plt.xlabel('Amplitude [Jy/beam]')
+	plt.ylabel('$N_{samp}$')
+	
+	if show:
+		plt.show()
+
+	return f	
+
+
 def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=True, show=False):
 
 	mean_number_cts = np.mean(raw_number_counts, axis=0)
