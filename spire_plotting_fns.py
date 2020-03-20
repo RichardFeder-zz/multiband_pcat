@@ -4,6 +4,171 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 
 
+def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
+
+	binz = np.linspace(np.log10(trueminf)+3., np.ceil(np.log10(np.max(stars[_F, 0:nsrc]))+3.), 20)
+	hist = np.histogram(np.log10(stars[_F, 0:nsrc])+3., bins=binz)
+	logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3.
+	binz_Sz = 10**(binz-3)
+	dSz = binz_Sz[1:]-binz_Sz[:-1]
+	dNdS = hist[0]
+
+	return logSv, dSz, dNdS
+
+
+def plot_single_band_frame(obj, resids, models):
+
+	plt.gcf().clear()
+	plt.figure(1, figsize=(9, 4))
+	plt.clf()
+	plt.subplot(2,3,1)
+	plt.title('Data')
+	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
+	plt.colorbar()
+	sizefac = 10.*136
+	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+	plt.xlim(-0.5, obj.imsz0[0]-0.5)
+	plt.ylim(-0.5, obj.imsz0[1]-0.5)
+	
+	plt.subplot(2,3,2)
+	plt.title('Model')
+	plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
+	plt.colorbar()
+	
+	plt.subplot(2,3,3)
+	plt.title('Residual')
+	if obj.gdat.weighted_residual:
+		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+	else:
+		plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
+	plt.colorbar()
+
+	plt.subplot(2,3,4)
+	plt.title('Data (zoomed in)')
+	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
+	plt.colorbar()
+	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+	plt.ylim(90, 140)
+	plt.xlim(70, 120)
+	plt.subplot(2,3,5)
+	plt.title('Residual (zoomed in)')
+
+	if obj.gdat.weighted_residual:
+		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+	else:
+		plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
+	plt.colorbar()
+	plt.ylim(90, 140)
+	plt.xlim(70, 120)
+	plt.subplot(2,3,6)
+
+	logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
+	# binz = np.linspace(np.log10(obj.trueminf)+3., np.ceil(np.log10(np.max(obj.stars[obj._F, 0:obj.n]))+3.), 20)
+	# hist = np.histogram(np.log10(obj.stars[obj._F, 0:obj.n])+3, bins=binz)
+	# logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
+	# binz_Sz = 10**(binz-3)
+	# dSz = binz_Sz[1:]-binz_Sz[:-1]
+	# dNdS = hist[0]
+
+	if obj.gdat.raw_counts:
+
+		plt.plot(logSv+3, dNdS, marker='.')
+		plt.ylabel('dN/dS')
+		plt.ylim(5e-1, 3e3)
+
+	else:
+		n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+		n_steradian *= obj.gdat.frac # a number of pixels in the image are not actually observing anything
+		dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+		plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
+		plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
+		plt.ylim(1e0, 1e5)
+
+	plt.yscale('log')
+	plt.legend()
+	plt.xlabel('log($S_{\\nu}$) (mJy)')
+	plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
+	plt.tight_layout()
+	plt.draw()
+
+	plt.pause(1e-5)
+
+
+def plot_multiband_frame(obj, resids, models):
+
+	plt.gcf().clear()
+	plt.figure(1, figsize=(9, 4))
+	plt.clf()
+	plt.subplot(2,3,1)
+	plt.title('Data')
+	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
+	plt.colorbar()
+	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+	plt.xlim(-0.5, obj.imsz0[0]-0.5)
+	plt.ylim(-0.5, obj.imsz0[1]-0.5)
+
+	plt.subplot(2,3,2)
+	plt.title('Data (second band)')
+	xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 0)
+	plt.imshow(obj.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[1]), vmax=np.percentile(obj.dat.data_array[1], 99.9))
+	plt.colorbar()
+	plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
+	plt.xlim(-0.5, obj.imszs[1][0]-0.5)
+	plt.ylim(-0.5, obj.imszs[1][1]-0.5)
+
+	plt.subplot(2,3,3)
+	plt.title('Residual')
+	if obj.gdat.weighted_residual:
+		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+	else:
+		plt.imshow(resids[1], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[1][obj.dat.weights[1] != 0.], 5), vmax=np.percentile(resids[1][obj.dat.weights[1] != 0.], 95))
+	plt.colorbar()
+
+	plt.subplot(2,3,4)
+	plt.title('Data (zoomed in)')
+	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
+	plt.colorbar()
+	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+	plt.ylim(90, 140)
+	plt.xlim(70, 120)
+
+	plt.subplot(2,3,5)
+	plt.title('Residual (zoomed in)')
+
+	if obj.gdat.weighted_residual:
+		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+	else:
+		plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
+	plt.colorbar()
+	plt.ylim(90, 140)
+	plt.xlim(70, 120)
+	plt.subplot(2,3,6)
+
+	logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
+
+	if obj.gdat.raw_counts:
+		plt.plot(logSv+3, dNdS, marker='.')
+		plt.ylabel('dN/dS')
+		plt.ylim(5e-1, 3e3)
+
+	else:
+		n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+		n_steradian *= obj.gdat.frac # a number of pixels in the image are not actually observing anything
+		dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+		plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
+		plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
+		plt.ylim(1e0, 1e5)
+
+	plt.yscale('log')
+	plt.legend()
+	plt.xlabel('log($S_{\\nu}$) (mJy)')
+	plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
+	plt.tight_layout()
+	plt.draw()
+	plt.pause(1e-5)
+
+
+
 def scotts_rule_bins(samples):
 	n = len(samples)
 	print('n:', n)

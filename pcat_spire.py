@@ -457,7 +457,9 @@ class Model:
 
 		self.margins = np.zeros(gdat.nbands).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
-		self.moveweights = np.array([80., 40., 40., 20.])
+		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
+		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
+		self.moveweights = np.array([80., 40., 40., 0.])
 		if not self.gdat.float_background:
 			self.moveweights[3] = 0.
 
@@ -485,11 +487,17 @@ class Model:
 		self.trueminf = gdat.trueminf
 
 		self.verbtype = gdat.verbtype
+		print('gdat bias up here is ', gdat.bias)
 		self.bkg = np.array(gdat.bias)
 		# self.bkg = np.array([gdat.bias for b in range(gdat.nbands)])
+		print('self.imszs:', self.imszs)
+		print('self fracs:', self.dat.fracs)
+		# print('errors0:', np.nanmedian(self.dat.errors[0][self.dat.errors[0]>0]))
+		# print('errors1:', np.nanmedian(self.dat.errors[1][self.dat.errors[1]>0]))
 
-		self.bkg_sigs = 5*np.array([np.nanmedian(self.dat.errors[b])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
+		self.bkg_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 		self.bkg_mus = self.bkg.copy()
+
 		print('bkg_sigs is ', self.bkg_sigs, 'bkg_mus is ', self.bkg_mus)
 
 		self.dback = np.zeros_like(self.bkg)
@@ -567,10 +575,7 @@ class Model:
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
-				# dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], self.bkg[b], self.imszs[b], \
-				# 								nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-				# 								ref=ref[b], lib=lib, regsize=self.regsizes[b], \
-				# 								margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
+
 				diff2s += diff2
 			else:    
 				xp=x
@@ -713,11 +718,28 @@ class Model:
 				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
 
 				# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+				# if rtype == 3:
+					# print('for rtype=3, diff2s:', diff2s)
+				plogL = -0.5*diff2s  
 
-				plogL = -0.5*diff2s                
-				plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
-				plogL[:,(1-self.parity_x)::2] = float('-inf')
+				# if rtype==3:
+					# print('for rtype=3, plogL:', plogL)
+					# print('logL is ', logL)
+					# print('proposal dback is ', proposal.dback)
+
+
+				if rtype != 3: 
+					# print('not 3')             
+					plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
+					plogL[:,(1-self.parity_x)::2] = float('-inf')
+				
 				dlogP = plogL - logL
+
+				# if rtype==3:
+					# print('dlogP is ', dlogP)
+
+				# print('plogL')
+				# print(plogL)
 
 				
 				assert np.isnan(dlogP).any() == False
@@ -726,6 +748,7 @@ class Model:
 				t3 = time.clock()
 				
 				if rtype != 3:
+					# print('here')
 					refx, refy = proposal.get_ref_xy()
 
 					regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
@@ -740,17 +763,39 @@ class Model:
 						print('proposal factor is None')
 
 				else:
-
+					# print('proposal.factor:', proposal.factor)
 					dlogP += proposal.factor
 				
 
 				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
+
 				
 				if rtype != 3:
+					# acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 					acceptprop = acceptreg[regiony, regionx]
 					numaccept = np.count_nonzero(acceptprop)
+
+				else:
+					# if background proposal:
+					# sum up existing logL from subregions
+					total_logL = np.sum(logL)
+					total_dlogP = np.sum(dlogP)
+					# compute dlogP over the full image
+					# compute acceptance
+					accept_or_not = (np.log(np.random.uniform()) < total_dlogP).astype(np.int32)
+					# print('prior/dlogP/accept or not:', total_logL,proposal.factor, total_dlogP, accept_or_not)
+
+					if accept_or_not:
+						# set all acceptreg for subregions to 1
+						acceptreg = np.ones(shape=(self.nregy, self.nregx)).astype(np.int32)
+					else:
+						acceptreg = np.zeros(shape=(self.nregy, self.nregx)).astype(np.int32)
+
+
+
+
 				
-				''' for each band compute the delta log likelihood between states, theen add these together'''
+				''' for each band compute the delta log likelihood between states, then add these together'''
 				for b in range(self.nbands):
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
@@ -776,6 +821,8 @@ class Model:
 						diff2_total1 += diff2_acpt
 
 				logL = -0.5*diff2_total1
+
+				# print('logL:', logL)
 
 
 				#implement accepted moves
@@ -857,189 +904,11 @@ class Model:
 		if self.gdat.visual:
 
 			if self.gdat.nbands == 1:
-				self.plot_single_band_frame(resids, models) 
+				plot_single_band_frame(self, resids, models)
 			else:
-				self.plot_multiband_frame(resids, models)
+				plot_multiband_frame(self, resids, models)
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids, models
-
-
-	def plot_single_band_frame(self, resids, models):
-		plt.gcf().clear()
-		plt.figure(1, figsize=(9, 4))
-		plt.clf()
-		plt.subplot(2,3,1)
-		plt.title('Data')
-		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-		plt.colorbar()
-		sizefac = 10.*136
-		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-		plt.xlim(-0.5, self.imsz0[0]-0.5)
-		plt.ylim(-0.5, self.imsz0[1]-0.5)
-		plt.subplot(2,3,2)
-		plt.title('Model')
-		plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-		# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
-		plt.colorbar()
-		plt.subplot(2,3,3)
-		plt.title('Residual')
-		# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
-		# plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(models[0]), vmax=np.percentile(models[0], 99.9))
-		# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin=np.min(data_array[0]), vmax=np.percentile(data_array[0], 99.9))
-		# plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys',  vmin = np.percentile(resids[0][weights[0] != 0.], 5), vmax=np.percentile(resids[0][weights[0] != 0.], 95))
-		if self.gdat.weighted_residual:
-			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-		else:
-			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
-
-		plt.colorbar()
-		# plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-
-		plt.subplot(2,3,4)
-		plt.title('Data (zoomed in)')
-		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-		plt.colorbar()
-		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-		plt.ylim(90, 140)
-		plt.xlim(70, 120)
-		plt.subplot(2,3,5)
-		plt.title('Residual (zoomed in)')
-
-		if self.gdat.weighted_residual:
-			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-		else:
-			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
-		plt.colorbar()
-		plt.ylim(90, 140)
-		plt.xlim(70, 120)
-		plt.subplot(2,3,6)
-
-		binz = np.linspace(np.log10(self.trueminf)+3., np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3.), 20)
-		hist = np.histogram(np.log10(self.stars[self._F, 0:self.n])+3, bins=binz)
-		logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
-		binz_Sz = 10**(binz-3)
-		dSz = binz_Sz[1:]-binz_Sz[:-1]
-		dNdS = hist[0]
-
-		if self.gdat.raw_counts:
-	
-			plt.plot(logSv+3, dNdS, marker='.')
-			plt.ylabel('dN/dS')
-			plt.ylim(5e-1, 3e3)
-
-		else:
-			n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
-			n_steradian *= self.gdat.frac # a number of pixels in the image are not actually observing anything
-			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
-			plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
-			plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-			plt.ylim(1e0, 1e5)
-
-
-		plt.yscale('log')
-		plt.legend()
-		plt.xlabel('log($S_{\\nu}$) (mJy)')
-		plt.xlim(np.log10(self.trueminf)+3.-0.5, 2.5)
-		plt.tight_layout()
-		plt.draw()
-		# if savefig:
-			# plt.savefig(frame_dir + '/frame_' + str(c) + '.png')
-		plt.pause(1e-5)
-
-	def plot_multiband_frame(self, resids, models):
-		plt.gcf().clear()
-		plt.figure(1, figsize=(9, 4))
-		plt.clf()
-		plt.subplot(2,3,1)
-		plt.title('Data')
-		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-		plt.colorbar()
-		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-		plt.xlim(-0.5, self.imsz0[0]-0.5)
-		plt.ylim(-0.5, self.imsz0[1]-0.5)
-		plt.subplot(2,3,2)
-		plt.title('Data (second band)')
-		xp, yp = self.dat.fast_astrom.transform_q(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], 0)
-		# xd, yd = self.dat.fast_astrom.transform_q(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], 1)
-
-		plt.imshow(self.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[1]), vmax=np.percentile(self.dat.data_array[1], 99.9))
-		plt.colorbar()
-		plt.scatter(xp, yp, marker='x', s=self.stars[self._F+1, 0:self.n]*100, color='r')
-		plt.xlim(-0.5, self.imszs[1][0]-0.5)
-		plt.ylim(-0.5, self.imszs[1][1]-0.5)
-
-		plt.subplot(2,3,3)
-		plt.title('Residual')
-		if self.gdat.weighted_residual:
-			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-		else:
-			plt.imshow(resids[1], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[1][self.dat.weights[1] != 0.], 5), vmax=np.percentile(resids[1][self.dat.weights[1] != 0.], 95))
-		# plt.imshow(self.dat.data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[2]), vmax=np.percentile(self.dat.data_array[2], 99.9))
-
-		plt.colorbar()
-		# plt.scatter(xd, yd, marker='x', s=self.stars[self._F+1, 0:self.n]*100, color='r')
-		# plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-
-		plt.subplot(2,3,4)
-		plt.title('Data (zoomed in)')
-		plt.imshow(self.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(self.dat.data_array[0]), vmax=np.percentile(self.dat.data_array[0], 99.9))
-		plt.colorbar()
-		plt.scatter(self.stars[self._X, 0:self.n], self.stars[self._Y, 0:self.n], marker='x', s=self.stars[self._F, 0:self.n]*100, color='r')
-		plt.ylim(90, 140)
-		plt.xlim(70, 120)
-		# plt.title('Residual')
-		# if self.gdat.weighted_residual:
-		# 	plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-		# else:
-		# 	plt.imshow(resids[2], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[2][self.dat.weights[2] != 0.], 5), vmax=np.percentile(resids[2][self.dat.weights[2] != 0.], 95))
-
-		# plt.colorbar()
-		# plt.scatter(xd, yd, marker='x', s=self.stars[self._F+2, 0:self.n]*100, color='r')
-		plt.subplot(2,3,5)
-		plt.title('Residual (zoomed in)')
-
-		if self.gdat.weighted_residual:
-			plt.imshow(resids[0]*np.sqrt(self.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-		else:
-			plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][self.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][self.dat.weights[0] != 0.], 95))
-		plt.colorbar()
-		plt.ylim(90, 140)
-		plt.xlim(70, 120)
-		plt.subplot(2,3,6)
-
-		binz = np.linspace(np.log10(self.trueminf)+3., np.ceil(np.log10(np.max(self.stars[self._F, 0:self.n]))+3.), 20)
-		hist = np.histogram(np.log10(self.stars[self._F, 0:self.n])+3, bins=binz)
-		logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
-		binz_Sz = 10**(binz-3)
-		dSz = binz_Sz[1:]-binz_Sz[:-1]
-		dNdS = hist[0]
-
-		if self.gdat.raw_counts:
-	
-			plt.plot(logSv+3, dNdS, marker='.')
-			plt.ylabel('dN/dS')
-			plt.ylim(5e-1, 3e3)
-
-		else:
-			n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
-			n_steradian *= self.gdat.frac # a number of pixels in the image are not actually observing anything
-			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
-			plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
-			plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-			plt.ylim(1e0, 1e5)
-
-
-		plt.yscale('log')
-		plt.legend()
-		plt.xlabel('log($S_{\\nu}$) (mJy)')
-		plt.xlim(np.log10(self.trueminf)+3.-0.5, 2.5)
-		plt.tight_layout()
-		plt.draw()
-		# if savefig:
-			# plt.savefig(frame_dir + '/frame_' + str(c) + '.png')
-		plt.pause(1e-5)
-
-
 
 	def idx_parity_stars(self):
 		return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
@@ -1068,18 +937,17 @@ class Model:
 		# then model.dback will be set to the updated state
 		bkg_idx = np.random.choice(self.nbands)
 		dback = np.random.normal(0., scale=self.bkg_sigs[bkg_idx])
+
 		# print('bkg idx is ', bkg_idx, 'and dback is ', dback)
+		# print(self.bkg_sigs)
+		# print(self.bkg_sigs[bkg_idx])
 
 		proposal.dback[bkg_idx] = dback
-		# print('proposal.dback:', proposal.dback)
-
 		bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
 		bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
-		# print('bkg_factor:', bkg_factor)
 
 		proposal.set_factor(bkg_factor)
 		proposal.change_bkg()
-		# proposal.change_bkg = True
 
 		return proposal
 
@@ -1474,7 +1342,6 @@ class Model:
 					starsb_color = fluxes_to_color(starsb[self._F,:], starsb[self._F+b+1,:])
 					# colfac is ratio of color prior factors i.e. P(s_0)P(s_1)/P(s_merged), where 0 and 1 are original sources 
 					colfac = (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
-						
 					factor += colfac
 			 
 				else:
@@ -1594,10 +1461,16 @@ class lion():
 			
 			# absolute level subtracted from SPIRE model image, bias and mean_offset are 
 			# redundant at the moment but don't worry for now
-			bias = [0.0], \
-			mean_offsets = [0.0035], \
-			# boolean 
+			bias =[], \
+			mean_offsets = np.array([0.0035]), \
+			
+			# boolean determining whether to use background proposals
 			float_background = False, \
+			# bkg_sig_fac scales the width of the background proposal distribution
+			bkg_sig_fac = 2., \
+			bkg_moveweight = 20., \
+
+			bkg_sample_delay = 0, \
 
 			psf_pixel_fwhm = 3.0, \
 
@@ -1700,6 +1573,9 @@ class lion():
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
 
+			print(attr, valu)
+
+		# print('self.bias:', self.gdat.bias)
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
@@ -1712,6 +1588,7 @@ class lion():
 		self.data.load_in_data(self.gdat, map_object=map_object)
 
 
+		# print('gdat bias at beginning of lion is ', self.bias)
 		if self.gdat.save:
 			#create directory for results, save config file from run
 			frame_dir, newdir = create_directories(self.gdat)
@@ -1745,16 +1622,27 @@ class lion():
 
 		samps = Samples(self.gdat)
 		model = Model(self.gdat, self.data, libmmult)
+		# initial sum of weights used when reweighting after the weights have been normalized to 1
+		sumweights = np.sum(model.moveweights)
 
 		# run sampler for gdat.nsamp thinned states
 
 		for j in range(self.gdat.nsamp):
 			print('Sample', j)
 
+			if j < self.gdat.bkg_sample_delay:
+				model.moveweights[3] = 0
+			elif j==self.gdat.bkg_sample_delay:
+				print('Starting to sample background now')
+				if j>0:
+					model.moveweights *= sumweights
+				model.moveweights[3] = self.gdat.bkg_moveweight
+
+				print('moveweights:', model.moveweights)
+
 			_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts, resids, model_images = model.run_sampler()
 			samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids, model_images)
 
-			not_in_mask = np.array([np.logical_and(self.data.weights[0][int(model.stars[model._Y,k]), int(model.stars[model._X, k])] == 0, model.stars[model._X, k] > 0) for k in range(model.stars.shape[1])])
 
 		if self.gdat.save:
 			print('saving...')
@@ -1787,18 +1675,19 @@ version of the lion module every time I make a change, but when Lion is wrapped 
 these should be moved out of the script and into the pipeline'''
 
 # ob = lion(raw_counts=True, auto_resize=True, visual=True)
-
-
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=True, dataname='a0370', tail_name='PSW_nr_1', mean_offsets=[0.0, 0.0, 0.0], auto_resize=False, x0=70, y0=70, width=100, height=100, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
 
 
 # # ob = lion(band0=0, cblas=True, visual=False, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=500, residual_samples=100)
 # ob = lion(band0=0, cblas=True, visual=False, dataname='rxj1347', mean_offsets=[0.001], max_nsrc=3000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob = lion(band0=0, band1=1, band2=2, bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
 
-ob = lion(band0=1, band1=2, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.00, 0.00], bias=[0.005, 0.011], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=1, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+# ob = lion(band0=0,bkg_sample_delay=0, bkg_sig_fac=10.0, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.003], max_nsrc=2000, auto_resize=True, trueminf=0.003, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+
+# ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.002, 0.005, 0.011], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
 # three band
 # ob = lion(band0=0, band1=1, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
-ob.main()
+# ob.main()
 
 # ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
