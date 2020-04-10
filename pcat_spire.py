@@ -45,7 +45,7 @@ def save_params(dir, gdat):
 	
 	with open(dir+'/params.txt', 'w') as file:
 		file.write(pickle.dumps(param_dict))
-		# file.write(str(param_dict))
+
 	file.close()
 	
 	with open(dir+'/params_read.txt', 'w') as file2:
@@ -150,6 +150,7 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	# result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
 	# filepath = result_path + timestr
 
+	# gdat.float_background = None
 
 	roc = cross_match_roc(filetype='.npy')
 	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
@@ -166,14 +167,14 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 				print('cat fluxes has shape', cat_fluxes.shape)
 			cat_fluxes[i,:] = roc.mock_cat['flux']
 
+	# cat_fluxes = None
+	# print('cat fluxes has shape:', cat_fluxes.shape)
 
-	print('cat fluxes has shape:', cat_fluxes.shape)
 
+	# flux_mask = (cat_fluxes[0,:] > min_flux_refcat)
+	# cat_fluxes = cat_fluxes[:,flux_mask]
 
-	flux_mask = (cat_fluxes[0,:] > min_flux_refcat)
-	cat_fluxes = cat_fluxes[:,flux_mask]
-
-	print('cat fluxes now has shape', cat_fluxes.shape)
+	# print('cat fluxes now has shape', cat_fluxes.shape)
 
 
 	dat = pcat_data(gdat.auto_resize, nregion=gdat.nregion)
@@ -213,8 +214,8 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 		# minpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 5.)
 		# maxpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 99.)
-		maxpct_smooth = 0.005
-		minpct_smooth = -0.005
+		maxpct_smooth = 0.002
+		minpct_smooth = -0.002
 
 		f_last = plot_residual_map(residz[-1], mode='last', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
 		f_last.savefig(gdat.filepath +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
@@ -263,7 +264,11 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 	# ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
 
-	proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
+	if gdat.float_background:
+		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split', 'Background']
+	else:
+		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
+
 
 	f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types)
 	f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=300)
@@ -400,8 +405,6 @@ class Proposal:
 		self.goodmove = True
 		self.change_bkg_bool = True
 
-	# 	self.change_bkg = True
-
 	def get_ref_xy(self):
 		if self.idx_move is not None:
 			return self.stars0[self._X,:], self.stars0[self._Y,:]
@@ -432,8 +435,13 @@ class Model:
 
 	pixel_per_beam = 2*np.pi*((3)/2.355)**2
 
-	mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
-	sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
+	# linear color priors, e.g. F_250/F_350 for S/M, etc.
+	mus = dict({'S/M':1.0, 'M/S':1.0, 'M/L':1.4, 'L/M':1./1.4, 'S/L':1.4, 'L/S':1./1.4})
+	sigs = dict({'S/M':0.4, 'M/S':0.4, 'M/L':0.4, 'L/M':0.4, 'S/L':0.8, 'L/S':0.8})
+
+
+	# mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
+	# sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
 	# sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
 
 	# flat_val = 20
@@ -489,11 +497,9 @@ class Model:
 		self.verbtype = gdat.verbtype
 		print('gdat bias up here is ', gdat.bias)
 		self.bkg = np.array(gdat.bias)
-		# self.bkg = np.array([gdat.bias for b in range(gdat.nbands)])
+
 		print('self.imszs:', self.imszs)
 		print('self fracs:', self.dat.fracs)
-		# print('errors0:', np.nanmedian(self.dat.errors[0][self.dat.errors[0]>0]))
-		# print('errors1:', np.nanmedian(self.dat.errors[1][self.dat.errors[1]>0]))
 
 		self.bkg_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 		self.bkg_mus = self.bkg.copy()
@@ -502,11 +508,10 @@ class Model:
 
 		self.dback = np.zeros_like(self.bkg)
 		print('self.dback has shape', self.dback.shape)
-		# self.bkg = np.array([-gdat.mean_offset for b in range(gdat.nbands)]).astype(np.float32)
 		
 		for b in range(self.nbands-1):
-
-			col_string = self.gdat.band_dict[self.gdat.bands[0]]+'-'+self.gdat.band_dict[self.gdat.bands[b+1]]
+			col_string = self.gdat.band_dict[self.gdat.bands[0]]+'/'+self.gdat.band_dict[self.gdat.bands[b+1]]
+			# col_string = self.gdat.band_dict[self.gdat.bands[0]]+'-'+self.gdat.band_dict[self.gdat.bands[b+1]]
 			print('col string is ', col_string)
 			self.color_mus.append(self.mus[col_string])
 			self.color_sigs.append(self.sigs[col_string])
@@ -518,7 +523,8 @@ class Model:
 					self.stars[self._F+b,0:self.n] *= self.trueminf
 				else:
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
-					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
+					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*new_colors
+					# self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
 		else:
 			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...')
 			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
@@ -716,10 +722,7 @@ class Model:
 					lib = self.libmmult.clib_eval_modl
 
 				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
-
-				# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
-				# if rtype == 3:
-					# print('for rtype=3, diff2s:', diff2s)
+	
 				plogL = -0.5*diff2s  
 
 				# if rtype==3:
@@ -727,20 +730,11 @@ class Model:
 					# print('logL is ', logL)
 					# print('proposal dback is ', proposal.dback)
 
-
 				if rtype != 3: 
-					# print('not 3')             
 					plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
 					plogL[:,(1-self.parity_x)::2] = float('-inf')
 				
 				dlogP = plogL - logL
-
-				# if rtype==3:
-					# print('dlogP is ', dlogP)
-
-				# print('plogL')
-				# print(plogL)
-
 				
 				assert np.isnan(dlogP).any() == False
 				
@@ -748,7 +742,7 @@ class Model:
 				t3 = time.clock()
 				
 				if rtype != 3:
-					# print('here')
+
 					refx, refy = proposal.get_ref_xy()
 
 					regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
@@ -763,7 +757,7 @@ class Model:
 						print('proposal factor is None')
 
 				else:
-					# print('proposal.factor:', proposal.factor)
+
 					dlogP += proposal.factor
 				
 
@@ -790,9 +784,6 @@ class Model:
 						acceptreg = np.ones(shape=(self.nregy, self.nregx)).astype(np.int32)
 					else:
 						acceptreg = np.zeros(shape=(self.nregy, self.nregx)).astype(np.int32)
-
-
-
 
 				
 				''' for each band compute the delta log likelihood between states, then add these together'''
@@ -938,13 +929,12 @@ class Model:
 		bkg_idx = np.random.choice(self.nbands)
 		dback = np.random.normal(0., scale=self.bkg_sigs[bkg_idx])
 
-		# print('bkg idx is ', bkg_idx, 'and dback is ', dback)
-		# print(self.bkg_sigs)
-		# print(self.bkg_sigs[bkg_idx])
-
 		proposal.dback[bkg_idx] = dback
-		bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
-		bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
+		# bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
+		# bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
+		bkg_prior_sig = 0.01
+		bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*bkg_prior_sig**2)
+		bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*bkg_prior_sig**2)
 
 		proposal.set_factor(bkg_factor)
 		proposal.change_bkg()
@@ -1008,8 +998,10 @@ class Model:
 		come back to this later  '''
 		modl_eval_colors = []
 		for b in range(self.nbands-1):
-			colors = fluxes_to_color(pfs[0], pfs[b+1])
-			orig_colors = fluxes_to_color(f0[0], f0[b+1])
+			colors = pfs[0]/pfs[b+1]
+			orig_colors = f0[0]/f0[b+1]
+			# colors = fluxes_to_color(pfs[0], pfs[b+1])
+			# orig_colors = fluxes_to_color(f0[0], f0[b+1])
 			colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
 			orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
 
@@ -1088,6 +1080,7 @@ class Model:
 				else:
 					# draw new source colors from color prior
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=nbd)
+					# starsb[self._F+b,:] = starsb[self._F,:]*new_colors
 					starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)
 			
 					if (starsb[self._F+b,:]<0).any():
@@ -1141,6 +1134,8 @@ class Model:
 		proposal = Proposal(self.gdat)
 		# split
 		if splitsville and self.n > 0 and self.n < self.max_nsrc and bright_n > 0: # need something to split, but don't exceed nstar
+			
+			# print('splitsville up in here')
 			nms = min(nms, bright_n, self.max_nsrc-self.n) # need bright source AND room for split source
 			dx = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
 			dy = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
@@ -1160,6 +1155,8 @@ class Model:
 				print(dy)
 				print('idx_move')
 				print(idx_move)
+
+			# print('nms:', nms)
 				
 			fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
 			
@@ -1167,38 +1164,52 @@ class Model:
 			for b in range(self.nbands-1):
 				# changed to split similar fluxes
 				d_color = np.random.normal(0,self.gdat.split_col_sig)
-				frac_sim = np.exp(d_color/self.k)*fracs[0]/(1-fracs[0]+np.exp(d_color/self.k)*fracs[0])
+				# this frac_sim is what source 1 is multiplied by in its remaining bands, so source 2 is multiplied by (1-frac_sim)
+				# print('dcolor is ', d_color)
+				# F_b = F_1*(1 + [f_1*(1-F_1)*delta s/f_2])
+				frac_sim = fracs[0]*(1 + (stars0[self._F,:]*(1-fracs[0])*d_color)/stars0[self._F+b+1,:])
+				# print('Frac sim is ', frac_sim)
+
+				if (frac_sim < 0).any():
+					print('negative fraction!!!!')
+					goodmove = False
+
+				# frac_sim = np.exp(d_color/self.k)*fracs[0]/(1-fracs[0]+np.exp(d_color/self.k)*fracs[0])
 				fracs.append(frac_sim)
 
 				
 			starsp = np.empty_like(stars0)
 			starsb = np.empty_like(stars0)
 
-			starsp[self._X,:] = stars0[self._X,:] + ((1-fracs[0])*dx)
-			starsp[self._Y,:] = stars0[self._Y,:] + ((1-fracs[0])*dy)
-			starsb[self._X,:] = stars0[self._X,:] - fracs[0]*dx
-			starsb[self._Y,:] = stars0[self._Y,:] - fracs[0]*dy
+			# starsp is for source 1, starsb is for source 2
+
+			starsp[self._X,:] = stars0[self._X,:] - ((1-fracs[0])*dx)
+			starsp[self._Y,:] = stars0[self._Y,:] - ((1-fracs[0])*dy)
+			starsb[self._X,:] = stars0[self._X,:] + fracs[0]*dx
+			starsb[self._Y,:] = stars0[self._Y,:] + fracs[0]*dy
+
 
 			for b in range(self.nbands):
 				
 				starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
 				starsb[self._F+b,:] = stars0[self._F+b,:]*(1-fracs[b])
-				if (starsp[self._F+b,:]<0).any():
-					print('neg starsp in band', b)
-					print('stars0')
-					print(stars0)
-					print('fracs[b]')
-					print(fracs[b])
-					print('starsp[self._F+b,:]')
-					print(starsp[self._F+b,:])
-				if (starsb[self._F+b,:]<0).any():
-					print('neg starsb in band', b)
-					print('stars0')
-					print(stars0)
-					print('1-fracs[b]')
-					print(1-fracs[b])
-					print('starsb[self._F+b,:]')
-					print(starsb[self._F+b,:])
+
+				# if (starsp[self._F+b,:]<0).any():
+				# 	print('neg starsp in band', b)
+				# 	print('stars0')
+				# 	print(stars0)
+				# 	print('fracs[b]')
+				# 	print(fracs[b])
+				# 	print('starsp[self._F+b,:]')
+				# 	print(starsp[self._F+b,:])
+				# if (starsb[self._F+b,:]<0).any():
+				# 	print('neg starsb in band', b)
+				# 	print('stars0')
+				# 	print(stars0)
+				# 	print('1-fracs[b]')
+				# 	print(1-fracs[b])
+				# 	print('starsb[self._F+b,:]')
+				# 	print(starsb[self._F+b,:])
 			# don't want to think about how to bounce split-merge
 			# don't need to check if above fmin, because of how frac is decided
 			inbounds = np.logical_and(self.in_bounds(starsp), self.in_bounds(starsb))
@@ -1213,7 +1224,16 @@ class Model:
 				sum_fs.append(stars0[self._F+b,:])
 			
 			nms = idx_move.size
-			goodmove = nms > 0
+
+
+			# print('accept condition:', (np.array(fracs) > 0).all())
+
+			goodmove = (nms > 0)*((np.array(fracs) > 0).all())
+
+			# print('goodmove is ', goodmove)
+			# print(np.array(fracs) > 0)
+			# print(fracs)
+			# print((np.array(fracs) > 0))
 			
 			if goodmove:
 				proposal.add_move_stars(idx_move, stars0, starsp)
@@ -1243,8 +1263,13 @@ class Model:
 				invpairs[k] =  1./neighbours(xtemp, ytemp, self.kickrange, idx_move[k]) #divide by zero
 				invpairs[k] += 1./neighbours(xtemp, ytemp, self.kickrange, self.n)
 			invpairs *= 0.5
+
+			# print('for splitsville, fracs are', fracs, 'and sums are ', sum_fs)
+
 		# merge
 		elif not splitsville and idx_reg.size > 1: # need two things to merge!
+
+			# print('merging things!')
 			nms = int(min(nms, idx_reg.size/2))
 			idx_move = np.empty(nms, dtype=np.int)
 			idx_kill = np.empty(nms, dtype=np.int)
@@ -1289,6 +1314,7 @@ class Model:
 			for b in range(self.nbands):
 				sum_fs.append(f0[b,:] + fk[b,:])
 				fracs.append(f0[b,:] / sum_fs[b])
+			
 			fminratio = sum_fs[0] / self.trueminf
 			
 			if self.verbtype > 1:
@@ -1328,33 +1354,69 @@ class Model:
 		individual priors we add log factors to get the log prior.'''
 		if goodmove:
 			# first three terms are ratio of flux priors, remaining terms come from how we choose sources to merge, and last term is Jacobian for the transdimensional proposal
-			factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + np.log(invpairs) + np.log(sum_fs[0])
+			# factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + np.log(invpairs) + np.log(sum_fs[0])
+			
+			# the first three terms are the ratio of the flux priors, the next two come from the position terms when choosing sources to merge/split, 
+			# the two terms after that capture the transition kernel since there are several combinations of sources that could be implemented, 
+			# the last term is the Jacobian determinant f, which is the same for the single and multiband cases given the new proposals 
+			factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf)-self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) \
+					+ np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) \
+					+ np.log(bright_n) + np.log(invpairs)+ np.log(1. - 2./fminratio) + np.log(sum_fs[0])
+			
+			# print('original factor with jacobian:', factor)
 
 			for b in range(self.nbands-1):
-				stars0_color = fluxes_to_color(stars0[self._F,:], stars0[self._F+b+1,:])
-				starsp_color = fluxes_to_color(starsp[self._F,:], starsp[self._F+b+1,:])
-				dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
+				stars0_color = stars0[self._F,:]/stars0[self._F+b+1,:]
+				starsp_color = starsp[self._F,:]/starsp[self._F+b+1,:]
+
+				# print('stars0 color/starsp color:', stars0_color, starsp_color)
+				# stars0_color = fluxes_to_color(stars0[self._F,:], stars0[self._F+b+1,:])
+				# starsp_color = fluxes_to_color(starsp[self._F,:], starsp[self._F+b+1,:])
+
+
+				# dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
+				
+				# the difference in colors is 	
+				dc = (sum_fs[b+1]/sum_fs[0])*((fracs[b+1]/fracs[0])-1)/(1-fracs[0])			
+				# dc = (fracs[b+1]/fracs[0] - (sum_fs[b+1]/sum_fs[0]))/ fracs[0]
+
 				# added_fac comes from the transition kernel of splitting colors in the manner that we do
 				added_fac = 0.5*np.log(2*np.pi*self.gdat.split_col_sig**2)+(dc**2/(2*self.gdat.split_col_sig**2))
 				factor += added_fac
 				
 				if splitsville:
-					starsb_color = fluxes_to_color(starsb[self._F,:], starsb[self._F+b+1,:])
+					starsb_color = starsb[self._F,:]/starsb[self._F+b+1,:]
+					# print('starsb_color', starsb_color)
+					
+					# starsb_color = fluxes_to_color(starsb[self._F,:], starsb[self._F+b+1,:])
 					# colfac is ratio of color prior factors i.e. P(s_0)P(s_1)/P(s_merged), where 0 and 1 are original sources 
-					colfac = (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
-					factor += colfac
+					color_fac = (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
 			 
 				else:
-					starsk_color = fluxes_to_color(starsk[self._F,:], starsk[self._F+b+1,:])
+					starsk_color = starsk[self._F,:]/starsk[self._F+b+1,:]
+					# starsk_color = fluxes_to_color(starsk[self._F,:], starsk[self._F+b+1,:])
+					
 					# same as above but for merging sources
-					colfac = (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
-					factor += colfac
+					color_fac = (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
 
+				# print('color_fac:', color_fac)
+
+
+				factor += color_fac
+
+			
+			# this will penalize the model with extra parameters
+			factor -= self.penalty
+
+			# if we have a merge, we want to use the reciprocal acceptance factor, in this case the negative of log(factor)
 			if not splitsville:
 				factor *= -1
-				factor += self.penalty
-			else:
-				factor -= self.penalty
+
+			# if not splitsville:
+			# 	factor *= -1
+			# 	factor += self.penalty
+			# else:
+			# 	factor -= self.penalty
 
 			proposal.set_factor(factor)
 							
@@ -1459,18 +1521,21 @@ class lion():
 			band1 = None, \
 			band2 = None, \
 			
-			# absolute level subtracted from SPIRE model image, bias and mean_offset are 
-			# redundant at the moment but don't worry for now
-			bias =[], \
-			mean_offsets = np.array([0.0035]), \
+			# bias is used now for the initial background level for each band
+			bias =[0.005], \
+			# mean offset can be used if one wants to subtract some initial level from the input map
+			mean_offsets = np.array([]), \
 			
 			# boolean determining whether to use background proposals
 			float_background = False, \
 			# bkg_sig_fac scales the width of the background proposal distribution
 			bkg_sig_fac = 2., \
+			# bkg_moveweight sets what fraction of the MCMC proposals are dedicated to perturbing the background level, 
+			# as opposed to changing source positions/births/deaths/splits/merges
 			bkg_moveweight = 20., \
-
-			bkg_sample_delay = 0, \
+			# bkg_sample_delay determines how long Lion waits before sampling from the background. I figure it might be 
+			# useful to have this slightly greater than zero so the chain can do a little burn in first
+			bkg_sample_delay = 50, \
 
 			psf_pixel_fwhm = 3.0, \
 
@@ -1525,7 +1590,7 @@ class lion():
 			nregion = 5, \
 
 			# used when splitting sources and determining colors of resulting objects
-			split_col_sig = 0.25, \
+			split_col_sig = 0.1, \
 
 			# number counts power law slope for sources
 			truealpha = 3.0, \
@@ -1674,26 +1739,40 @@ class lion():
 version of the lion module every time I make a change, but when Lion is wrapped within another pipeline
 these should be moved out of the script and into the pipeline'''
 
-# ob = lion(raw_counts=True, auto_resize=True, visual=True)
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=True, dataname='a0370', tail_name='PSW_nr_1', mean_offsets=[0.0, 0.0, 0.0], auto_resize=False, x0=70, y0=70, width=100, height=100, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
 
 
-# # ob = lion(band0=0, cblas=True, visual=False, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=500, residual_samples=100)
-# ob = lion(band0=0, cblas=True, visual=False, dataname='rxj1347', mean_offsets=[0.001], max_nsrc=3000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob = lion(band0=0, band1=1, band2=2, bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+# real data, rxj1347
+# ob = lion(band0=0, cblas=True, visual=False,tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003],x0=75, y0=75, width=100, height=100, max_nsrc=3000, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 
-# ob = lion(band0=0,bkg_sample_delay=0, bkg_sig_fac=10.0, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.003], max_nsrc=2000, auto_resize=True, trueminf=0.003, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+ob = lion(band0=0, cblas=True, visual=True,tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+
+
+# ob = lion(band0=0, band1=1, band2=2,tail_name='PSW_nr', bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+# ob = lion(band0=0, bkg_sample_delay=50, tail_name='PSW_nr', bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[-0.004], max_nsrc=3000, auto_resize=True, trueminf=0.003, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+
+# ob = lion(band0=0, band1=1, band2=2, bkg_sample_delay=50, tail_name='PSW_nr', bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0, 0.0], bias=[-0.004, -0.006, -0.007], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=3000, residual_samples=300)
+
+# ob = lion(band0=0,bkg_sample_delay=50, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.005], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.002, 0.005, 0.011], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
-# three band
-# ob = lion(band0=0, band1=1, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
-# ob.main()
+
+# ob = lion(band0=0, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+
+
+# simulated rxj1347
+# ob = lion(band0=0, band1=1, cblas=True, visual=True,verbtype=0, tail_name='PSW_0', dataname='sides_cat',mean_offsets=[0.,0.], bias=[0.003, 0.006], auto_resize=True, trueminf=0.003, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+# ob = lion(band0=0, cblas=True, visual=True,verbtype=0, tail_name='PSW_0', dataname='sides_cat',mean_offsets=[0.], bias=[0.001], auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+
+
+# ob = lion(band0=0, band1=1, cblas=True, visual=False,verbtype=0, dataname='rxj1347',mean_offsets=[0.,0.], bias=[0.003, 0.006], auto_resize=True, trueminf=0.003, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+ob.main()
 
 # ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200317-145958', burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200324-142728',cattype=None, burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)

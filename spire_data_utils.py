@@ -60,7 +60,7 @@ def load_param_dict(timestr, result_path='/Users/richardfeder/Documents/multiban
 	
 	filepath = result_path + timestr
 	filen = open(filepath+'/params.txt','rb')
-	print(filen)
+	print('filename is ', filen)
 	pdict = pickle.load(filen)
 	print(pdict)
 	opt = objectview(pdict)
@@ -89,6 +89,7 @@ class pcat_data():
 		self.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
 		self.widths = []
 		self.heights = []
+		self.fracs = []
 
 
 	def find_lowest_mod(self, number, mod_number):
@@ -184,7 +185,6 @@ class pcat_data():
 			elif gdat.width > 0:
 				print('were here now')
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
-
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
@@ -207,10 +207,8 @@ class pcat_data():
 
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
-				#self.data_array.append(image.astype(np.float32)) # constant offset, will need to change
-				# self.data_array.append(image.astype(np.float32)+gdat.mean_offset) 
 				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) 
-				# self.exposures.append(exposure.astype(np.float32))
+				self.exposures.append(exposure.astype(np.float32))
 
 
 			if i==0:
@@ -218,10 +216,7 @@ class pcat_data():
 			gdat.imszs.append(image_size)
 			gdat.regsizes.append(image_size[0]/gdat.nregion)
 
-
-
 			print('image maximum is ', np.max(self.data_array[0]))
-
 
 			gdat.frac = np.count_nonzero(weight)/float(gdat.width*gdat.height)
 			print('gdat.frac is ', gdat.frac)
@@ -234,6 +229,7 @@ class pcat_data():
 			self.ncs.append(nc)
 			self.nbins.append(nbin)
 			self.biases.append(gdat.bias)
+			self.fracs.append(gdat.frac)
 
 		gdat.regions_factor = 1./float(gdat.nregion**2)
 		print(gdat.imsz0[0], gdat.regsizes[0], gdat.regions_factor)
@@ -242,8 +238,8 @@ class pcat_data():
 
 		pixel_variance = np.median(self.errors[0]**2)
 		print('pixel_variance:', pixel_variance)
+		print('self.dat.fracs is ', self.fracs)
 		gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2 # 2 instead of 4 for spire beam size
 		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/10
-
 
 		# return gdat
