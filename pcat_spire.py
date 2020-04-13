@@ -578,7 +578,7 @@ class Model:
 		return timestat_array, accept_fracs
 
 
-	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1.):
+	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1):
 		dmodels = []
 		dt_transf = 0
 
@@ -592,11 +592,12 @@ class Model:
 					xp = x
 					yp = y
 				dt_transf += time.clock()-t4
+
+
 				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
-												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
-
+												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 				diff2s += diff2
 			else:    
 				xp=x
@@ -605,8 +606,9 @@ class Model:
 				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
-												margin=self.margins[b], offsetx=self.offsetxs[b], offsety=self.offsetys[b])
+												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b])
 			
+				
 				diff2s = diff2
 			# dmodels.append(dmodel.transpose())
 			# dmodel[weights[0]==0.] = 0.
@@ -736,8 +738,27 @@ class Model:
 				else:
 					lib = self.libmmult.clib_eval_modl
 
-				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+				if rtype == 3:
+					margin_fac = 0
+
+					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
+
+					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+															self.bkg+self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
+															beam_fac=self.pixel_per_beam, margin_fac=0)
+					logL = -0.5*diff2s_nomargin
+
+
+				else:
+					margin_fac = 1
+				
+				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac)
 	
+				# if rtype==3:
+					# print('diff2s:', diff2s)
+					# print('while logL is ', logL)
+
 				plogL = -0.5*diff2s  
 
 				# if rtype==3:
@@ -750,6 +771,7 @@ class Model:
 					plogL[:,(1-self.parity_x)::2] = float('-inf')
 				
 				dlogP = plogL - logL
+
 				
 				assert np.isnan(dlogP).any() == False
 				
@@ -818,7 +840,7 @@ class Model:
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
 					resids[b] -= dmodel_acpt
-					# resids[b] -= np.transpose(dmodel_acpt)
+
 					models[b] += dmodel_acpt
 
 					if b==0:
@@ -1402,7 +1424,6 @@ class Model:
 					stars0_color = fluxes_to_color(stars0[self._F,:], stars0[self._F+b+1,:])
 					starsp_color = fluxes_to_color(starsp[self._F,:], starsp[self._F+b+1,:])
 					dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
-				
 
 				# added_fac comes from the transition kernel of splitting colors in the manner that we do
 				added_fac = 0.5*np.log(2*np.pi*self.gdat.split_col_sig**2)+(dc**2/(2*self.gdat.split_col_sig**2))
@@ -1426,24 +1447,14 @@ class Model:
 					# same as above but for merging sources
 					color_fac = (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
 
-				# print('color_fac:', color_fac)
-
-
 				factor += color_fac
 
-			
 			# this will penalize the model with extra parameters
 			factor -= self.penalty
 
 			# if we have a merge, we want to use the reciprocal acceptance factor, in this case the negative of log(factor)
 			if not splitsville:
 				factor *= -1
-
-			# if not splitsville:
-			# 	factor *= -1
-			# 	factor += self.penalty
-			# else:
-			# 	factor -= self.penalty
 
 			proposal.set_factor(factor)
 							
@@ -1783,8 +1794,8 @@ these should be moved out of the script and into the pipeline'''
 # ob = lion(band0=0, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
 
 # simulated data, rxj1347
+# ob = lion(band0=0, bkg_sample_delay=5, bkg_sig_fac=20.0, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0], bias=[0.003, 0.002], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-
 # ob = lion(band0=0, band1=1, band2=2, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0, 0.0], bias=[0.003, 0.002, 0.007], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob.main()
 
