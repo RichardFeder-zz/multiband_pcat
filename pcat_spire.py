@@ -436,12 +436,15 @@ class Model:
 	pixel_per_beam = 2*np.pi*((3)/2.355)**2
 
 	# linear color priors, e.g. F_250/F_350 for S/M, etc.
-	mus = dict({'S/M':1.0, 'M/S':1.0, 'M/L':1.4, 'L/M':1./1.4, 'S/L':1.4, 'L/S':1./1.4})
-	sigs = dict({'S/M':0.4, 'M/S':0.4, 'M/L':0.4, 'L/M':0.4, 'S/L':0.8, 'L/S':0.8})
+	linear_mus = dict({'S/M':1.0, 'M/S':1.0, 'M/L':1.4, 'L/M':1./1.4, 'S/L':1.4, 'L/S':1./1.4})
+	linear_sigs = dict({'S/M':0.4, 'M/S':0.4, 'M/L':0.4, 'L/M':0.4, 'S/L':0.8, 'L/S':0.8})
 
 
 	# mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
-	# sigs = dict({'S-M':2.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #very broad color prior
+
+	mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
+	sigs = dict({'S-M':2.5, 'M-L':2.5, 'L-S':2.5, 'M-S':2.5, 'S-L':2.5, 'L-M':2.5}) #very broad color prior
+	
 	# sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
 
 	# flat_val = 20
@@ -457,6 +460,8 @@ class Model:
 
 		self.err_f = gdat.err_f
 		self.gdat = gdat
+
+		self.linear_flux = self.gdat.linear_flux
 
 		self.imsz0 = gdat.imsz0 # this is just for first band, where proposals are first made
 		self.imszs = gdat.imszs # this is list of image sizes for all bands, not just first one
@@ -510,11 +515,18 @@ class Model:
 		print('self.dback has shape', self.dback.shape)
 		
 		for b in range(self.nbands-1):
-			col_string = self.gdat.band_dict[self.gdat.bands[0]]+'/'+self.gdat.band_dict[self.gdat.bands[b+1]]
-			# col_string = self.gdat.band_dict[self.gdat.bands[0]]+'-'+self.gdat.band_dict[self.gdat.bands[b+1]]
+
+			if self.linear_flux:
+				col_string = self.gdat.band_dict[self.gdat.bands[0]]+'/'+self.gdat.band_dict[self.gdat.bands[b+1]]
+				self.color_mus.append(self.linear_mus[col_string])
+				self.color_sigs.append(self.linear_sigs[col_string])
+			else:
+				col_string = self.gdat.band_dict[self.gdat.bands[0]]+'-'+self.gdat.band_dict[self.gdat.bands[b+1]]
+				self.color_mus.append(self.mus[col_string])
+				self.color_sigs.append(self.sigs[col_string])
+			
 			print('col string is ', col_string)
-			self.color_mus.append(self.mus[col_string])
-			self.color_sigs.append(self.sigs[col_string])
+			
 
 		if gdat.load_state_timestr is None:
 			for b in range(gdat.nbands):
@@ -523,8 +535,11 @@ class Model:
 					self.stars[self._F+b,0:self.n] *= self.trueminf
 				else:
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
-					self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*new_colors
-					# self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
+					
+					if self.linear_flux:
+						self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*new_colors
+					else:
+						self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
 		else:
 			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...')
 			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
@@ -998,13 +1013,15 @@ class Model:
 		come back to this later  '''
 		modl_eval_colors = []
 		for b in range(self.nbands-1):
-			colors = pfs[0]/pfs[b+1]
-			orig_colors = f0[0]/f0[b+1]
-			# colors = fluxes_to_color(pfs[0], pfs[b+1])
-			# orig_colors = fluxes_to_color(f0[0], f0[b+1])
+			if self.linear_flux:
+				colors = pfs[0]/pfs[b+1]
+				orig_colors = f0[0]/f0[b+1]
+			else:
+				colors = fluxes_to_color(pfs[0], pfs[b+1])
+				orig_colors = fluxes_to_color(f0[0], f0[b+1])
+			
 			colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
 			orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
-
 
 			color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
 			color_factors[b] += (orig_colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
@@ -1080,7 +1097,11 @@ class Model:
 				else:
 					# draw new source colors from color prior
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=nbd)
+					
+					# if using linear colors, need to change acceptance fraction in this section to reflect it
+
 					# starsb[self._F+b,:] = starsb[self._F,:]*new_colors
+					
 					starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)
 			
 					if (starsb[self._F+b,:]<0).any():
@@ -1167,14 +1188,17 @@ class Model:
 				# this frac_sim is what source 1 is multiplied by in its remaining bands, so source 2 is multiplied by (1-frac_sim)
 				# print('dcolor is ', d_color)
 				# F_b = F_1*(1 + [f_1*(1-F_1)*delta s/f_2])
-				frac_sim = fracs[0]*(1 + (stars0[self._F,:]*(1-fracs[0])*d_color)/stars0[self._F+b+1,:])
-				# print('Frac sim is ', frac_sim)
+				if self.linear_flux:
+					frac_sim = fracs[0]*(1 + (stars0[self._F,:]*(1-fracs[0])*d_color)/stars0[self._F+b+1,:])
+					# print('Frac sim is ', frac_sim)
+				else:
+					frac_sim = np.exp(d_color/self.k)*fracs[0]/(1-fracs[0]+np.exp(d_color/self.k)*fracs[0])
+
 
 				if (frac_sim < 0).any():
 					print('negative fraction!!!!')
 					goodmove = False
 
-				# frac_sim = np.exp(d_color/self.k)*fracs[0]/(1-fracs[0]+np.exp(d_color/self.k)*fracs[0])
 				fracs.append(frac_sim)
 
 				
@@ -1366,35 +1390,38 @@ class Model:
 			# print('original factor with jacobian:', factor)
 
 			for b in range(self.nbands-1):
-				stars0_color = stars0[self._F,:]/stars0[self._F+b+1,:]
-				starsp_color = starsp[self._F,:]/starsp[self._F+b+1,:]
 
-				# print('stars0 color/starsp color:', stars0_color, starsp_color)
-				# stars0_color = fluxes_to_color(stars0[self._F,:], stars0[self._F+b+1,:])
-				# starsp_color = fluxes_to_color(starsp[self._F,:], starsp[self._F+b+1,:])
-
-
-				# dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
+				if self.linear_flux:
+					stars0_color = stars0[self._F,:]/stars0[self._F+b+1,:]
+					starsp_color = starsp[self._F,:]/starsp[self._F+b+1,:]
+					# the difference in colors is
+					dc = (sum_fs[b+1]/sum_fs[0])*((fracs[b+1]/fracs[0])-1)/(1-fracs[0])	
+					# dc = (fracs[b+1]/fracs[0] - (sum_fs[b+1]/sum_fs[0]))/ fracs[0]
+		
+				else:
+					stars0_color = fluxes_to_color(stars0[self._F,:], stars0[self._F+b+1,:])
+					starsp_color = fluxes_to_color(starsp[self._F,:], starsp[self._F+b+1,:])
+					dc = self.k*(np.log(fracs[b+1]/fracs[0]) - np.log((1-fracs[b+1])/(1-fracs[0])))
 				
-				# the difference in colors is 	
-				dc = (sum_fs[b+1]/sum_fs[0])*((fracs[b+1]/fracs[0])-1)/(1-fracs[0])			
-				# dc = (fracs[b+1]/fracs[0] - (sum_fs[b+1]/sum_fs[0]))/ fracs[0]
 
 				# added_fac comes from the transition kernel of splitting colors in the manner that we do
 				added_fac = 0.5*np.log(2*np.pi*self.gdat.split_col_sig**2)+(dc**2/(2*self.gdat.split_col_sig**2))
 				factor += added_fac
 				
 				if splitsville:
-					starsb_color = starsb[self._F,:]/starsb[self._F+b+1,:]
-					# print('starsb_color', starsb_color)
-					
-					# starsb_color = fluxes_to_color(starsb[self._F,:], starsb[self._F+b+1,:])
+
+					if self.linear_flux:
+						starsb_color = starsb[self._F,:]/starsb[self._F+b+1,:]
+					else:					
+						starsb_color = fluxes_to_color(starsb[self._F,:], starsb[self._F+b+1,:])
 					# colfac is ratio of color prior factors i.e. P(s_0)P(s_1)/P(s_merged), where 0 and 1 are original sources 
 					color_fac = (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsb_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
 			 
 				else:
-					starsk_color = starsk[self._F,:]/starsk[self._F+b+1,:]
-					# starsk_color = fluxes_to_color(starsk[self._F,:], starsk[self._F+b+1,:])
+					if self.linear_flux:
+						starsk_color = starsk[self._F,:]/starsk[self._F+b+1,:]
+					else:
+						starsk_color = fluxes_to_color(starsk[self._F,:], starsk[self._F+b+1,:])
 					
 					# same as above but for merging sources
 					color_fac = (starsp_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (stars0_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2) - (starsk_color - self.color_mus[b])**2/(2*self.color_sigs[b]**2)-0.5*np.log(2*np.pi*self.color_sigs[b]**2)
@@ -1590,7 +1617,10 @@ class lion():
 			nregion = 5, \
 
 			# used when splitting sources and determining colors of resulting objects
-			split_col_sig = 0.1, \
+			split_col_sig = 0.2, \
+
+			# set linear_flux to true in order to get color priors in terms of linear flux density ratios
+			linear_flux = False, \
 
 			# number counts power law slope for sources
 			truealpha = 3.0, \
@@ -1744,8 +1774,19 @@ these should be moved out of the script and into the pipeline'''
 
 # real data, rxj1347
 # ob = lion(band0=0, cblas=True, visual=False,tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003],x0=75, y0=75, width=100, height=100, max_nsrc=3000, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob = lion(band0=0, cblas=True, visual=True,tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 
-ob = lion(band0=0, cblas=True, visual=True,tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# real data, abell 0068? 
+# ob = lion(band0=0, cblas=True, visual=True, tail_name='PSW_6_8.2', dataname='a0068', x0=20, y0=20, width=200, height=200, bkg_sample_delay=20, bkg_sig_fac=20.0,float_background=True, mean_offsets=[0.], bias=[-0.005], max_nsrc=3000, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
+
+
+# ob = lion(band0=0, cblas=True, visual=False,verbtype=0, dataname='rxj1347', mean_offsets=[0.003, 0.006, 0.011], auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
+
+# simulated data, rxj1347
+# ob = lion(band0=0, band1=1, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0], bias=[0.003, 0.002], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+
+# ob = lion(band0=0, band1=1, band2=2, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0, 0.0], bias=[0.003, 0.002, 0.007], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob.main()
 
 
 # ob = lion(band0=0, band1=1, band2=2,tail_name='PSW_nr', bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
@@ -1766,13 +1807,13 @@ ob = lion(band0=0, cblas=True, visual=True,tail_name='PSW_nr', dataname='rxj1347
 
 
 # ob = lion(band0=0, band1=1, cblas=True, visual=False,verbtype=0, dataname='rxj1347',mean_offsets=[0.,0.], bias=[0.003, 0.006], auto_resize=True, trueminf=0.003, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=200)
-ob.main()
+# ob.main()
 
 # ob = lion(band0=0, band1=1, band2=2, visual=False, openblas=True, cblas=False, auto_resize=True, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200324-142728',cattype=None, burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200410-114151',cattype=None, burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)
