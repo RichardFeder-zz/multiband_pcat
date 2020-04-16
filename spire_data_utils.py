@@ -53,7 +53,7 @@ def load_in_map(gdat, band=0, astrom=None):
 	exposure = spire_dat[3].data
 	mask = spire_dat[4].data
 
-	return image, error, exposure, mask
+	return image, error, exposure, mask, file_path
 
 
 def load_param_dict(timestr, result_path='/Users/richardfeder/Documents/multiband_pcat/spire_results/'):
@@ -75,6 +75,8 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 '''
 class pcat_data():
 
+	template_bands = dict({'sze':['M', 'L'], 'lensing':['S', 'M', 'L']})
+
 	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs = []
 		self.nbins = []
@@ -90,6 +92,7 @@ class pcat_data():
 		self.widths = []
 		self.heights = []
 		self.fracs = []
+		self.template_array = []
 
 
 	def find_lowest_mod(self, number, mod_number):
@@ -136,7 +139,33 @@ class pcat_data():
 
 			elif gdat.mock_name is None:
 
-				image, error, exposure, mask = load_in_map(gdat, band, astrom=self.fast_astrom)
+				image, error, exposure, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom)
+
+
+				template_list = [] 
+
+				if gdat.n_templates > 0:
+
+					for template_name in gdat.template_names:
+						print('template name is ', template_name)
+						if gdat.band_dict[band] in self.template_bands[template_name]:
+							print('were in business, ', gdat.band_dict[band], self.template_bands[template_name])
+
+							template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
+							print('template file name is ', template_file_name)
+
+							template = fits.open(template_file_name)[0].data
+
+							template /= np.sum(template) # normalize template to 1
+
+							print('template sums to ', np.sum(template))
+
+						else:
+
+							template = None
+
+						template_list.append(template)
+
 
 				if i > 0:
 					print('we have more than one band:', gdat.bands[0], band)
@@ -153,10 +182,12 @@ class pcat_data():
 
 				print('smaller dim is', smaller_dim)
 				print('larger dim is ', larger_dim)
+				
 				if gdat.round_up_or_down=='up':
 					gdat.width = self.find_nearest_upper_mod(larger_dim, gdat.nregion)
 				else:
 					gdat.width = self.find_lowest_mod(smaller_dim, gdat.nregion)
+				
 				gdat.height = gdat.width
 				image_size = (gdat.width, gdat.height)
 
@@ -165,11 +196,25 @@ class pcat_data():
 				padded_error = np.zeros(shape=(gdat.width, gdat.height))
 				padded_exposure = np.zeros(shape=(gdat.width, gdat.height))
 				padded_mask = np.zeros(shape=(gdat.width, gdat.height))
-
+				print('mask is ', mask)
 				padded_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:, gdat.y0:]
 				padded_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:, gdat.y0:]
 				padded_exposure[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = exposure[gdat.x0:, gdat.y0:]
-				padded_mask[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = mask[gdat.x0:, gdat.y0:]
+				# padded_mask[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = mask[gdat.x0:, gdat.y0:]
+
+				padded_template_list = []
+				for template in template_list:
+					if template is not None:
+						padded_template = np.zeros(shape=(gdat.width, gdat.height))
+						padded_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:, gdat.y0:]
+
+						padded_template /= np.sum(padded_template)
+
+						print('padded template sums to ', np.sum(padded_template))
+						padded_template_list.append(padded_template.astype(np.float32))
+					else:
+						padded_template_list.append(None)
+
 
 				variance = padded_error**2
 
@@ -181,23 +226,37 @@ class pcat_data():
 				self.data_array.append(padded_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
 				self.exposures.append(padded_exposure.astype(np.float32))
 
+				self.template_array.append(padded_template_list)
+
 
 			elif gdat.width > 0:
 				print('were here now')
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
-				mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
+				# mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
+				cropped_template_list = []
+				for template in template_list:
+					if template is not None:
+						cropped_template = template[gdat.x0:gdat.x0+gdat.width, gdat.y0:gdat.y0+gdat.height]
+						cropped_template /= np.sum(cropped_template)
+
+						print('cropped_template here has sum ', np.sum(cropped_template))
+						cropped_template_list.append(cropped_template.astype(np.float32))
+					else:
+						cropped_template_list.append(None)
+				
 				image_size = (gdat.width, gdat.height)
 				variance = error**2
 				variance[variance==0.]=np.inf
 				weight = 1. / variance
+
+				
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
 				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
-				print('image maximum is ', np.max(image))
-
 				self.exposures.append(exposure.astype(np.float32))
+				self.template_array.append(cropped_template_list)
 
 			else:
 				image_size = (image.shape[0], image.shape[1])
@@ -209,6 +268,9 @@ class pcat_data():
 				self.errors.append(error.astype(np.float32))
 				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) 
 				self.exposures.append(exposure.astype(np.float32))
+
+				self.template_array.append(template_list)
+
 
 
 			if i==0:
@@ -243,3 +305,5 @@ class pcat_data():
 		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/10
 
 		# return gdat
+
+

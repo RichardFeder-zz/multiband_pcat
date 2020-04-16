@@ -344,6 +344,7 @@ class Proposal:
 		self.factor = None
 		self.goodmove = False
 		self.change_bkg_bool = False
+		self.change_template_amp_bool = False # template
 		self.dback = np.zeros(gdat.nbands, dtype=np.float32)
 		self.xphon = np.array([], dtype=np.float32)
 		self.yphon = np.array([], dtype=np.float32)
@@ -405,6 +406,10 @@ class Proposal:
 		self.goodmove = True
 		self.change_bkg_bool = True
 
+	def change_template_amplitude(self):
+		self.goodmove = True
+		self.change_template_amp_bool = True
+
 	def get_ref_xy(self):
 		if self.idx_move is not None:
 			return self.stars0[self._X,:], self.stars0[self._Y,:]
@@ -423,8 +428,6 @@ class Proposal:
 
 
 
-
-
 class Model:
 
 	_X = 0
@@ -439,12 +442,11 @@ class Model:
 	linear_mus = dict({'S/M':1.0, 'M/S':1.0, 'M/L':1.4, 'L/M':1./1.4, 'S/L':1.4, 'L/S':1./1.4})
 	linear_sigs = dict({'S/M':0.4, 'M/S':0.4, 'M/L':0.4, 'L/M':0.4, 'S/L':0.8, 'L/S':0.8})
 
-
 	# mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
 
 	mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
 	sigs = dict({'S-M':2.5, 'M-L':2.5, 'L-S':2.5, 'M-S':2.5, 'S-L':2.5, 'L-M':2.5}) #very broad color prior
-	
+
 	# sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
 
 	# flat_val = 20
@@ -472,11 +474,18 @@ class Model:
 		self.max_nsrc = gdat.max_nsrc
 		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
 		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
-		self.moveweights = np.array([80., 40., 40., 0.])
+		
+		self.moveweights = np.array([80., 40., 40., 0., 20.]) # template
+		self.n_templates = gdat.n_templates # template
+		self.temp_amplitude_sigs = np.array([0.0005 for x in range(self.n_templates)]) # template
+
+		# self.moveweights = np.array([80., 40., 40., 0.])
+
 		if not self.gdat.float_background:
 			self.moveweights[3] = 0.
-
-		self.movetypes = ['P *', 'BD *', 'MS *', 'BKG']
+		
+		self.movetypes = ['P *', 'BD *', 'MS *', 'BKG', 'TEMPLATE'] # template
+		# self.movetypes = ['P *', 'BD *', 'MS *', 'BKG']
 		self.n = np.random.randint(gdat.max_nsrc)+1
 		self.nbands = gdat.nbands
 		self.nloop = gdat.nloop
@@ -494,7 +503,6 @@ class Model:
 		self.stars[:,0:self.n] = np.random.uniform(size=(2+gdat.nbands,self.n))
 		self.stars[self._X,0:self.n] *= gdat.imsz0[0]-1
 		self.stars[self._Y,0:self.n] *= gdat.imsz0[1]-1
-
 
 		self.truealpha = gdat.truealpha
 		self.trueminf = gdat.trueminf
@@ -526,7 +534,8 @@ class Model:
 				self.color_sigs.append(self.sigs[col_string])
 			
 			print('col string is ', col_string)
-			
+
+
 
 		if gdat.load_state_timestr is None:
 			for b in range(gdat.nbands):
@@ -550,7 +559,7 @@ class Model:
 	namely acceptance fractions for the different proposals and some time performance statistics as well. '''
    
 	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):    
-		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
+		# fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
 		print('Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2))
 		dts *= 1000
 
@@ -578,12 +587,21 @@ class Model:
 		return timestat_array, accept_fracs
 
 
-	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1):
+	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None):
 		dmodels = []
 		dt_transf = 0
 
+		# I think what should happen with the templates is that, either here or outside of this function, the change in the templates should be computed and summed together, 
+		# such that they can then be passed into image_model_eval directly as an array. In image_model_eval the template is then directly used and no further processing is done besides
+		# computing the likelihood
 
 		for b in range(self.nbands):
+			
+			if dtemplate is not None:
+				dtemp = dtemplate[b]
+			else:
+				dtemp = None
+			
 			if b>0:
 				t4 = time.clock()
 				if self.gdat.bands[b] != self.gdat.bands[0]:
@@ -594,10 +612,11 @@ class Model:
 				dt_transf += time.clock()-t4
 
 
+
 				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
-												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b])
+												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 				diff2s += diff2
 			else:    
 				xp=x
@@ -606,7 +625,7 @@ class Model:
 				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
-												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b])
+												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 			
 				
 				diff2s = diff2
@@ -629,7 +648,6 @@ class Model:
 		outbounds = np.zeros(self.nloop)
 		dts = np.zeros((4, self.nloop)) # array to store time spent on different proposals
 		diff2_list = np.zeros(self.nloop) 
-		dbacks = np.zeros(self.nloop)
 
 		''' I'm a bit concerned about setting the offsets for multiple observations with different sizes. 
 		For now what I'll do is choose an offset for the pivot band and then compute scaled offsets for the other bands
@@ -665,7 +683,6 @@ class Model:
 				print('resid has shape:', resid.shape)
 			resids.append(resid)
 
-
 		evalx = self.stars[self._X,0:self.n]
 		evaly = self.stars[self._Y,0:self.n]
 		evalf = self.stars[self._F:,0:self.n]
@@ -699,8 +716,10 @@ class Model:
 		'''the proposals here are: move_stars (P) which changes the parameters of existing model sources, 
 		birth/death (BD) and merge/split (MS). Don't worry about perturb_astrometry. 
 		The moveweights array, once normalized, determines the probability of choosing a given proposal. '''
+		
+		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_background, self.perturb_template_amplitude] # template
 
-		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_background]
+		# movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_background]
 		self.moveweights /= np.sum(self.moveweights)
 		if self.gdat.nregion > 1:
 			xparities = np.random.randint(2, size=self.nloop)
@@ -738,7 +757,8 @@ class Model:
 				else:
 					lib = self.libmmult.clib_eval_modl
 
-				if rtype == 3:
+				if rtype == 3 or rtype == 4: # template
+				# if rtype == 3:
 					margin_fac = 0
 
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
@@ -747,7 +767,6 @@ class Model:
 															self.bkg+self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 															beam_fac=self.pixel_per_beam, margin_fac=0)
 					logL = -0.5*diff2s_nomargin
-
 
 				else:
 					margin_fac = 1
@@ -766,7 +785,8 @@ class Model:
 					# print('logL is ', logL)
 					# print('proposal dback is ', proposal.dback)
 
-				if rtype != 3: 
+				if rtype != 3 and rtype != 4: # template
+				# if rtype != 3: 
 					plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
 					plogL[:,(1-self.parity_x)::2] = float('-inf')
 				
@@ -778,7 +798,9 @@ class Model:
 				dts[1,i] = time.clock() - t2
 				t3 = time.clock()
 				
-				if rtype != 3:
+
+				if rtype != 3 and rtype !=4: # template
+				# if rtype != 3:
 
 					refx, refy = proposal.get_ref_xy()
 
@@ -801,7 +823,8 @@ class Model:
 				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 
 				
-				if rtype != 3:
+				if rtype != 3 and rtype != 4: # template
+				# if rtype != 3:
 					# acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 					acceptprop = acceptreg[regiony, regionx]
 					numaccept = np.count_nonzero(acceptprop)
@@ -852,7 +875,6 @@ class Model:
 
 				# print('logL:', logL)
 
-
 				#implement accepted moves
 				if proposal.idx_move is not None:
 					starsp = proposal.starsp.compress(acceptprop, axis=1)
@@ -881,9 +903,14 @@ class Model:
 					if np.sum(acceptreg) > 0:
 						self.dback += proposal.dback
 
+				if proposal.change_template_amp_bool: # template
+					if np.sum(acceptreg) > 0:
+						self.d_amplitude += proposal.d_amplitude
+
 				dts[2,i] = time.clock() - t3
 
-				if rtype != 3:
+				if rtype != 3 and rtype != 4: # template
+				# if rtype != 3:
 					if acceptprop.size > 0:
 						accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
 					else:
@@ -911,7 +938,7 @@ class Model:
 				print('diff2')
 				print(diff2_list[i])
 			
-		# this is ater nloop iterations
+		# this is after nloop iterations
 		chi2 = np.zeros(self.nbands)
 		for b in range(self.nbands):
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
@@ -921,6 +948,12 @@ class Model:
 			print('end of sample')
 			print('self.n end')
 			print(self.n)
+
+
+		self.template_amplitudes += self.d_amplitude # template 
+		print('at the end of nloop, self.d_amplitude is', self.d_amplitude, 'so self.bkg is now ', self.template_amplitudes) # template
+		self.d_amplitude = np.zeros_like(self.n_templates) # template
+
 
 		self.bkg += self.dback
 		print('at the end of nloop, self.dback is', self.dback, 'so self.bkg is now ', self.bkg)
@@ -977,6 +1010,24 @@ class Model:
 		proposal.change_bkg()
 
 		return proposal
+
+
+	def perturb_template_amplitude(self):
+
+		proposal = Proposal(self.gdat)
+
+		template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
+
+		d_amplitude = np.random.normal(0., scale=self.temp_amplitude_sigs[template_idx])
+
+		proposal.d_amplitude[template_idx] = d_amplitude
+
+		proposal.set_factor(0.) # uniform prior on amplitudes? 
+
+		proposal.change_template_amplitude()
+
+		return proposal
+
 
 	def flux_proposal(self, f0, nw, trueminf=None):
 		if trueminf is None:
@@ -1223,7 +1274,6 @@ class Model:
 
 				fracs.append(frac_sim)
 
-				
 			starsp = np.empty_like(stars0)
 			starsb = np.empty_like(stars0)
 
@@ -1486,6 +1536,9 @@ class Samples():
 		self.tq_times = np.zeros(gdat.nsamp, dtype=np.float32)
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in range(gdat.nbands)]
 		self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands))
+
+		self.template_amplitudes = np.zero((gdat.nsamp, gdat.n_templates)) # template
+
 		self.colorsample = [[] for x in range(gdat.nbands-1)]
 		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in range(gdat.nbands)]
 		self.model_images = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in range(gdat.nbands)]
@@ -1506,6 +1559,7 @@ class Samples():
 		self.chi2sample[j] = chi2_all
 		self.timestats[j,:] = statarrays
 		self.bkg_sample[j,:] = model.bkg
+		self.template_amplitudes[j,:] = model.template_amplitudes # template
 
 
 		for b in range(self.nbands):
@@ -1518,20 +1572,23 @@ class Samples():
 
 		if self.gdat.nbands > 1:
 			if self.gdat.nbands > 2:
+				# np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
+				# chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
+				# accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], residuals2=self.residuals[2], bkg=self.bkg_sample)
 				np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], residuals2=self.residuals[2], bkg=self.bkg_sample)
+				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], residuals2=self.residuals[2], bkg=self.bkg_sample, template_amplitudes=self.template_amplitudes) # template
 			else:
 				print('self.residuals[0] has shape', self.residuals[0].shape, self.residuals[1].shape)
 				np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], bkg=self.bkg_sample)
+				accepts=self.accept_all, residuals0=self.residuals[0], residuals1=self.residuals[1], bkg=self.bkg_sample, template_amplitudes=self.template_amplitudes)
 
 
 		else:
 			np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals0=self.residuals[0], model_images=self.model_images[0], bkg=self.bkg_sample)
+				accepts=self.accept_all, residuals0=self.residuals[0], model_images=self.model_images[0], bkg=self.bkg_sample, template_amplitudes=self.template_amplitudes)
 
 
 # -------------------- actually execute the thing ----------------
@@ -1575,6 +1632,13 @@ class lion():
 			# useful to have this slightly greater than zero so the chain can do a little burn in first
 			bkg_sample_delay = 50, \
 
+			# boolean determining whether to float emission template amplitudes, e.g. for SZ or lensing templates
+			float_templates = False, \
+			# names of templates to use in fit, I think there will be a separate template folder where the names specify which files to read in
+			template_names = None, \
+			# initial amplitudes for specified templates
+			template_amplitudes = None, \
+
 			psf_pixel_fwhm = 3.0, \
 
 			# use if loading data from object and not from saved fits files in directories
@@ -1583,6 +1647,7 @@ class lion():
 			# Configure these for individual directory structure
 			base_path = '/Users/richardfeder/Documents/multiband_pcat/', \
 			result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results',\
+			data_path = None, \
 			
 			# the tail name can be configured when reading files from a specific dataset if the name space changes.
 			# the default tail name should be for PSW, as this is picked up in a later routine and modified to the appropriate band.
@@ -1686,15 +1751,18 @@ class lion():
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
+		self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
 
-		self.gdat.data_path = self.gdat.base_path+'/Data/spire/'
+		print('self.gdat.n_templates is ', self.gdat.n_templates)
+		if self.gdat.data_path is None:
+			self.gdat.data_path = self.gdat.base_path+'/Data/spire/'
 		print('data path is ', self.gdat.data_path)
 
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
 		self.data.load_in_data(self.gdat, map_object=map_object)
 
+		print('templates are ', self.data.template_array)
 
-		# print('gdat bias at beginning of lion is ', self.bias)
 		if self.gdat.save:
 			#create directory for results, save config file from run
 			frame_dir, newdir = create_directories(self.gdat)
@@ -1736,8 +1804,10 @@ class lion():
 		for j in range(self.gdat.nsamp):
 			print('Sample', j)
 
+			# until bkg_sample_delay steps have been taken, don't float the background
 			if j < self.gdat.bkg_sample_delay:
 				model.moveweights[3] = 0
+			# once ready to sample, recompute proposal weights
 			elif j==self.gdat.bkg_sample_delay:
 				print('Starting to sample background now')
 				if j>0:
@@ -1782,9 +1852,13 @@ these should be moved out of the script and into the pipeline'''
 
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=True, dataname='a0370', tail_name='PSW_nr_1', mean_offsets=[0.0, 0.0, 0.0], auto_resize=False, x0=70, y0=70, width=100, height=100, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
 
+# real data, rxj1347, floating SZ templates
+ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[0.1, 0.1, 0.1], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[0., 0., 0.], max_nsrc=3000,x0=70, y0=70, width=100, height=100, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+
 
 # real data, rxj1347
-# ob = lion(band0=0, cblas=True, visual=False,tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003],x0=75, y0=75, width=100, height=100, max_nsrc=3000, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+
+# ob = lion(band0=1, cblas=True, visual=False, template_names=['sze'], template_amplitudes=[0.005], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003],x0=75, y0=75, width=100, height=100, max_nsrc=3000, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, cblas=True, visual=True,tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 
 # real data, abell 0068? 
