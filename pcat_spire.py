@@ -56,14 +56,13 @@ def save_params(dir, gdat):
 def fluxes_to_color(flux1, flux2):
 	return 2.5*np.log10(flux1/flux2)
 
-
 def initialize_c(gdat, libmmult, cblas=False):
 
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
 
-	# if cblas or gdat.openblas:
-	if cblas:
+	if cblas or gdat.openblas:
+	# if cblas:
 		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)		
 				
@@ -199,6 +198,9 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	if gdat.float_background is not None:
 		bkgs = chain['bkg']
 
+	if gdat.float_templates is not None:
+		template_amplitudes = chain['template_amplitudes']
+
 	# ------------------- mean residual ---------------------------
 
 	for b in range(gdat.nbands):
@@ -247,12 +249,30 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	# ------------------------- BACKGROUND AMPLITUDE ---------------------
 	if gdat.float_background:
 		for b in range(gdat.nbands):
+
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_chain.savefig(gdat.filepath+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_post.savefig(gdat.filepath+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
+	
+	# ------------------------- TEMPLATE AMPLITUDES ---------------------
+
+	if gdat.float_templates:
+		for t in range(gdat.n_templates):
+			for b in range(gdat.nbands):
+
+				if not np.isnan(gdat.template_band_idxs[t,b]):
+
+					print('template amplitudes are ', template_amplitudes[:,b,t])
+
+					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,b,t].shape)
+					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
+					f_temp_amp_chain.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
+					f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
+					f_temp_amp_post.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
 
@@ -263,13 +283,18 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	plt.close()
 
 	# ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
+	
 
 	if gdat.float_background:
 		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split', 'Background']
+
+		if gdat.float_templates:
+			proposal_types.append('Templates')
 	else:
 		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
 
-
+	print('proposal types:', proposal_types)
+	print('accept_stats is ', accept_stats)
 	f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types)
 	f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=300)
 
@@ -346,6 +371,7 @@ class Proposal:
 		self.change_bkg_bool = False
 		self.change_template_amp_bool = False # template
 		self.dback = np.zeros(gdat.nbands, dtype=np.float32)
+		self.dtemplate = None
 		self.xphon = np.array([], dtype=np.float32)
 		self.yphon = np.array([], dtype=np.float32)
 		self.fphon = []
@@ -445,7 +471,7 @@ class Model:
 	# mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
 
 	mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
-	sigs = dict({'S-M':2.5, 'M-L':2.5, 'L-S':2.5, 'M-S':2.5, 'S-L':2.5, 'L-M':2.5}) #very broad color prior
+	sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5}) #very broad color prior
 
 	# sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
 
@@ -475,9 +501,11 @@ class Model:
 		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
 		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
 		
-		self.moveweights = np.array([80., 40., 40., 0., 20.]) # template
+		self.moveweights = np.array([80., 40., 40., 0., 0.]) # template
 		self.n_templates = gdat.n_templates # template
 		self.temp_amplitude_sigs = np.array([0.0005 for x in range(self.n_templates)]) # template
+		self.template_amplitudes = np.array(self.gdat.template_amplitudes) # template shape nbands x n_templates
+		self.dtemplate = np.zeros_like(self.template_amplitudes)
 
 		# self.moveweights = np.array([80., 40., 40., 0.])
 
@@ -587,21 +615,47 @@ class Model:
 		return timestat_array, accept_fracs
 
 
-	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None):
+	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None, rtype=None):
 		dmodels = []
 		dt_transf = 0
 
-		# I think what should happen with the templates is that, either here or outside of this function, the change in the templates should be computed and summed together, 
-		# such that they can then be passed into image_model_eval directly as an array. In image_model_eval the template is then directly used and no further processing is done besides
-		# computing the likelihood
+		# dtemplate should be an array of shape nbands x ntemplates
 
 		for b in range(self.nbands):
-			
+
+			# print('BAND ', b)
+
+
 			if dtemplate is not None:
-				dtemp = dtemplate[b]
+
+				# if bkg[b] != 0:
+				# 	print('changing background is nonzero, dtemplate is ', dtemplate, 'background is ', bkg[b])
+
+				dtemp = []
+				for i, temp in enumerate(self.dat.template_array[b]):
+					# print('temp:', temp)
+
+					if temp is not None and dtemplate[b][i] != 0.:
+						dtemp.append(dtemplate[b][i]*temp)
+
+				# dtemp = np.array([self.dat.template_array[b][i]*dtemplate[b][i] for i in range(len(dtemplate[b]))])
+				# print('dtemp has shape', np.array(dtemp).shape)
+				
+				if len(dtemp) > 0:
+					dtemp = np.sum(np.array(dtemp), axis=0).astype(np.float32)
+				
+				else:
+					dtemp = None
+				# print('dtemp how has shape ', dtemp.shape)
+			
 			else:
 				dtemp = None
-			
+
+			# if dtemp is not None:
+			# 	print('dtemp is not none, bkg is ', bkg)
+			# if rtype==4:
+				# print('for band ', b, 'max dtemp is ', np.max(dtemp))
+
 			if b>0:
 				t4 = time.clock()
 				if self.gdat.bands[b] != self.gdat.bands[0]:
@@ -610,8 +664,6 @@ class Model:
 					xp = x
 					yp = y
 				dt_transf += time.clock()-t4
-
-
 
 				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
@@ -629,8 +681,26 @@ class Model:
 			
 				
 				diff2s = diff2
+
+
+			# if dtemp is not None and rtype==4:
+
+			# 	plt.figure()
+			# 	plt.subplot(1,2,1)
+			# 	plt.title('dtemp')
+			# 	plt.imshow(dtemp)
+			# 	plt.colorbar()
+			# 	plt.subplot(1,2,2)
+			# 	plt.title('dmodel')
+			# 	plt.imshow(dmodel)
+			# 	plt.colorbar()
+			# 	plt.show()
+				# print('dtemp is not None, diff2 is', diff2)
+			# else:
+				# print('dtemp is None, so diff2 should be zero:', diff2)
 			# dmodels.append(dmodel.transpose())
 			# dmodel[weights[0]==0.] = 0.
+			# print('DMODEL has shape', dmodel.shape)
 			dmodels.append(dmodel)
 			# dmodels.append(dmodel+self.gdat.mean_offset)
 			# print('dmodel:')
@@ -676,12 +746,14 @@ class Model:
 		self.nregy = int(self.imsz0[1] / self.regsizes[0] + 1)
 
 		resids = []
+		# dtemplate = []
 		for b in range(self.nbands):
 
 			resid = self.dat.data_array[b].copy() # residual for zero image is data
 			if self.gdat.verbtype > 1:
 				print('resid has shape:', resid.shape)
 			resids.append(resid)
+			# dtemplate.append(self.template_amplitudes[b])
 
 		evalx = self.stars[self._X,0:self.n]
 		evaly = self.stars[self._Y,0:self.n]
@@ -703,7 +775,12 @@ class Model:
 		else:
 			lib = self.libmmult.clib_eval_modl
 
-		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+
+		if self.gdat.float_templates:
+			models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam, dtemplate=self.template_amplitudes)
+		else:
+			models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
+
 		model = models[0]
 
 		logL = -0.5*diff2s
@@ -757,24 +834,60 @@ class Model:
 				else:
 					lib = self.libmmult.clib_eval_modl
 
-				if rtype == 3 or rtype == 4: # template
+				if rtype == 3: # background
 				# if rtype == 3:
 					margin_fac = 0
-
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
 
 					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 															self.bkg+self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
-															beam_fac=self.pixel_per_beam, margin_fac=0)
+															beam_fac=self.pixel_per_beam, margin_fac=0, rtype=rtype)
 					logL = -0.5*diff2s_nomargin
+
+					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype)
+	
+
+				
+				elif rtype == 4: # template
+					margin_fac = 0
+
+					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+															self.bkg+self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
+															beam_fac=self.pixel_per_beam, margin_fac=0, dtemplate=self.template_amplitudes+self.dtemplate, rtype=rtype)
+					logL = -0.5*diff2s_nomargin
+
+					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=proposal.dtemplate, rtype=rtype)
+	
 
 				else:
 					margin_fac = 1
-				
-				dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
-													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac)
+
+					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype)
 	
-				# if rtype==3:
+				
+				# if rtype == 4:
+				# 	print('for template proposal, proposal.dtemplate is ', proposal.dtemplate, 'proposal.dback is ', proposal.dback)
+				# # else:
+				# # 	print('for a non template proposal, proposal.dtemplate is ', proposal.dtemplate, 'proposal.dback is ', proposal.dback)
+				# print('before proposal multiband eval, proposal.dtemplate is ', proposal.dtemplate)
+				# print('rtype is ', rtype, 'proposal.dback is ', proposal.dback)
+
+				# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+				# 									ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=proposal.dtemplate, rtype=rtype)
+	
+				# print('after proposal multiband eval')
+				# if rtype==4:
+				# 	plt.figure()
+				# 	plt.subplot(1,2,1)
+				# 	plt.imshow(dmodels[1])
+				# 	plt.colorbar()
+				# 	plt.subplot(1,2,2)
+				# 	plt.imshow(dmodels[2])
+				# 	plt.colorbar()
+				# 	plt.show()
 					# print('diff2s:', diff2s)
 					# print('while logL is ', logL)
 
@@ -816,8 +929,8 @@ class Model:
 						print('proposal factor is None')
 
 				else:
-
-					dlogP += proposal.factor
+					if proposal.factor is not None:
+						dlogP += proposal.factor
 				
 
 				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
@@ -834,15 +947,24 @@ class Model:
 					# sum up existing logL from subregions
 					total_logL = np.sum(logL)
 					total_dlogP = np.sum(dlogP)
+
+					# print('total dlogP: ', total_dlogP)
+					# print('self.dtemplate:', self.dtemplate)
 					# compute dlogP over the full image
 					# compute acceptance
 					accept_or_not = (np.log(np.random.uniform()) < total_dlogP).astype(np.int32)
-					# print('prior/dlogP/accept or not:', total_logL,proposal.factor, total_dlogP, accept_or_not)
+					# if rtype == 4:
+						# print('prior/dlogP/accept or not:', total_logL,proposal.factor, total_dlogP, accept_or_not)
 
 					if accept_or_not:
+						# if rtype == 4:
+							# print('accepted for template proposal! proposal.dtemplate:', proposal.dtemplate)
+
 						# set all acceptreg for subregions to 1
 						acceptreg = np.ones(shape=(self.nregy, self.nregx)).astype(np.int32)
 					else:
+						# if rtype == 4:
+							# print('template proposal rejected :( proposal.dtemplate:', proposal.dtemplate)
 						acceptreg = np.zeros(shape=(self.nregy, self.nregx)).astype(np.int32)
 
 				
@@ -861,6 +983,14 @@ class Model:
 						self.libmmult.clib_updt_modl(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 						# using this dmodel containing only accepted moves, update logL
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
+
+
+					# if rtype == 4:
+					# 	plt.figure()
+					# 	plt.imshow(dmodel_acpt)
+					# 	plt.colorbar()
+					# 	plt.show()
+
 
 					resids[b] -= dmodel_acpt
 
@@ -905,7 +1035,7 @@ class Model:
 
 				if proposal.change_template_amp_bool: # template
 					if np.sum(acceptreg) > 0:
-						self.d_amplitude += proposal.d_amplitude
+						self.dtemplate += proposal.dtemplate
 
 				dts[2,i] = time.clock() - t3
 
@@ -950,9 +1080,11 @@ class Model:
 			print(self.n)
 
 
-		self.template_amplitudes += self.d_amplitude # template 
-		print('at the end of nloop, self.d_amplitude is', self.d_amplitude, 'so self.bkg is now ', self.template_amplitudes) # template
-		self.d_amplitude = np.zeros_like(self.n_templates) # template
+		if self.gdat.float_templates:
+			self.template_amplitudes += self.dtemplate # template 
+			print('at the end of nloop, self.dtemplate is', self.dtemplate)
+			print('so self.template_amplitudes is now ', self.template_amplitudes[:,0]) # template
+			self.dtemplate = np.zeros_like(self.template_amplitudes) # template
 
 
 		self.bkg += self.dback
@@ -963,11 +1095,15 @@ class Model:
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
 
 		if self.gdat.visual:
-
 			if self.gdat.nbands == 1:
-				plot_single_band_frame(self, resids, models)
-			else:
-				plot_multiband_frame(self, resids, models)
+				plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'dNdS', 'model0zoom', 'residual0zoom'])
+
+			elif self.gdat.nbands == 2:
+				plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'model1', 'residual1', 'residual0zoom'])
+
+			elif self.gdat.nbands == 3:
+				plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'residual1', 'residual2', 'model2'])
+
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids, models
 
@@ -992,7 +1128,7 @@ class Model:
 				np.logical_and(catalogue[self._Y,:] > 0, catalogue[self._Y,:] < self.imsz0[1] - 1))
 
 
-	def perturb_background(self):
+	def perturb_background(self, bkg_prior_sig=0.01):
 		proposal = Proposal(self.gdat)
 		# I want this proposal to return the original dback + the proposed change. If the proposal gets approved later on
 		# then model.dback will be set to the updated state
@@ -1000,9 +1136,7 @@ class Model:
 		dback = np.random.normal(0., scale=self.bkg_sigs[bkg_idx])
 
 		proposal.dback[bkg_idx] = dback
-		# bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
-		# bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*self.bkg_sigs[bkg_idx]**2)
-		bkg_prior_sig = 0.01
+
 		bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*bkg_prior_sig**2)
 		bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*bkg_prior_sig**2)
 
@@ -1018,11 +1152,26 @@ class Model:
 
 		template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
 
-		d_amplitude = np.random.normal(0., scale=self.temp_amplitude_sigs[template_idx])
+		temp_band_idxs = self.gdat.template_band_idxs[template_idx]
 
-		proposal.d_amplitude[template_idx] = d_amplitude
+		band_weights = []
+		for idx in temp_band_idxs:
+			if np.isnan(idx):
+				band_weights.append(0.)
+			else:
+				band_weights.append(1.)
 
-		proposal.set_factor(0.) # uniform prior on amplitudes? 
+		band_weights /= np.sum(band_weights)
+
+		band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
+
+		d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[template_idx])
+		
+		proposal.dtemplate = np.zeros((self.gdat.nbands, self.gdat.n_templates))
+
+		proposal.dtemplate[band_idx,template_idx] = d_amp
+
+		# uniform prior on template amplitude so setting to zero for now
 
 		proposal.change_template_amplitude()
 
@@ -1229,7 +1378,6 @@ class Model:
 		# split
 		if splitsville and self.n > 0 and self.n < self.max_nsrc and bright_n > 0: # need something to split, but don't exceed nstar
 			
-			# print('splitsville up in here')
 			nms = min(nms, bright_n, self.max_nsrc-self.n) # need bright source AND room for split source
 			dx = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
 			dy = (np.random.normal(size=nms)*self.kickrange).astype(np.float32)
@@ -1250,11 +1398,9 @@ class Model:
 				print('idx_move')
 				print(idx_move)
 
-			# print('nms:', nms)
 				
 			fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
 			
-			# color stuff, look at later
 			for b in range(self.nbands-1):
 				# changed to split similar fluxes
 				d_color = np.random.normal(0,self.gdat.split_col_sig)
@@ -1290,22 +1436,6 @@ class Model:
 				starsp[self._F+b,:] = stars0[self._F+b,:]*fracs[b]
 				starsb[self._F+b,:] = stars0[self._F+b,:]*(1-fracs[b])
 
-				# if (starsp[self._F+b,:]<0).any():
-				# 	print('neg starsp in band', b)
-				# 	print('stars0')
-				# 	print(stars0)
-				# 	print('fracs[b]')
-				# 	print(fracs[b])
-				# 	print('starsp[self._F+b,:]')
-				# 	print(starsp[self._F+b,:])
-				# if (starsb[self._F+b,:]<0).any():
-				# 	print('neg starsb in band', b)
-				# 	print('stars0')
-				# 	print(stars0)
-				# 	print('1-fracs[b]')
-				# 	print(1-fracs[b])
-				# 	print('starsb[self._F+b,:]')
-				# 	print(starsb[self._F+b,:])
 			# don't want to think about how to bounce split-merge
 			# don't need to check if above fmin, because of how frac is decided
 			inbounds = np.logical_and(self.in_bounds(starsp), self.in_bounds(starsb))
@@ -1321,16 +1451,9 @@ class Model:
 			
 			nms = idx_move.size
 
-
-			# print('accept condition:', (np.array(fracs) > 0).all())
-
 			goodmove = (nms > 0)*((np.array(fracs) > 0).all())
 
-			# print('goodmove is ', goodmove)
-			# print(np.array(fracs) > 0)
-			# print(fracs)
-			# print((np.array(fracs) > 0))
-			
+
 			if goodmove:
 				proposal.add_move_stars(idx_move, stars0, starsp)
 				proposal.add_birth_stars(starsb)
@@ -1528,16 +1651,20 @@ class Samples():
 		self.nsample = np.zeros(gdat.nsamp, dtype=np.int32)
 		self.xsample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
 		self.ysample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
-		self.timestats = np.zeros((gdat.nsamp, 6, 5), dtype=np.float32)
+		# self.timestats = np.zeros((gdat.nsamp, 6, 5), dtype=np.float32)
+		self.timestats = np.zeros((gdat.nsamp, 6, 6), dtype=np.float32) # template
+
 		self.diff2_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
 		self.accept_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
 		self.rtypes = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
-		self.accept_stats = np.zeros((gdat.nsamp, 5), dtype=np.float32)
+		# self.accept_stats = np.zeros((gdat.nsamp, 5), dtype=np.float32)
+		self.accept_stats = np.zeros((gdat.nsamp, 6), dtype=np.float32) # template
+
 		self.tq_times = np.zeros(gdat.nsamp, dtype=np.float32)
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in range(gdat.nbands)]
 		self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands))
 
-		self.template_amplitudes = np.zero((gdat.nsamp, gdat.n_templates)) # template
+		self.template_amplitudes = np.zeros((gdat.nsamp, gdat.nbands, gdat.n_templates)) # template
 
 		self.colorsample = [[] for x in range(gdat.nbands-1)]
 		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in range(gdat.nbands)]
@@ -1559,7 +1686,7 @@ class Samples():
 		self.chi2sample[j] = chi2_all
 		self.timestats[j,:] = statarrays
 		self.bkg_sample[j,:] = model.bkg
-		self.template_amplitudes[j,:] = model.template_amplitudes # template
+		self.template_amplitudes[j,:,:] = model.template_amplitudes # template
 
 
 		for b in range(self.nbands):
@@ -1619,12 +1746,12 @@ class lion():
 			# bias is used now for the initial background level for each band
 			bias =[0.005], \
 			# mean offset can be used if one wants to subtract some initial level from the input map
-			mean_offsets = np.array([]), \
+			mean_offsets = None, \
 			
 			# boolean determining whether to use background proposals
 			float_background = False, \
 			# bkg_sig_fac scales the width of the background proposal distribution
-			bkg_sig_fac = 2., \
+			bkg_sig_fac = 20., \
 			# bkg_moveweight sets what fraction of the MCMC proposals are dedicated to perturbing the background level, 
 			# as opposed to changing source positions/births/deaths/splits/merges
 			bkg_moveweight = 20., \
@@ -1638,6 +1765,8 @@ class lion():
 			template_names = None, \
 			# initial amplitudes for specified templates
 			template_amplitudes = None, \
+
+			template_moveweight = 20., \
 
 			psf_pixel_fwhm = 3.0, \
 
@@ -1746,12 +1875,28 @@ class lion():
 
 			print(attr, valu)
 
-		# print('self.bias:', self.gdat.bias)
+		if self.gdat.mean_offsets is None:
+			self.gdat.mean_offsets = np.zeros_like(self.gdat.bias)
+
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
 		self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
+
+
+		template_band_idxs = dict({'sze':[1, 2], 'lensing':[0, 1, 2]})
+
+		if self.gdat.float_templates:
+			self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
+			for i, temp_name in enumerate(self.gdat.template_names):
+				for b, band in enumerate(self.gdat.bands):
+					if band in template_band_idxs[temp_name]:
+						self.gdat.template_band_idxs[i,b] = band
+					else:
+						self.gdat.template_band_idxs[i,b] = None
+
+			print('gdat.template band idxs is ', self.gdat.template_band_idxs)
 
 		print('self.gdat.n_templates is ', self.gdat.n_templates)
 		if self.gdat.data_path is None:
@@ -1778,15 +1923,15 @@ class lion():
 		with that order in priority.'''
 		
 		if self.gdat.cblas:
-			print('Using CBLAS routines for Intel processors..')
+			print('Using CBLAS routines for Intel processors.. :-) ')
 			libmmult = npct.load_library('pcat-lion', '.')
 		elif self.gdat.openblas:
-			print('Using OpenBLAS routines...')
+			print('Using OpenBLAS routines... :-/ ')
 			# libmmult = ctypes.cdll['pcat-lion-openblas.so']
 			# libmmult = npct.load_library('pcat-lion-openblas', '.')
 			libmmult = npct.load_library('blas-open', '.')
 		else:
-			print('Using slower BLAS routines.. boo ')
+			print('Using slower BLAS routines.. :-( ')
 			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
 			# libmmult = npct.load_library('blas', '.')
 
@@ -1807,12 +1952,21 @@ class lion():
 			# until bkg_sample_delay steps have been taken, don't float the background
 			if j < self.gdat.bkg_sample_delay:
 				model.moveweights[3] = 0
+				
+				if self.gdat.float_templates:
+					model.moveweights[4] = 0.
+			
 			# once ready to sample, recompute proposal weights
 			elif j==self.gdat.bkg_sample_delay:
-				print('Starting to sample background now')
+				print('Starting to sample background/templates now')
 				if j>0:
 					model.moveweights *= sumweights
-				model.moveweights[3] = self.gdat.bkg_moveweight
+
+				if self.gdat.float_background:
+					model.moveweights[3] = self.gdat.bkg_moveweight
+
+				if self.gdat.float_templates:
+					model.moveweights[4] = self.gdat.template_moveweight
 
 				print('moveweights:', model.moveweights)
 
@@ -1853,8 +2007,12 @@ these should be moved out of the script and into the pipeline'''
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=True, dataname='a0370', tail_name='PSW_nr_1', mean_offsets=[0.0, 0.0, 0.0], auto_resize=False, x0=70, y0=70, width=100, height=100, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
 
 # real data, rxj1347, floating SZ templates
-ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[0.1, 0.1, 0.1], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[0., 0., 0.], max_nsrc=3000,x0=70, y0=70, width=100, height=100, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.1], [0.1]], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[0., 0., 0.], bias=[0.0, 0.0, 0.0], max_nsrc=3000,x0=70, y0=70, width=100, height=100, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=50.0, bkg_sample_delay=10, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
 
+# ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sample_delay=20, cblas=True, visual=False, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
+# ob = lion(band0=0, float_background=True, bkg_sample_delay=20, cblas=True, visual=True, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
+# ob = lion(band0=0, band1=1, float_background=True, bkg_sample_delay=20, cblas=True, visual=True, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
 
 # real data, rxj1347
 
@@ -1871,7 +2029,7 @@ ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=T
 # ob = lion(band0=0, bkg_sample_delay=5, bkg_sig_fac=20.0, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0], bias=[0.003, 0.002], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, band2=2, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0, 0.0], bias=[0.003, 0.002, 0.007], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob.main()
+ob.main()
 
 
 # ob = lion(band0=0, band1=1, band2=2,tail_name='PSW_nr', bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)

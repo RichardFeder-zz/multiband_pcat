@@ -16,154 +16,192 @@ def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
 	return logSv, dSz, dNdS
 
 
-def plot_single_band_frame(obj, resids, models):
+def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', 'residual0','residual1','residual2','residual2zoom'], \
+							zoom0lims=[[90, 140], [70, 120]], zoom1lims=[[70, 110], [70, 110]], zoom2lims=[[50, 70], [50, 70]], \
+							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None):
+
+	
+	if panel0 is not None:
+		panels[0] = panel0
+	if panel1 is not None:
+		panels[1] = panel1
+	if panel2 is not None:
+		panels[2] = panel2
+	if panel3 is not None:
+		panels[3] = panel3
+	if panel4 is not None:
+		panels[4] = panel4
+	if panel5 is not None:
+		panels[5] = panel5
 
 	plt.gcf().clear()
 	plt.figure(1, figsize=(9, 4))
 	plt.clf()
-	plt.subplot(2,3,1)
-	plt.title('Data')
-	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
-	plt.colorbar()
-	sizefac = 10.*136
-	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
-	plt.xlim(-0.5, obj.imsz0[0]-0.5)
-	plt.ylim(-0.5, obj.imsz0[1]-0.5)
-	
-	plt.subplot(2,3,2)
-	plt.title('Model')
-	plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
-	plt.colorbar()
-	
-	plt.subplot(2,3,3)
-	plt.title('Residual')
-	if obj.gdat.weighted_residual:
-		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-	else:
-		plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
-	plt.colorbar()
 
-	plt.subplot(2,3,4)
-	plt.title('Data (zoomed in)')
-	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
-	plt.colorbar()
-	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
-	plt.ylim(90, 140)
-	plt.xlim(70, 120)
-	plt.subplot(2,3,5)
-	plt.title('Residual (zoomed in)')
+	for i in range(6):
 
-	if obj.gdat.weighted_residual:
-		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-	else:
-		plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
-	plt.colorbar()
-	plt.ylim(90, 140)
-	plt.xlim(70, 120)
-	plt.subplot(2,3,6)
+		plt.subplot(2,3,i+1)
 
-	logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
-	# binz = np.linspace(np.log10(obj.trueminf)+3., np.ceil(np.log10(np.max(obj.stars[obj._F, 0:obj.n]))+3.), 20)
-	# hist = np.histogram(np.log10(obj.stars[obj._F, 0:obj.n])+3, bins=binz)
-	# logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
-	# binz_Sz = 10**(binz-3)
-	# dSz = binz_Sz[1:]-binz_Sz[:-1]
-	# dNdS = hist[0]
+		if 'data0' in panels[i]:
+			plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[0], 5.), vmax=np.percentile(obj.dat.data_array[0], 99.9))
+			plt.colorbar()
+			plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+			if panels[i]=='data0zoom':
+				plt.title('Data (first band, zoomed in)')
+				plt.xlim(zoom0lims[0][0], zoom0lims[0][1])
+				plt.ylim(zoom0lims[1][0], zoom0lims[1][1])
+			else:
+				plt.title('Data (first band)')
+				plt.xlim(-0.5, obj.imsz0[0]-0.5)
+				plt.ylim(-0.5, obj.imsz0[1]-0.5)
 
-	if obj.gdat.raw_counts:
+		elif 'data1' in panels[i]:
+			xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 0)
 
-		plt.plot(logSv+3, dNdS, marker='.')
-		plt.ylabel('dN/dS')
-		plt.ylim(5e-1, 3e3)
+			plt.imshow(obj.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[1], 5.), vmax=np.percentile(obj.dat.data_array[1], 99.9))
+			plt.colorbar()
+			plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
 
-	else:
-		n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
-		n_steradian *= obj.gdat.frac # a number of pixels in the image are not actually observing anything
-		dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
-		plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
-		plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-		plt.ylim(1e0, 1e5)
+			if panels[i]=='data1zoom':
+				plt.title('Data (second band, zoomed in)')
+				plt.xlim(zoom1lims[0][0], zoom1lims[0][1])
+				plt.ylim(zoom1lims[1][0], zoom1lims[1][1])
+			else:
+				plt.title('Data (second band)')
+				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[1][1]-0.5)	
 
-	plt.yscale('log')
-	plt.legend()
-	plt.xlabel('log($S_{\\nu}$) (mJy)')
-	plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
-	plt.tight_layout()
-	plt.draw()
+		elif 'data2' in panels[i]:
+			xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 1)
 
-	plt.pause(1e-5)
+			plt.imshow(obj.dat.data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[2], 5.), vmax=np.percentile(obj.dat.data_array[2], 99.9))
+			plt.colorbar()
+			plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
+			
+			if panels[i]=='data2zoom':
+				plt.title('Data (third band, zoomed in)')
+				plt.xlim(zoom2lims[0][0], zoom2lims[0][1])
+				plt.ylim(zoom2lims[1][0], zoom2lims[1][1])
+			else:
+				plt.title('Data (third band)')
+				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[2][1]-0.5)	
+
+		elif 'model0' in panels[i]:
+			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[0], 5.), vmax=np.percentile(models[0], 99.9))
+			plt.colorbar()
+
+			if panels[i]=='model0zoom':
+				plt.title('Model (first band, zoomed in)')
+				plt.xlim(zoom0lims[0][0], zoom0lims[0][1])
+				plt.ylim(zoom0lims[1][0], zoom0lims[1][1])
+			else:
+				plt.title('Model (first band)')
+				plt.xlim(-0.5, obj.imsz0[0]-0.5)
+				plt.ylim(-0.5, obj.imsz0[1]-0.5)
 
 
-def plot_multiband_frame(obj, resids, models):
+		elif 'model1' in panels[i]:
+			plt.imshow(models[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[1], 5.), vmax=np.percentile(models[1], 99.9))
+			plt.colorbar()
 
-	plt.gcf().clear()
-	plt.figure(1, figsize=(9, 4))
-	plt.clf()
-	plt.subplot(2,3,1)
-	plt.title('Data')
-	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
-	plt.colorbar()
-	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
-	plt.xlim(-0.5, obj.imsz0[0]-0.5)
-	plt.ylim(-0.5, obj.imsz0[1]-0.5)
+			if panels[i]=='model1zoom':
+				plt.title('Model (second band, zoomed in)')
+				plt.xlim(zoom1lims[0][0], zoom1lims[0][1])
+				plt.ylim(zoom1lims[1][0], zoom1lims[1][1])
+			else:
+				plt.title('Model (second band)')
+				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[1][1]-0.5)
 
-	plt.subplot(2,3,2)
-	plt.title('Data (second band)')
-	xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 0)
-	plt.imshow(obj.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[1]), vmax=np.percentile(obj.dat.data_array[1], 99.9))
-	plt.colorbar()
-	plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
-	plt.xlim(-0.5, obj.imszs[1][0]-0.5)
-	plt.ylim(-0.5, obj.imszs[1][1]-0.5)
+		elif 'model2' in panels[i]:
+			plt.imshow(models[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[2], 5.), vmax=np.percentile(models[2], 99.9))
+			plt.colorbar()
 
-	plt.subplot(2,3,3)
-	plt.title('Residual')
-	if obj.gdat.weighted_residual:
-		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-	else:
-		plt.imshow(resids[1], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[1][obj.dat.weights[1] != 0.], 5), vmax=np.percentile(resids[1][obj.dat.weights[1] != 0.], 95))
-	plt.colorbar()
+			if panels[i]=='model2zoom':
+				plt.title('Model (third band, zoomed in)')
+				plt.xlim(zoom2lims[0][0], zoom2lims[0][1])
+				plt.ylim(zoom2lims[1][0], zoom2lims[1][1])
+			else:
+				plt.title('Model (third band)')
+				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[2][1]-0.5)
 
-	plt.subplot(2,3,4)
-	plt.title('Data (zoomed in)')
-	plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.min(obj.dat.data_array[0]), vmax=np.percentile(obj.dat.data_array[0], 99.9))
-	plt.colorbar()
-	plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
-	plt.ylim(90, 140)
-	plt.xlim(70, 120)
 
-	plt.subplot(2,3,5)
-	plt.title('Residual (zoomed in)')
+		elif 'residual0' in panels[i]:
+			if obj.gdat.weighted_residual:
+				plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+			else:
+				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
+			plt.colorbar()
 
-	if obj.gdat.weighted_residual:
-		plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-	else:
-		plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
-	plt.colorbar()
-	plt.ylim(90, 140)
-	plt.xlim(70, 120)
-	plt.subplot(2,3,6)
+			if panels[i]=='residual0zoom':
+				plt.title('Residual (first band, zoomed in)')
+				plt.xlim(zoom0lims[0][0], zoom0lims[0][1])
+				plt.ylim(zoom0lims[1][0], zoom0lims[1][1])
+			else:			
+				plt.title('Residual (first band)')
+				plt.xlim(-0.5, obj.imsz0[0]-0.5)
+				plt.ylim(-0.5, obj.imsz0[1]-0.5)
 
-	logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
+		elif 'residual1' in panels[i]:
+			if obj.gdat.weighted_residual:
+				plt.imshow(resids[1]*np.sqrt(obj.dat.weights[1]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+			else:
+				plt.imshow(resids[1], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[1][obj.dat.weights[1] != 0.], 5), vmax=np.percentile(resids[1][obj.dat.weights[1] != 0.], 95))
+			plt.colorbar()
 
-	if obj.gdat.raw_counts:
-		plt.plot(logSv+3, dNdS, marker='.')
-		plt.ylabel('dN/dS')
-		plt.ylim(5e-1, 3e3)
+			if panels[i]=='residual1zoom':
+				plt.title('Residual (second band, zoomed in)')
+				plt.xlim(zoom1lims[0][0], zoom1lims[0][1])
+				plt.ylim(zoom1lims[1][0], zoom1lims[1][1])
+			else:
+				plt.title('Residual (second band)')
+				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[1][1]-0.5)	
 
-	else:
-		n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
-		n_steradian *= obj.gdat.frac # a number of pixels in the image are not actually observing anything
-		dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
-		plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
-		plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-		plt.ylim(1e0, 1e5)
 
-	plt.yscale('log')
-	plt.legend()
-	plt.xlabel('log($S_{\\nu}$) (mJy)')
-	plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
-	plt.tight_layout()
+		elif 'residual2' in panels[i]:
+			if obj.gdat.weighted_residual:
+				plt.imshow(resids[2]*np.sqrt(obj.dat.weights[2]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+			else:
+				plt.imshow(resids[2], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[2][obj.dat.weights[2] != 0.], 5), vmax=np.percentile(resids[2][obj.dat.weights[2] != 0.], 95))
+			plt.colorbar()
+
+			if panels[i]=='residual2zoom':
+				plt.title('Residual (third band, zoomed in)')
+				plt.xlim(zoom2lims[0][0], zoom2lims[0][1])
+				plt.ylim(zoom2lims[1][0], zoom2lims[1][1])
+			else:
+				plt.title('Residual (third band)')
+				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[2][1]-0.5)	
+
+
+		elif panels[i]=='dNdS':
+
+			logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
+
+			if obj.gdat.raw_counts:
+				plt.plot(logSv+3, dNdS, marker='.')
+				plt.ylabel('dN/dS')
+				plt.ylim(5e-1, 3e3)
+
+			else:
+				n_steradian = ndeg/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+				n_steradian *= obj.gdat.frac # a number of pixels in the image are not actually observing anything
+				dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+				plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
+				plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
+				plt.ylim(1e0, 1e5)
+
+			plt.yscale('log')
+			plt.legend()
+			plt.xlabel('log($S_{\\nu}$) (mJy)')
+			plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
+
+
+	# plt.tight_layout()
 	plt.draw()
 	plt.pause(1e-5)
 
@@ -197,6 +235,38 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 
 	return f
 
+def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False):
+
+	f = plt.figure()
+	if title:
+		plt.title('Uniform background level - '+str(band))
+
+	plt.plot(np.arange(len(bkg_samples)), bkg_samples, label=band)
+	plt.xlabel('Sample index')
+	plt.ylabel('Amplitude [Jy/beam]')
+	plt.legend()
+	
+	if show:
+		plt.show()
+
+	return f
+
+def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False):
+
+	f = plt.figure()
+	if title:
+		plt.title(template_name +' template level - '+str(band))
+
+	plt.plot(np.arange(len(template_samples)), template_samples, label=band)
+	plt.xlabel('Sample index')
+	plt.ylabel('Amplitude [Jy/beam]')
+	plt.legend()
+	
+	if show:
+		plt.show()
+
+	return f
+
 def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False):
 	f = plt.figure()
 	if title:
@@ -211,6 +281,20 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 
 	return f	
 
+def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False):
+	f = plt.figure()
+	if title:
+		plt.title(template_name +' template level - '+str(band))
+
+	plt.hist(template_samples, label=band, histtype='step', bins=scotts_rule_bins(template_samples))
+	plt.xlabel('Amplitude [Jy/beam]')
+	plt.ylabel('$N_{samp}$')
+	
+	if show:
+		plt.show()
+
+	return f
+
 
 def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=True, show=False):
 
@@ -221,11 +305,12 @@ def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=
 	if title:
 		plt.title('Posterior Flux Distribution - ' +str(band))
 
-	plt.errorbar(logSv+3, mean_number_cts, yerr=np.array([np.abs(mean_number_cts-lower), np.abs(upper - mean_number_cts)]), fmt='o', label='Posterior')
+	plt.errorbar(logSv+3, mean_number_cts, yerr=np.array([np.abs(mean_number_cts-lower), np.abs(upper - mean_number_cts)]),fmt='.', label='Posterior')
 	
 	plt.legend()
 	plt.yscale('log', nonposy='clip')
 	plt.xlabel('log10(Flux) - ' + str(band))
+	plt.ylim(5e-1, 5e2)
 
 	if show:
 		plt.show()
@@ -377,14 +462,15 @@ def plot_comp_resources(timestats, nsamp, labels=['Proposal', 'Likelihood', 'Imp
 	
 	return f
 
-def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birth/Death', 'Merge/Split'], show=False):
+def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birth/Death', 'Merge/Split', 'Templates'], show=False):
 
 	f = plt.figure()
 	
 	samp_range = np.arange(accept_stats.shape[0])
 	for x in range(len(proposal_types)):
-		if not np.isnan(accept_stats[0,x]):
-			plt.plot(samp_range, accept_stats[:,x], label=proposal_types[x])
+		print(accept_stats[0,x])
+		accept_stats[:,x][np.isnan(accept_stats[:,x])] = 0.
+		plt.plot(samp_range, accept_stats[:,x], label=proposal_types[x])
 	plt.legend()
 	plt.xlabel('Sample number')
 	plt.ylabel('Acceptance fraction')
