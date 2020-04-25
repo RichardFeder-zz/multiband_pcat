@@ -157,23 +157,18 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	for i, band in enumerate(gdat.bands):
 		print(band)
 
-		if cattype=='SIDES':
-			ref_path = datapath+'sides_cat_P'+gdat.band_dict[band]+'W_20.npy'
-			print('ref path:', ref_path)
-			roc.load_cat(path=ref_path)
-			if i==0:
-				cat_fluxes = np.zeros(shape=(gdat.nbands, len(roc.mock_cat['flux'])))
-				print('cat fluxes has shape', cat_fluxes.shape)
-			cat_fluxes[i,:] = roc.mock_cat['flux']
+		if gdat.mock_name is not None:
 
-	# cat_fluxes = None
-	# print('cat fluxes has shape:', cat_fluxes.shape)
-
-
-	# flux_mask = (cat_fluxes[0,:] > min_flux_refcat)
-	# cat_fluxes = cat_fluxes[:,flux_mask]
-
-	# print('cat fluxes now has shape', cat_fluxes.shape)
+			if cattype=='SIDES':
+				ref_path = datapath+'sides_cat_P'+gdat.band_dict[band]+'W_20.npy'
+				print('ref path:', ref_path)
+				roc.load_cat(path=ref_path)
+				if i==0:
+					cat_fluxes = np.zeros(shape=(gdat.nbands, len(roc.mock_cat['flux'])))
+					print('cat fluxes has shape', cat_fluxes.shape)
+				cat_fluxes[i,:] = roc.mock_cat['flux']
+		else:
+			cat_fluxes=None
 
 
 	dat = pcat_data(gdat.auto_resize, nregion=gdat.nregion)
@@ -189,11 +184,9 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	timestats = chain['times']
 	accept_stats = chain['accept']
 	diff2s = chain['diff2s']
-	# residuals = chain['residuals0']
-	# burn_in = int(500*burn_in_frac)
+
 	burn_in = int(gdat.nsamp*burn_in_frac)
 	bands = gdat.bands
-	# bands = [0]
 
 	if gdat.float_background is not None:
 		bkgs = chain['bkg']
@@ -219,18 +212,31 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 		maxpct_smooth = 0.002
 		minpct_smooth = -0.002
 
+		if b==0:
+			resid_map_dir = gdat.filepath+'/residual_maps'
+			onept_dir = gdat.filepath+'/residual_1pt'
+
+			if not os.path.isdir(resid_map_dir):
+				os.makedirs(resid_map_dir)
+
+			if not os.path.isdir(onept_dir):
+				os.makedirs(onept_dir)
+
 		f_last = plot_residual_map(residz[-1], mode='last', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
-		f_last.savefig(gdat.filepath +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		# f_last.savefig(gdat.filepath +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_last.savefig(resid_map_dir +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 
 		f_median = plot_residual_map(median_resid, mode='median', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
-		f_median.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-
+		f_median.savefig(resid_map_dir +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		# f_median.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
 
+
 		f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', band=band_dict[bands[b]], show=False)
-		f_1pt_resid.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_1pt_resid.savefig(onept_dir +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		# f_1pt_resid.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		plt.close()	
 
@@ -239,27 +245,46 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	sample_number = np.arange(burn_in, gdat.nsamp)
 	full_sample = range(gdat.nsamp)
 
-
+	chi2_dir = gdat.filepath+'/chi2'
+	if not os.path.isdir(chi2_dir):
+		os.makedirs(chi2_dir)
+	
 	for b in range(gdat.nbands):
 
 		fchi = plot_chi_squared(chi2[:,b], sample_number, band=band_dict[bands[b]], show=False)
-		fchi.savefig(gdat.filepath + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		# fchi.savefig(gdat.filepath + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		fchi.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
 		plt.close()
 
 	# ------------------------- BACKGROUND AMPLITUDE ---------------------
 	if gdat.float_background:
+
+		bkg_dir = gdat.filepath+'/bkg'
+
+		if not os.path.isdir(bkg_dir):
+			os.makedirs(bkg_dir)
+
 		for b in range(gdat.nbands):
 
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False)
-			f_bkg_chain.savefig(gdat.filepath+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			# f_bkg_chain.savefig(gdat.filepath+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False)
-			f_bkg_post.savefig(gdat.filepath+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			# f_bkg_post.savefig(gdat.filepath+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 	
 	# ------------------------- TEMPLATE AMPLITUDES ---------------------
 
 	if gdat.float_templates:
+
+		template_dir = gdat.filepath+'/templates'
+
+		if not os.path.isdir(template_dir):
+			os.makedirs(template_dir)
+
 		for t in range(gdat.n_templates):
 			for b in range(gdat.nbands):
 
@@ -269,10 +294,12 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,b,t].shape)
 					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
-					f_temp_amp_chain.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					# f_temp_amp_chain.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 					f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
-					f_temp_amp_post.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					# f_temp_amp_post.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
 
@@ -304,6 +331,11 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 	nsrc_fov = []
 	color_lin_post_bins = np.linspace(0.0, 5.0, 30)
+
+	flux_color_dir = gdat.filepath+'/fluxes_and_colors'
+
+	if not os.path.isdir(flux_color_dir):
+		os.makedirs(flux_color_dir)
 
 	for b in range(gdat.nbands):
 
@@ -338,22 +370,25 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 
 		f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=band_dict[bands[b]])
-		f_post_number_cts.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+		# f_post_number_cts.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=band_dict[bands[b]])
-		f_post_flux_dist.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+		# f_post_flux_dist.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		if b > 0:
 
 			f_color_post = plot_color_posterior(fsrcs, b-1, b, lam_dict, mock_truth_fluxes=cat_fluxes)
-			f_color_post.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+			f_color_post.savefig(flux_color_dir +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+			# f_color_post.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 
-			# ------------------- SOURCE NUMBER ---------------------------
+	# ------------------- SOURCE NUMBER ---------------------------
 
 
-		f_nsrc = plot_src_number_posterior(nsrc_fov)
-		f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=300)
+	f_nsrc = plot_src_number_posterior(nsrc_fov)
+	f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=300)
 
 
 
@@ -503,7 +538,7 @@ class Model:
 		
 		self.moveweights = np.array([80., 40., 40., 0., 0.]) # template
 		self.n_templates = gdat.n_templates # template
-		self.temp_amplitude_sigs = np.array([0.0005 for x in range(self.n_templates)]) # template
+		self.temp_amplitude_sigs = np.array([0.002 for x in range(self.n_templates)]) # template
 		self.template_amplitudes = np.array(self.gdat.template_amplitudes) # template shape nbands x n_templates
 		self.dtemplate = np.zeros_like(self.template_amplitudes)
 
@@ -839,7 +874,13 @@ class Model:
 					margin_fac = 0
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
 
-					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+					if self.gdat.float_templates:
+						mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+																self.bkg+self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
+																beam_fac=self.pixel_per_beam, margin_fac=0, rtype=rtype, dtemplate=self.template_amplitudes+self.dtemplate)
+
+					else:
+						mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 															self.bkg+self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 															beam_fac=self.pixel_per_beam, margin_fac=0, rtype=rtype)
 					logL = -0.5*diff2s_nomargin
@@ -847,7 +888,6 @@ class Model:
 					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype)
 	
-
 				
 				elif rtype == 4: # template
 					margin_fac = 0
@@ -957,9 +997,6 @@ class Model:
 						# print('prior/dlogP/accept or not:', total_logL,proposal.factor, total_dlogP, accept_or_not)
 
 					if accept_or_not:
-						# if rtype == 4:
-							# print('accepted for template proposal! proposal.dtemplate:', proposal.dtemplate)
-
 						# set all acceptreg for subregions to 1
 						acceptreg = np.ones(shape=(self.nregy, self.nregx)).astype(np.int32)
 					else:
@@ -1320,11 +1357,10 @@ class Model:
 					# draw new source colors from color prior
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=nbd)
 					
-					# if using linear colors, need to change acceptance fraction in this section to reflect it
-
-					# starsb[self._F+b,:] = starsb[self._F,:]*new_colors
-					
-					starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)
+					if self.gdat.linear_flux:
+						starsb[self._F+b,:] = starsb[self._F,:]*new_colors
+					else:
+						starsb[self._F+b,:] = starsb[self._F,:]*10**(0.4*new_colors)
 			
 					if (starsb[self._F+b,:]<0).any():
 						print('negative birth star fluxes')
@@ -1755,8 +1791,11 @@ class lion():
 			# bkg_moveweight sets what fraction of the MCMC proposals are dedicated to perturbing the background level, 
 			# as opposed to changing source positions/births/deaths/splits/merges
 			bkg_moveweight = 20., \
+
 			# bkg_sample_delay determines how long Lion waits before sampling from the background. I figure it might be 
-			# useful to have this slightly greater than zero so the chain can do a little burn in first
+			# useful to have this slightly greater than zero so the chain can do a little burn in first.
+			# Note that bkg_sample_delay also currently dictates when additional templates start getting fit, if they are included
+			# in the model.
 			bkg_sample_delay = 50, \
 
 			# boolean determining whether to float emission template amplitudes, e.g. for SZ or lensing templates
@@ -1766,8 +1805,10 @@ class lion():
 			# initial amplitudes for specified templates
 			template_amplitudes = None, \
 
+			# same idea here as bkg_moveweight
 			template_moveweight = 20., \
 
+			# Full width half maximum for the PSF of the instrument/observation
 			psf_pixel_fwhm = 3.0, \
 
 			# use if loading data from object and not from saved fits files in directories
@@ -2008,9 +2049,9 @@ these should be moved out of the script and into the pipeline'''
 
 # real data, rxj1347, floating SZ templates
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.1], [0.1]], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[0., 0., 0.], bias=[0.0, 0.0, 0.0], max_nsrc=3000,x0=70, y0=70, width=100, height=100, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=50.0, bkg_sample_delay=10, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
+# ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=20.0, bkg_sample_delay=20, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 
-# ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sample_delay=20, cblas=True, visual=False, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
+# ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=20., bkg_sample_delay=10, cblas=True, visual=False, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
 # ob = lion(band0=0, float_background=True, bkg_sample_delay=20, cblas=True, visual=True, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
 # ob = lion(band0=0, band1=1, float_background=True, bkg_sample_delay=20, cblas=True, visual=True, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
 
@@ -2029,7 +2070,7 @@ ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=50.0, bk
 # ob = lion(band0=0, bkg_sample_delay=5, bkg_sig_fac=20.0, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0], bias=[0.003, 0.002], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, band2=2, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0, 0.0], bias=[0.003, 0.002, 0.007], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-ob.main()
+# ob.main()
 
 
 # ob = lion(band0=0, band1=1, band2=2,tail_name='PSW_nr', bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
@@ -2056,7 +2097,7 @@ ob.main()
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200410-114151',cattype=None, burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200424-153905',cattype=None, burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)
