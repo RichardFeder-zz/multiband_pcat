@@ -125,7 +125,7 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 	return np.flatnonzero(np.logical_and(match_x, match_y))
 
 
-def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4):
+def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4):
 
 	
 	band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
@@ -252,7 +252,6 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 	for b in range(gdat.nbands):
 
 		fchi = plot_chi_squared(chi2[:,b], sample_number, band=band_dict[bands[b]], show=False)
-		# fchi.savefig(gdat.filepath + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 		fchi.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		plt.close()
@@ -269,11 +268,9 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-			# f_bkg_chain.savefig(gdat.filepath+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-			# f_bkg_post.savefig(gdat.filepath+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 	
 	# ------------------------- TEMPLATE AMPLITUDES ---------------------
@@ -295,11 +292,9 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,b,t].shape)
 					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
 					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-					# f_temp_amp_chain.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 					f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
 					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-					# f_temp_amp_post.savefig(gdat.filepath+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
 
@@ -371,17 +366,14 @@ def result_plots(timestr=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow
 
 		f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=band_dict[bands[b]])
 		f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
-		# f_post_number_cts.savefig(gdat.filepath+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=band_dict[bands[b]])
 		f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
-		# f_post_flux_dist.savefig(gdat.filepath+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		if b > 0:
 
 			f_color_post = plot_color_posterior(fsrcs, b-1, b, lam_dict, mock_truth_fluxes=cat_fluxes)
 			f_color_post.savefig(flux_color_dir +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
-			# f_color_post.savefig(gdat.filepath +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
 
 
 	# ------------------- SOURCE NUMBER ---------------------------
@@ -615,6 +607,15 @@ class Model:
 		else:
 			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...')
 			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
+			
+			catload = np.load(catpath)
+
+			self.bkg = catload['bkg']
+			self.template_amplitudes=catload['templates']
+
+			print('self.bkg is ', self.bkg)
+			print('self.template amplitudes is ', self.template_amplitudes)
+
 			self.stars = np.load(catpath)['cat']
 			self.n = np.count_nonzero(self.stars[self._F,:])
 
@@ -2022,7 +2023,7 @@ class lion():
 			samps.save_samples(self.gdat.result_path, self.gdat.timestr)
 
 			# save final catalog state
-			np.savez(self.gdat.result_path + '/'+str(self.gdat.timestr)+'/final_state.npz', cat=model.stars)
+			np.savez(self.gdat.result_path + '/'+str(self.gdat.timestr)+'/final_state.npz', cat=model.stars, bkg=model.bkg, templates=model.template_amplitudes)
 
 		if self.gdat.make_post_plots:
 			result_plots(gdat = self.gdat)
@@ -2049,7 +2050,7 @@ these should be moved out of the script and into the pipeline'''
 
 # real data, rxj1347, floating SZ templates
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.1], [0.1]], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[0., 0., 0.], bias=[0.0, 0.0, 0.0], max_nsrc=3000,x0=70, y0=70, width=100, height=100, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=20.0, bkg_sample_delay=20, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob = lion(band0=0, band1=1, band2=2, load_state_timestr='20200427-123636', float_background=True, burn_in_frac=0.8, bkg_sig_fac=20.0, bkg_sample_delay=0, cblas=True, visual=True, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=10)
 
 # ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=20., bkg_sample_delay=10, cblas=True, visual=False, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
 # ob = lion(band0=0, float_background=True, bkg_sample_delay=20, cblas=True, visual=True, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
@@ -2097,7 +2098,7 @@ these should be moved out of the script and into the pipeline'''
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200424-153905',cattype=None, burn_in_frac=0.6, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200426-185703',cattype=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)
