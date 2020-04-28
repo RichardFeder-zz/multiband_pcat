@@ -3,6 +3,8 @@ import numpy as np
 from astropy.convolution import Gaussian2DKernel
 from image_eval import psf_poly_fit, image_model_eval
 import pickle
+import matplotlib
+import matplotlib.pyplot as plt
 
 class objectview(object):
 	def __init__(self, d):
@@ -51,7 +53,14 @@ def load_in_map(gdat, band=0, astrom=None):
 	image = np.nan_to_num(spire_dat[1].data)
 	error = np.nan_to_num(spire_dat[2].data)
 	exposure = spire_dat[3].data
-	mask = spire_dat[4].data
+
+	# temporary file grab while bolocam mask is not part of .fits file
+	if gdat.bolocam_mask:
+		print('loading bolocam mask temporarily as separate file..')
+		mask_fits = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')
+		mask = mask_fits[0].data
+	else:
+		mask = spire_dat[4].data
 
 	return image, error, exposure, mask, file_path
 
@@ -67,6 +76,26 @@ def load_param_dict(timestr, result_path='/Users/richardfeder/Documents/multiban
 
 	print('param dict load')
 	return opt, filepath, result_path
+
+
+def get_rect_mask_bounds(mask):
+	''' this function assumes the mask is rectangular in shape, with ones in the desired region and zero otherwise. '''
+
+
+	idxs = np.argwhere(mask == 1.0)
+	minx = np.min(idxs[:,0])
+	maxx = np.max(idxs[:,0])
+	min_cut_idxs = np.array([idx for idx in idxs if idx[0]==minx])
+	max_cut_idxs = np.array([idx for idx in idxs if idx[0]==maxx])
+
+	miny = np.min(min_cut_idxs[:,1])
+	maxy = np.max(max_cut_idxs[:,1])
+
+	bounds = np.array([[minx, maxx], [miny, maxy]])
+
+	return bounds
+
+
 
 
 
@@ -116,6 +145,7 @@ class pcat_data():
 		gdat.imszs = []
 		gdat.regsizes = []
 		gdat.margins = []
+		gdat.bounds = []
 
 		for i, band in enumerate(gdat.bands):
 			print('band:', band)
@@ -128,7 +158,6 @@ class pcat_data():
 
 				exposure = obj['exp'].data
 				mask = obj['mask']
-				print('pixsize:', obj['pixsize'])
 				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize']# gives it in arcseconds and neet to convert to pixels
 				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'])
 				gdat.dataname = obj['name']
@@ -141,6 +170,16 @@ class pcat_data():
 
 				image, error, exposure, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom)
 
+				bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
+				print('bounds for band ', i, 'are ', bounds)
+
+				if bounds is not None:
+					big_dim = np.maximum(find_nearest_upper_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_nearest_upper_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
+
+					self.fast_astrom.dims[i] = (big_dim, big_dim)
+
+
+				gdat.bounds.append(bounds)
 
 				template_list = [] 
 
@@ -156,10 +195,6 @@ class pcat_data():
 
 							template = fits.open(template_file_name)[0].data
 
-							template /= np.sum(template) # normalize template to 1
-
-							print('template sums to ', np.sum(template))
-
 						else:
 
 							template = None
@@ -169,16 +204,30 @@ class pcat_data():
 
 				if i > 0:
 					print('we have more than one band:', gdat.bands[0], band)
-					# self.fast_astrom.fit_astrom_arrays(gdat.bands[0], i)
-					self.fast_astrom.fit_astrom_arrays(0, i)
+					self.fast_astrom.fit_astrom_arrays(0, i, bounds0=gdat.bounds[0], bounds1=gdat.bounds[i])
+
+
+				if gdat.noise_thresholds is not None:
+					error[error > gdat.noise_thresholds[i]] = 0 # this equates to downweighting the pixels
 
 
 			else:
 				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
 			
 			if gdat.auto_resize:
-				smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
-				larger_dim = np.max([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0])
+
+				if gdat.bolocam_mask:
+
+					error = error[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+					image = image[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+					exposure = exposure[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+					smaller_dim = np.min(image.shape)
+					larger_dim = np.max(image.shape)
+
+				else:
+
+					smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
+					larger_dim = np.max([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0])
 
 				print('smaller dim is', smaller_dim)
 				print('larger dim is ', larger_dim)
@@ -196,7 +245,7 @@ class pcat_data():
 				padded_error = np.zeros(shape=(gdat.width, gdat.height))
 				padded_exposure = np.zeros(shape=(gdat.width, gdat.height))
 				padded_mask = np.zeros(shape=(gdat.width, gdat.height))
-				print('mask is ', mask)
+
 				padded_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:, gdat.y0:]
 				padded_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:, gdat.y0:]
 				padded_exposure[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = exposure[gdat.x0:, gdat.y0:]
@@ -205,12 +254,18 @@ class pcat_data():
 				padded_template_list = []
 				for template in template_list:
 					if template is not None:
+
 						padded_template = np.zeros(shape=(gdat.width, gdat.height))
+
+						if gdat.bolocam_mask:
+							template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+
+							# plt.figure()
+							# plt.imshow(template, origin=[0,0])
+							# plt.show()
+
 						padded_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:, gdat.y0:]
 
-						padded_template /= np.sum(padded_template)
-
-						print('padded template sums to ', np.sum(padded_template))
 						padded_template_list.append(padded_template.astype(np.float32))
 					else:
 						padded_template_list.append(None)
@@ -234,14 +289,13 @@ class pcat_data():
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
-				# mask = mask[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				cropped_template_list = []
 				for template in template_list:
 					if template is not None:
 						cropped_template = template[gdat.x0:gdat.x0+gdat.width, gdat.y0:gdat.y0+gdat.height]
-						cropped_template /= np.sum(cropped_template)
+						cropped_template /= np.max(cropped_template)
 
-						print('cropped_template here has sum ', np.sum(cropped_template))
+						print('cropped_template here has sum ', np.max(cropped_template))
 						cropped_template_list.append(cropped_template.astype(np.float32))
 					else:
 						cropped_template_list.append(None)
@@ -275,6 +329,14 @@ class pcat_data():
 
 			if i==0:
 				gdat.imsz0 = image_size
+
+			
+
+			# plt.figure()
+			# plt.imshow(self.errors[i])
+			# plt.colorbar()
+			# plt.show()
+
 			gdat.imszs.append(image_size)
 			gdat.regsizes.append(image_size[0]/gdat.nregion)
 
@@ -293,6 +355,9 @@ class pcat_data():
 			self.biases.append(gdat.bias)
 			self.fracs.append(gdat.frac)
 
+
+
+
 		gdat.regions_factor = 1./float(gdat.nregion**2)
 		print(gdat.imsz0[0], gdat.regsizes[0], gdat.regions_factor)
 		assert gdat.imsz0[0] % gdat.regsizes[0] == 0 
@@ -303,7 +368,5 @@ class pcat_data():
 		print('self.dat.fracs is ', self.fracs)
 		gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2 # 2 instead of 4 for spire beam size
 		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/10
-
-		# return gdat
 
 

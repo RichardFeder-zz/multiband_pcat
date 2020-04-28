@@ -134,14 +134,23 @@ class wcs_astrometry():
         
         return dxp, dyp
            
-    def fit_astrom_arrays(self, idx0, idx1):
+    def fit_astrom_arrays(self, idx0, idx1, bounds0=None, bounds1=None):
         print('idx0:', idx0)
         print(self.dims)
         
-        x = np.arange(0, self.dims[idx0][0])
-        y = np.arange(0, self.dims[idx0][1])
+
+        if bounds0 is not None:
+            # if a rectangular mask is provided, then we only need to pre-compute the astrometry arrays over the masked region
+            x = np.arange(bounds0[0,0], bounds0[0,1]+self.dims[idx0][0])
+            y = np.arange(bounds0[1,0], bounds0[1,1]+self.dims[idx0][1])
+
+        else:
+
+            x = np.arange(0, self.dims[idx0][0])
+            y = np.arange(0, self.dims[idx0][1])
         
         xv, yv = np.meshgrid(x, y)
+
         
         if self.verbosity > 0:
             print('xv:')
@@ -151,14 +160,19 @@ class wcs_astrometry():
 
         dxp_dx, dyp_dx = self.get_derivative(idx0, idx1, xv, yv, 0.5, 0.0)
         dxp_dy, dyp_dy = self.get_derivative(idx0, idx1, xv, yv, 0.0, 0.5)
+        
         xp, yp = self.obs_to_obs(idx0, idx1, xv, yv)
+
+        if bounds1 is not None:
+            xp -= bounds1[0,0]
+            yp -= bounds1[1,0]
         
         if self.verbosity > 0:
             print('xp:')
             print(xp)
             print('yp:')
             print(yp)
-        
+            
         fast_arrays = np.array([xp, yp, dxp_dx, dyp_dx, dxp_dy, dyp_dy])
         self.all_fast_arrays.append(fast_arrays)
         

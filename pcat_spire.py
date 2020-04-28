@@ -1140,7 +1140,7 @@ class Model:
 				plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'model1', 'residual1', 'residual0zoom'])
 
 			elif self.gdat.nbands == 3:
-				plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'residual1', 'residual2', 'model2'])
+				plot_custom_multiband_frame(self, resids, models, panels=['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2'])
 
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids, models
@@ -1765,6 +1765,7 @@ class lion():
 	def __init__(self, 
 			# resizes images to largest square dimension modulo nregion
 			auto_resize = True, \
+			# don't use 'down' configuration yet, not implemented consistently in all data parsing routines
 			round_up_or_down = 'up',\
 
 			#specify these if you want to fix the dimension of incoming image
@@ -1774,6 +1775,8 @@ class lion():
 			# these set x/y coordinate of lower left corner if cropping image
 			x0 = 0, \
 			y0 = 0, \
+
+			bolocam_mask = False, \
 
 			#indices of bands used in fit, where 0->250um, 1->350um and 2->500um.
 			band0 = 0, \
@@ -1908,7 +1911,8 @@ class lion():
 			# set to True if using OpenBLAS library for non-Intel processors
 			openblas=False, \
 
-			normalization='max'):
+			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
+			noise_thresholds=None):
 
 
 		for attr, valu in locals().items():
@@ -1938,7 +1942,6 @@ class lion():
 					else:
 						self.gdat.template_band_idxs[i,b] = None
 
-			print('gdat.template band idxs is ', self.gdat.template_band_idxs)
 
 		print('self.gdat.n_templates is ', self.gdat.n_templates)
 		if self.gdat.data_path is None:
@@ -1947,8 +1950,6 @@ class lion():
 
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
 		self.data.load_in_data(self.gdat, map_object=map_object)
-
-		print('templates are ', self.data.template_array)
 
 		if self.gdat.save:
 			#create directory for results, save config file from run
@@ -2050,6 +2051,7 @@ these should be moved out of the script and into the pipeline'''
 
 # real data, rxj1347, floating SZ templates
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.1], [0.1]], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[0., 0., 0.], bias=[0.0, 0.0, 0.0], max_nsrc=3000,x0=70, y0=70, width=100, height=100, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
+# ob = lion(band0=0, band1=1, band2=2, bolocam_mask=True, noise_thresholds=[0.002, 0.002, 0.003], float_background=True, burn_in_frac=0.8, bkg_sig_fac=50.0, bkg_sample_delay=50, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.01]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=2000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, band2=2, load_state_timestr='20200427-123636', float_background=True, burn_in_frac=0.8, bkg_sig_fac=20.0, bkg_sample_delay=0, cblas=True, visual=True, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=10)
 
 # ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=20., bkg_sample_delay=10, cblas=True, visual=False, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
