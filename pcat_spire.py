@@ -10,7 +10,6 @@ import time
 import os
 import warnings
 import scipy.stats as stats
-import scipy.signal
 from scipy.ndimage import gaussian_filter
 from image_eval import psf_poly_fit, image_model_eval
 from fast_astrom import *
@@ -26,7 +25,7 @@ class objectview(object):
 		self.__dict__ = d
 
 #generate random seed for initialization
-np.random.seed(20170502)
+np.random.seed(20170603)
 
 class gdatstrt(object):
 
@@ -61,17 +60,17 @@ def initialize_c(gdat, libmmult, cblas=False):
 	if gdat.verbtype > 1:
 		print('initializing c routines and data structs')
 
-	if cblas or gdat.openblas:
-	# if cblas:
+	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
+	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
+	array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
+	array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
+
+	if cblas:
 		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
 			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)		
 				
-		array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
-		array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
-		array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
 		libmmult.pcat_model_eval.restype = None
 		libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-		array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
 		libmmult.pcat_imag_acpt.restype = None
 		libmmult.pcat_imag_acpt.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
 		libmmult.pcat_like_eval.restype = None
@@ -81,12 +80,8 @@ def initialize_c(gdat, libmmult, cblas=False):
 		if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
 			warnings.warn('blas.c modified after compiled blas.so', Warning)		
 		
-		array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
-		array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
-		array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
 		libmmult.clib_eval_modl.restype = None
 		libmmult.clib_eval_modl.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-		array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
 		libmmult.clib_updt_modl.restype = None
 		libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
 		libmmult.clib_eval_llik.restype = None
@@ -148,7 +143,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	# gdat.auto_resize=False
 	# result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
 	# filepath = result_path + timestr
-
 	# gdat.float_background = None
 
 	roc = cross_match_roc(filetype='.npy')
@@ -495,15 +489,8 @@ class Model:
 	linear_mus = dict({'S/M':1.0, 'M/S':1.0, 'M/L':1.4, 'L/M':1./1.4, 'S/L':1.4, 'L/S':1./1.4})
 	linear_sigs = dict({'S/M':0.4, 'M/S':0.4, 'M/L':0.4, 'L/M':0.4, 'S/L':0.8, 'L/S':0.8})
 
-	# mus = dict({'S-M':-0.8, 'M-L':-0.8, 'L-S':1.9, 'M-S':0.8, 'S-L':1.9, 'L-M':0.8})
-
 	mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
 	sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5}) #very broad color prior
-
-	# sigs = dict({'S-M':10.5, 'M-L':10.5, 'L-S':10.5, 'M-S':10.5, 'S-L':10.5, 'L-M':10.5}) #very broad color prior
-
-	# flat_val = 20
-	# sigs = dict({'S-M':flat_val, 'M-L':flat_val, 'L-S':flat_val, 'M-S':flat_val, 'S-L':flat_val, 'L-M':flat_val}) #very broad color prior
 
 	color_mus, color_sigs = [], []
 	
@@ -525,6 +512,7 @@ class Model:
 
 		self.margins = np.zeros(gdat.nbands).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
+		
 		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
 		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
 		
@@ -533,14 +521,8 @@ class Model:
 		self.temp_amplitude_sigs = np.array([0.002 for x in range(self.n_templates)]) # template
 		self.template_amplitudes = np.array(self.gdat.template_amplitudes) # template shape nbands x n_templates
 		self.dtemplate = np.zeros_like(self.template_amplitudes)
-
-		# self.moveweights = np.array([80., 40., 40., 0.])
-
-		if not self.gdat.float_background:
-			self.moveweights[3] = 0.
 		
 		self.movetypes = ['P *', 'BD *', 'MS *', 'BKG', 'TEMPLATE'] # template
-		# self.movetypes = ['P *', 'BD *', 'MS *', 'BKG']
 		self.n = np.random.randint(gdat.max_nsrc)+1
 		self.nbands = gdat.nbands
 		self.nloop = gdat.nloop
@@ -563,11 +545,7 @@ class Model:
 		self.trueminf = gdat.trueminf
 
 		self.verbtype = gdat.verbtype
-		print('gdat bias up here is ', gdat.bias)
 		self.bkg = np.array(gdat.bias)
-
-		print('self.imszs:', self.imszs)
-		print('self fracs:', self.dat.fracs)
 
 		self.bkg_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 		self.bkg_mus = self.bkg.copy()
@@ -575,7 +553,6 @@ class Model:
 		print('bkg_sigs is ', self.bkg_sigs, 'bkg_mus is ', self.bkg_mus)
 
 		self.dback = np.zeros_like(self.bkg)
-		print('self.dback has shape', self.dback.shape)
 		
 		for b in range(self.nbands-1):
 
@@ -659,38 +636,23 @@ class Model:
 
 		for b in range(self.nbands):
 
-			# print('BAND ', b)
-
-
 			if dtemplate is not None:
-
-				# if bkg[b] != 0:
-				# 	print('changing background is nonzero, dtemplate is ', dtemplate, 'background is ', bkg[b])
 
 				dtemp = []
 				for i, temp in enumerate(self.dat.template_array[b]):
-					# print('temp:', temp)
 
 					if temp is not None and dtemplate[b][i] != 0.:
 						dtemp.append(dtemplate[b][i]*temp)
 
-				# dtemp = np.array([self.dat.template_array[b][i]*dtemplate[b][i] for i in range(len(dtemplate[b]))])
-				# print('dtemp has shape', np.array(dtemp).shape)
-				
 				if len(dtemp) > 0:
 					dtemp = np.sum(np.array(dtemp), axis=0).astype(np.float32)
 				
 				else:
 					dtemp = None
-				# print('dtemp how has shape ', dtemp.shape)
 			
 			else:
 				dtemp = None
 
-			# if dtemp is not None:
-			# 	print('dtemp is not none, bkg is ', bkg)
-			# if rtype==4:
-				# print('for band ', b, 'max dtemp is ', np.max(dtemp))
 
 			if b>0:
 				t4 = time.clock()
@@ -782,14 +744,13 @@ class Model:
 		self.nregy = int(self.imsz0[1] / self.regsizes[0] + 1)
 
 		resids = []
-		# dtemplate = []
+
 		for b in range(self.nbands):
 
 			resid = self.dat.data_array[b].copy() # residual for zero image is data
 			if self.gdat.verbtype > 1:
 				print('resid has shape:', resid.shape)
 			resids.append(resid)
-			# dtemplate.append(self.template_amplitudes[b])
 
 		evalx = self.stars[self._X,0:self.n]
 		evaly = self.stars[self._Y,0:self.n]
@@ -857,21 +818,18 @@ class Model:
 			#proposal types
 			proposal = movefns[rtype]()
 
-			# if rtype==3:
-				# print('proposal.dback here is ', proposal.dback)
 			dts[0,i] = time.clock() - t1
 			
 			if proposal.goodmove:
 				t2 = time.clock()
 
-				# if self.gdat.cblas or self.gdat.openblas:
 				if self.gdat.cblas:
 					lib = self.libmmult.pcat_model_eval
 				else:
 					lib = self.libmmult.clib_eval_modl
 
 				if rtype == 3: # background
-				# if rtype == 3:
+
 					margin_fac = 0
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
 
@@ -978,8 +936,6 @@ class Model:
 
 				
 				if rtype != 3 and rtype != 4: # template
-				# if rtype != 3:
-					# acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 					acceptprop = acceptreg[regiony, regionx]
 					numaccept = np.count_nonzero(acceptprop)
 
@@ -1022,13 +978,11 @@ class Model:
 						# using this dmodel containing only accepted moves, update logL
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
-
 					# if rtype == 4:
 					# 	plt.figure()
 					# 	plt.imshow(dmodel_acpt)
 					# 	plt.colorbar()
 					# 	plt.show()
-
 
 					resids[b] -= dmodel_acpt
 
@@ -1078,7 +1032,6 @@ class Model:
 				dts[2,i] = time.clock() - t3
 
 				if rtype != 3 and rtype != 4: # template
-				# if rtype != 3:
 					if acceptprop.size > 0:
 						accept[i] = np.count_nonzero(acceptprop) / float(acceptprop.size)
 					else:
@@ -1096,7 +1049,6 @@ class Model:
 
 			for b in range(self.nbands):
 				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
-				# diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-np.transpose(models[b]))*(self.dat.data_array[b]-np.transpose(models[b])))
 
 					
 			if self.verbtype > 1:
@@ -1110,7 +1062,6 @@ class Model:
 		chi2 = np.zeros(self.nbands)
 		for b in range(self.nbands):
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
-			# chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-np.transpose(models[b]))*(self.dat.data_array[b]-np.transpose(models[b])))
 			
 		if self.verbtype > 1:
 			print('end of sample')
@@ -1520,8 +1471,6 @@ class Model:
 				invpairs[k] += 1./neighbours(xtemp, ytemp, self.kickrange, self.n)
 			invpairs *= 0.5
 
-			# print('for splitsville, fracs are', fracs, 'and sums are ', sum_fs)
-
 		# merge
 		elif not splitsville and idx_reg.size > 1: # need two things to merge!
 
@@ -1667,8 +1616,9 @@ class Model:
 				factor *= -1
 
 			proposal.set_factor(factor)
-							
-			assert np.isnan(factor).any()==False
+						
+			if np.isnan(factor).any():
+				print('there was a nan factor in merge/split!')	
 
 			if self.verbtype > 1:
 				print('kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange))
@@ -1688,13 +1638,11 @@ class Samples():
 		self.nsample = np.zeros(gdat.nsamp, dtype=np.int32)
 		self.xsample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
 		self.ysample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
-		# self.timestats = np.zeros((gdat.nsamp, 6, 5), dtype=np.float32)
 		self.timestats = np.zeros((gdat.nsamp, 6, 6), dtype=np.float32) # template
 
 		self.diff2_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
 		self.accept_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
 		self.rtypes = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
-		# self.accept_stats = np.zeros((gdat.nsamp, 5), dtype=np.float32)
 		self.accept_stats = np.zeros((gdat.nsamp, 6), dtype=np.float32) # template
 
 		self.tq_times = np.zeros(gdat.nsamp, dtype=np.float32)
@@ -1808,6 +1756,10 @@ class lion():
 			template_names = None, \
 			# initial amplitudes for specified templates
 			template_amplitudes = None, \
+			
+			# if template file name is not None then it will grab the template from this path and replace PSW with appropriate band
+			template_filename = None, \
+
 
 			# same idea here as bkg_moveweight
 			template_moveweight = 20., \
@@ -1826,6 +1778,7 @@ class lion():
 			# the tail name can be configured when reading files from a specific dataset if the name space changes.
 			# the default tail name should be for PSW, as this is picked up in a later routine and modified to the appropriate band.
 			tail_name = 'PSW_sim2300', \
+
 			
 			# file_path can be provided if only one image is desired with a specific path not consistent with the larger directory structure
 			file_path = None, \
@@ -2047,12 +2000,20 @@ class lion():
 version of the lion module every time I make a change, but when Lion is wrapped within another pipeline
 these should be moved out of the script and into the pipeline'''
 
+
+ob = lion(band0=0, band1=1, band2=2, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.8, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+			 cblas=False, openblas=True, visual=True, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0301',\
+			  dataname='new_sporc_sims', bias=[-0.003, -0.003, -0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['../Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'])
+
+
+
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=True, dataname='a0370', tail_name='PSW_nr_1', mean_offsets=[0.0, 0.0, 0.0], auto_resize=False, x0=70, y0=70, width=100, height=100, trueminf=0.001, nregion=5, weighted_residual=False, make_post_plots=True, nsamp=50, residual_samples=10)
 
 # real data, rxj1347, floating SZ templates
 # ob = lion(band0=0, band1=1, band2=2, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.1], [0.1]], tail_name='PSW_nr', dataname='rxj1347', mean_offsets=[0., 0., 0.], bias=[0.0, 0.0, 0.0], max_nsrc=3000,x0=70, y0=70, width=100, height=100, auto_resize=False, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob = lion(band0=0, band1=1, band2=2, bolocam_mask=True, noise_thresholds=[0.002, 0.002, 0.003], float_background=True, burn_in_frac=0.8, bkg_sig_fac=50.0, bkg_sample_delay=50, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.01]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=2000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob = lion(band0=0, band1=1, band2=2, load_state_timestr='20200427-123636', float_background=True, burn_in_frac=0.8, bkg_sig_fac=20.0, bkg_sample_delay=0, cblas=True, visual=True, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=10)
+# ob = lion(band0=0, band1=1, band2=2, bolocam_mask=True, noise_thresholds=[0.002, 0.002, 0.003], float_background=True, burn_in_frac=0.8, bkg_sig_fac=5.0, bkg_sample_delay=0, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.01]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=2000, residual_samples=400)
+# ob = lion(band0=0, band1=1, band2=2, bolocam_mask=True, float_background=True, burn_in_frac=0.8, bkg_sig_fac=5.0, bkg_sample_delay=50, cblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.003], [0.003]], tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=3000, residual_samples=400)
 
 # ob = lion(band0=0, band1=1, band2=2, float_background=True, bkg_sig_fac=20., bkg_sample_delay=10, cblas=True, visual=False, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003, -0.005, -0.008], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
 # ob = lion(band0=0, float_background=True, bkg_sample_delay=20, cblas=True, visual=True, float_templates=False, tail_name='PSW_nr', dataname='rxj1347', bias=[-0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=100, residual_samples=20)
@@ -2073,7 +2034,7 @@ these should be moved out of the script and into the pipeline'''
 # ob = lion(band0=0, bkg_sample_delay=5, bkg_sig_fac=20.0, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0], bias=[0.003, 0.002], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, band2=2, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0, 0.0], bias=[0.003, 0.002, 0.007], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-# ob.main()
+ob.main()
 
 
 # ob = lion(band0=0, band1=1, band2=2,tail_name='PSW_nr', bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)
@@ -2100,7 +2061,7 @@ these should be moved out of the script and into the pipeline'''
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200426-185703',cattype=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200428-192453',cattype=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)

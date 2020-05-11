@@ -35,7 +35,9 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 def load_in_map(gdat, band=0, astrom=None):
 
 	if gdat.file_path is None:
-		file_path = gdat.data_path+gdat.dataname+'/'+gdat.dataname+'_'+gdat.tail_name+'.fits'
+		# file_path = gdat.data_path+gdat.dataname+'/'+gdat.dataname+'_'+gdat.tail_name+'.fits'
+		file_path = gdat.data_path+gdat.dataname+'/'+gdat.tail_name+'.fits'
+
 	else:
 		file_path = gdat.file_path
 
@@ -50,17 +52,31 @@ def load_in_map(gdat, band=0, astrom=None):
 		astrom.load_wcs_header_and_dim(file_path)
 
 	spire_dat = fits.open(file_path)
-	image = np.nan_to_num(spire_dat[1].data)
-	error = np.nan_to_num(spire_dat[2].data)
-	exposure = spire_dat[3].data
+
+	image = np.nan_to_num(spire_dat[0].data)
+	error = np.nan_to_num(spire_dat[1].data)
+	exposure = spire_dat[2].data
+	mask = spire_dat[3].data
+
+	# plt.figure()
+	# plt.title('early mask')
+	# plt.imshow(mask)
+	# plt.show()
+
+	print(get_rect_mask_bounds(mask))
+
+
+	# image = np.nan_to_num(spire_dat[1].data)
+	# error = np.nan_to_num(spire_dat[2].data)
+	# exposure = spire_dat[3].data
 
 	# temporary file grab while bolocam mask is not part of .fits file
-	if gdat.bolocam_mask:
-		print('loading bolocam mask temporarily as separate file..')
-		mask_fits = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')
-		mask = mask_fits[0].data
-	else:
-		mask = spire_dat[4].data
+	# if gdat.bolocam_mask:
+	# 	print('loading bolocam mask temporarily as separate file..')
+	# 	mask_fits = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')
+	# 	mask = mask_fits[0].data
+	# else:
+	# 	mask = spire_dat[4].data
 
 	return image, error, exposure, mask, file_path
 
@@ -81,22 +97,10 @@ def load_param_dict(timestr, result_path='/Users/richardfeder/Documents/multiban
 def get_rect_mask_bounds(mask):
 	''' this function assumes the mask is rectangular in shape, with ones in the desired region and zero otherwise. '''
 
-
 	idxs = np.argwhere(mask == 1.0)
-	minx = np.min(idxs[:,0])
-	maxx = np.max(idxs[:,0])
-	min_cut_idxs = np.array([idx for idx in idxs if idx[0]==minx])
-	max_cut_idxs = np.array([idx for idx in idxs if idx[0]==maxx])
-
-	miny = np.min(min_cut_idxs[:,1])
-	maxy = np.max(max_cut_idxs[:,1])
-
-	bounds = np.array([[minx, maxx], [miny, maxy]])
+	bounds = np.array([[np.min(idxs[:,0]), np.max(idxs[:,0])], [np.min(idxs[:,1]), np.max(idxs[:,1])]])
 
 	return bounds
-
-
-
 
 
 ''' This class sets up the data structures for data/data-related information. 
@@ -123,23 +127,6 @@ class pcat_data():
 		self.fracs = []
 		self.template_array = []
 
-
-	def find_lowest_mod(self, number, mod_number):
-		while number > 0:
-			if np.mod(number, mod_number) == 0:
-				return number
-			else:
-				number -= 1
-		return False
-
-	def find_nearest_upper_mod(self, number, mod_number):
-		while number < 10000:
-			if np.mod(number, mod_number) == 0:
-				return number
-			else:
-				number += 1
-		return False
-
 	def load_in_data(self, gdat, map_object=None, tail_name=None):
 
 		gdat.imszs = []
@@ -159,7 +146,7 @@ class pcat_data():
 				exposure = obj['exp'].data
 				mask = obj['mask']
 				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize']# gives it in arcseconds and neet to convert to pixels
-				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'])
+				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'], round_up_or_down=gdat.round_up_or_down)
 				gdat.dataname = obj['name']
 				print('gdat.dataname:', gdat.dataname)
 				if i > 0:
@@ -170,12 +157,34 @@ class pcat_data():
 
 				image, error, exposure, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom)
 
+				# plt.figure()
+				# plt.title('mask')
+				# plt.imshow(mask)
+				# plt.show()
+
+
+				# plt.figure()
+				# plt.title('imaage')
+				# plt.imshow(image)
+				# plt.show()
 				bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
+
+				# plt.figure()
+				# plt.title('mask')
+				# plt.imshow(mask)
+				# plt.show()
+
+
 				print('bounds for band ', i, 'are ', bounds)
 
 				if bounds is not None:
-					big_dim = np.maximum(find_nearest_upper_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_nearest_upper_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
+					if gdat.round_up_or_down == 'up':
+						big_dim = np.maximum(find_nearest_upper_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_nearest_upper_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
+					else:
+						big_dim = np.maximum(find_lowest_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_lowest_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
 
+
+					print('big dim at thiiiiis point is ', big_dim)
 					self.fast_astrom.dims[i] = (big_dim, big_dim)
 
 
@@ -185,15 +194,27 @@ class pcat_data():
 
 				if gdat.n_templates > 0:
 
-					for template_name in gdat.template_names:
+					for t, template_name in enumerate(gdat.template_names):
 						print('template name is ', template_name)
 						if gdat.band_dict[band] in self.template_bands[template_name]:
 							print('were in business, ', gdat.band_dict[band], self.template_bands[template_name])
 
-							template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
+							if gdat.template_filename is not None:
+								temp_name = gdat.template_filename[t]
+								template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
+
+							else:
+								template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
+							
 							print('template file name is ', template_file_name)
 
 							template = fits.open(template_file_name)[0].data
+
+							# plt.figure()
+							# plt.title('template here ')
+							# plt.imshow(template)
+							# plt.colorbar()
+							# plt.show()
 
 						else:
 
@@ -233,55 +254,62 @@ class pcat_data():
 				print('larger dim is ', larger_dim)
 				
 				if gdat.round_up_or_down=='up':
-					gdat.width = self.find_nearest_upper_mod(larger_dim, gdat.nregion)
+					gdat.width = find_nearest_upper_mod(larger_dim, gdat.nregion)
 				else:
-					gdat.width = self.find_lowest_mod(smaller_dim, gdat.nregion)
+					gdat.width = find_lowest_mod(smaller_dim, gdat.nregion)
 				
 				gdat.height = gdat.width
 				image_size = (gdat.width, gdat.height)
 
+				resized_image = np.zeros(shape=(gdat.width, gdat.height))
+				resized_error = np.zeros(shape=(gdat.width, gdat.height))
+				resized_exposure = np.zeros(shape=(gdat.width, gdat.height))
+				resized_mask = np.zeros(shape=(gdat.width, gdat.height))
 
-				padded_image = np.zeros(shape=(gdat.width, gdat.height))
-				padded_error = np.zeros(shape=(gdat.width, gdat.height))
-				padded_exposure = np.zeros(shape=(gdat.width, gdat.height))
-				padded_mask = np.zeros(shape=(gdat.width, gdat.height))
 
-				padded_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:, gdat.y0:]
-				padded_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:, gdat.y0:]
-				padded_exposure[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = exposure[gdat.x0:, gdat.y0:]
-				# padded_mask[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = mask[gdat.x0:, gdat.y0:]
+				crop_size_x = np.minimum(gdat.width, image.shape[0])
+				crop_size_y = np.minimum(gdat.height, image.shape[1])
 
-				padded_template_list = []
+
+				resized_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
+				resized_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
+				resized_exposure[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = exposure[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
+
+				resized_template_list = []
 				for template in template_list:
 					if template is not None:
 
-						padded_template = np.zeros(shape=(gdat.width, gdat.height))
+						resized_template = np.zeros(shape=(gdat.width, gdat.height))
 
 						if gdat.bolocam_mask:
 							template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
 
-							# plt.figure()
-							# plt.imshow(template, origin=[0,0])
-							# plt.show()
 
-						padded_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:, gdat.y0:]
+						resized_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 
-						padded_template_list.append(padded_template.astype(np.float32))
+						resized_template_list.append(resized_template.astype(np.float32))
 					else:
-						padded_template_list.append(None)
+						resized_template_list.append(None)
 
 
-				variance = padded_error**2
+				variance = resized_error**2
 
 				variance[variance==0.]=np.inf
 				weight = 1. / variance
 
 				self.weights.append(weight.astype(np.float32))
-				self.errors.append(padded_error.astype(np.float32))
-				self.data_array.append(padded_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
-				self.exposures.append(padded_exposure.astype(np.float32))
+				self.errors.append(resized_error.astype(np.float32))
+				self.data_array.append(resized_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
+				self.exposures.append(resized_exposure.astype(np.float32))
+				self.template_array.append(resized_template_list)
 
-				self.template_array.append(padded_template_list)
+
+				# print(self.template_array)
+				# if i==1:
+				# 	plt.figure()
+				# 	plt.title('template')
+				# 	plt.imshow(self.template_array[i-1][0], origin=[0,0], cmap='Greys')
+				# 	plt.show()
 
 
 			elif gdat.width > 0:
@@ -331,9 +359,15 @@ class pcat_data():
 				gdat.imsz0 = image_size
 
 			
+			# plt.figure()
+			# plt.title('data')
+			# plt.imshow(self.data_array[i], cmap='Greys', origin=[0,0])
+			# plt.colorbar()
+			# plt.show()
 
 			# plt.figure()
-			# plt.imshow(self.errors[i])
+			# plt.title('errors')
+			# plt.imshow(self.errors[i], cmap='Greys', origin=[0,0])
 			# plt.colorbar()
 			# plt.show()
 

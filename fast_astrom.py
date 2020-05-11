@@ -1,7 +1,17 @@
 from astropy import wcs
 from astropy.io import fits
 import numpy as np
+# from spire_data_utils import *
 
+
+
+def find_lowest_mod(number, mod_number):
+    while number > 0:
+        if np.mod(number, mod_number) == 0:
+            return number
+        else:
+            number -= 1
+    return False
 
 def find_nearest_upper_mod(number, mod_number):
     while number < 10000:
@@ -57,16 +67,17 @@ class wcs_astrometry():
     dims = []
     verbosity = 0
     
-    base_path = '/Users/richardfeder/Documents/multiband_pcat/Data/spire/'
+    # base_path = '/Users/richardfeder/Documents/multiband_pcat/Data/spire/'
 
     
-    def __init__(self, auto_resize=False, nregion=1):
+    def __init__(self, auto_resize=False, nregion=1, base_path='/Users/richardfeder/Documents/multiband_pcat/Data/spire/'):
         self.wcs_objs = []
         self.filenames = []
         self.all_fast_arrays = []
         self.dims = []
         self.auto_resize = auto_resize
         self.nregion = nregion
+        self.base_path = base_path
     
     def change_verbosity(self, verbtype):
         self.verbosity = verbtype
@@ -74,7 +85,7 @@ class wcs_astrometry():
     def change_base_path(self, basepath):
         self.base_path = basepath
         
-    def load_wcs_header_and_dim(self, filename=None, head=None, hdu_idx=None):
+    def load_wcs_header_and_dim(self, filename=None, head=None, hdu_idx=None, round_up_or_down='up'):
         if head is None:
             self.filenames.append(filename)
             
@@ -94,7 +105,11 @@ class wcs_astrometry():
                 head = f[hdu_idx].header
                 big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
 
-            big_pad_dim = find_nearest_upper_mod(big_dim, self.nregion)
+            if round_up_or_down =='up':
+                big_pad_dim = find_nearest_upper_mod(big_dim, self.nregion)
+            else:
+                big_pad_dim = find_lowest_mod(big_dim, self.nregion)
+
             dim = (big_pad_dim, big_pad_dim)
         else:
             try:
