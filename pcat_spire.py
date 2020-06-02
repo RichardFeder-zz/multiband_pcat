@@ -138,7 +138,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 		gdat.timestr = timestr
 
 	else:
-		gdat.result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
+		# gdat.result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
 		gdat.filepath = gdat.result_path + gdat.timestr
 	# gdat.auto_resize=False
 	# result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
@@ -191,7 +191,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	# ------------------- mean residual ---------------------------
 
 	for b in range(gdat.nbands):
-	# for b in range(1):
 
 		residz = chain['residuals'+str(b)]
 
@@ -217,20 +216,17 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				os.makedirs(onept_dir)
 
 		f_last = plot_residual_map(residz[-1], mode='last', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
-		# f_last.savefig(gdat.filepath +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 		f_last.savefig(resid_map_dir +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 
 		f_median = plot_residual_map(median_resid, mode='median', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
 		f_median.savefig(resid_map_dir +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-		# f_median.savefig(gdat.filepath +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
 
 
 		f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', band=band_dict[bands[b]], show=False)
 		f_1pt_resid.savefig(onept_dir +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-		# f_1pt_resid.savefig(gdat.filepath +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 		plt.close()	
 
@@ -263,6 +259,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
+			# f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+band_dict[bands[b]])
+			# f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
@@ -286,6 +285,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,b,t].shape)
 					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
 					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
+					# f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, b, t], title='Template amplitude, '+gdat.template_names[t]+', '+band_dict[bands[b]])
+					# f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 					f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
 					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
@@ -892,11 +894,6 @@ class Model:
 
 				plogL = -0.5*diff2s  
 
-				# if rtype==3:
-					# print('for rtype=3, plogL:', plogL)
-					# print('logL is ', logL)
-					# print('proposal dback is ', proposal.dback)
-
 				if rtype != 3 and rtype != 4: # template
 				# if rtype != 3: 
 					plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
@@ -977,12 +974,6 @@ class Model:
 						self.libmmult.clib_updt_modl(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 						# using this dmodel containing only accepted moves, update logL
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
-
-					# if rtype == 4:
-					# 	plt.figure()
-					# 	plt.imshow(dmodel_acpt)
-					# 	plt.colorbar()
-					# 	plt.show()
 
 					resids[b] -= dmodel_acpt
 
@@ -1865,7 +1856,10 @@ class lion():
 			openblas=False, \
 
 			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
-			noise_thresholds=None):
+			noise_thresholds=None, \
+
+			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values of 0.3 MJy/sr and 0.5 MJy/sr at 350/500 micron.
+			inject_sz_frac = 0.0):
 
 
 		for attr, valu in locals().items():
@@ -1873,6 +1867,8 @@ class lion():
 				setattr(self.gdat, attr, valu)
 
 			print(attr, valu)
+
+
 
 		if self.gdat.mean_offsets is None:
 			self.gdat.mean_offsets = np.zeros_like(self.gdat.bias)
@@ -2000,11 +1996,36 @@ class lion():
 version of the lion module every time I make a change, but when Lion is wrapped within another pipeline
 these should be moved out of the script and into the pipeline'''
 
+# base_path = '/Users/luminatech/Documents/multiband_pcat/'
+# result_path = '/Users/luminatech/Documents/multiband_pcat/spire_results/'
 
-ob = lion(band0=0, band1=1, band2=2, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.8, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-			 cblas=False, openblas=True, visual=True, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0301',\
-			  dataname='new_sporc_sims', bias=[-0.003, -0.003, -0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
-			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['../Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'])
+def run_pcat(sim_idx=302, trueminf=0.005):
+	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+			 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
+			  dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
+			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
+			   inject_sz_frac= 0.0)
+	ob.main()
+
+
+# for i in range(316, 319):
+# 	run_pcat(sim_idx=i)
+# run_pcat(sim_idx=300)
+
+# result_plots(timestr='20200513-205018',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+
+# # from multiprocessing import Pool
+
+# def multithreaded_pcat(n_process=2):
+# 	p = Pool(processes=n_process)
+# 	p.map(run_pcat, [0. for x in range(n_process)])
+
+# multithreaded_pcat()
+
+# ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.8, bkg_sig_fac=5.0, bkg_sample_delay=0,\
+# 			 cblas=False, openblas=True, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0302',\
+# 			  dataname='new_sporc_sims', bias=[-0.003, -0.003, -0.003], max_nsrc=2000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# 			   make_post_plots=True, nsamp=50, residual_samples=10, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'])
 
 
 
@@ -2034,7 +2055,7 @@ ob = lion(band0=0, band1=1, band2=2, round_up_or_down='down', bolocam_mask=True,
 # ob = lion(band0=0, bkg_sample_delay=5, bkg_sig_fac=20.0, cblas=True, visual=True, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0], bias=[0.003], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0], bias=[0.003, 0.002], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
 # ob = lion(band0=0, band1=1, band2=2, linear_flux = True, bkg_sample_delay=20, bkg_sig_fac=20.0, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.0, 0.0], bias=[0.003, 0.002, 0.007], max_nsrc=3000, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=1000, residual_samples=100)
-ob.main()
+# ob.main()
 
 
 # ob = lion(band0=0, band1=1, band2=2,tail_name='PSW_nr', bkg_sample_delay=50, cblas=True, visual=False, verbtype=0, float_background=True, dataname='rxj1347', mean_offsets=[0.0, 0.00, 0.00], bias=[0.000, 0.002, 0.007], max_nsrc=2000, auto_resize=True, trueminf=0.002, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=500, residual_samples=100)

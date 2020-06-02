@@ -54,9 +54,12 @@ def load_in_map(gdat, band=0, astrom=None):
 	spire_dat = fits.open(file_path)
 
 	image = np.nan_to_num(spire_dat[0].data)
-	error = np.nan_to_num(spire_dat[1].data)
-	exposure = spire_dat[2].data
-	mask = spire_dat[3].data
+	# error = np.nan_to_num(spire_dat[1].data)
+	# exposure = spire_dat[2].data
+	# mask = spire_dat[3].data
+	error = np.nan_to_num(spire_dat[2].data) # temporary for sims_for_richard dataset
+	exposure = spire_dat[3].data
+	mask = spire_dat[4].data
 
 	# plt.figure()
 	# plt.title('early mask')
@@ -81,7 +84,7 @@ def load_in_map(gdat, band=0, astrom=None):
 	return image, error, exposure, mask, file_path
 
 
-def load_param_dict(timestr, result_path='/Users/richardfeder/Documents/multiband_pcat/spire_results/'):
+def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'):
 	
 	filepath = result_path + timestr
 	filen = open(filepath+'/params.txt','rb')
@@ -192,6 +195,9 @@ class pcat_data():
 
 				template_list = [] 
 
+				temp_mock_amps = [None, 0.3, 0.5] # MJy/sr
+				flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
+
 				if gdat.n_templates > 0:
 
 					for t, template_name in enumerate(gdat.template_names):
@@ -210,11 +216,26 @@ class pcat_data():
 
 							template = fits.open(template_file_name)[0].data
 
-							# plt.figure()
-							# plt.title('template here ')
-							# plt.imshow(template)
-							# plt.colorbar()
-							# plt.show()
+
+
+							if gdat.inject_sz_frac > 0.:
+								print('injecting SZ frac of ', gdat.inject_sz_frac)
+
+								plt.figure()
+								plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps[i]*flux_density_conversion_facs[i]))
+								plt.imshow(template, origin=[0,0])
+								plt.colorbar()
+								plt.show()
+
+
+								image += gdat.inject_sz_frac*template*temp_mock_amps[i]*flux_density_conversion_facs[i]
+
+								plt.figure()
+								plt.title('image here ')
+								plt.imshow(image, origin=[0,0])
+								plt.colorbar()
+								plt.show()
+
 
 						else:
 
