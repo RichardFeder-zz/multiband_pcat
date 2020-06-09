@@ -2,6 +2,10 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage import gaussian_filter
+# import scipy as sp
+from scipy.fftpack import fft, ifft
+
+
 
 
 def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
@@ -14,6 +18,31 @@ def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
 	dNdS = hist[0]
 
 	return logSv, dSz, dNdS
+
+
+def plot_atcr(listsamp, title):
+
+	numbsamp = listsamp.shape[0]
+	four = fft(listsamp - np.mean(listsamp, axis=0), axis=0)
+	atcr = ifft(four * np.conjugate(four), axis=0).real
+	atcr /= np.amax(atcr, 0)
+
+	autocorr = atcr[:int(numbsamp/2), ...]
+	indxatcr = np.where(autocorr > 0.2)
+	timeatcr = np.argmax(indxatcr[0], axis=0)
+
+	numbsampatcr = autocorr.size
+
+	figr, axis = plt.subplots(figsize=(6,4))
+	plt.title(title, fontsize=16)
+	axis.plot(np.arange(numbsampatcr), autocorr)
+	axis.set_xlabel(r'$\tau$', fontsize=16)
+	axis.set_ylabel(r'$\xi(\tau)$', fontsize=16)
+	axis.text(0.8, 0.8, r'$\tau_{exp} = %.3g$' % timeatcr, ha='center', va='center', transform=axis.transAxes, fontsize=16)
+	axis.axhline(0., ls='--', alpha=0.5)
+	plt.tight_layout()
+
+	return figr
 
 
 def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', 'residual0','residual1','residual2','residual2zoom'], \
@@ -438,7 +467,7 @@ def plot_chi_squared(chi2, sample_number, band='S', show=False):
 	plt.plot(sample_number, chi2[burn_in:], label=band)
 	plt.axhline(np.min(chi2[burn_in:]), linestyle='dashed',alpha=0.5, label=str(np.min(chi2[burn_in:]))+' (' + str(band) + ')')
 	plt.xlabel('Sample')
-	plt.ylabel('Reduced Chi-Squared')
+	plt.ylabel('Chi-Squared')
 	plt.legend()
 	
 	if show:
@@ -496,6 +525,25 @@ def plot_src_number_posterior(nsrc_fov, show=False, title=False):
 	if show:
 		plt.show()
 	
+	return f
+
+
+def plot_src_number_trace(nsrc_fov, show=False, title=False):
+
+	f = plt.figure()
+	
+	if title:
+		plt.title('Source number trace plot (post burn-in)')
+	
+	plt.plot(np.arange(len(nsrc_fov)), nsrc_fov)
+
+	plt.xlabel('Sample index', fontsize=16)
+	plt.ylabel('$N_{src}$', fontsize=16)
+	plt.legend()
+	
+	if show:
+		plt.show()
+
 	return f
 
 

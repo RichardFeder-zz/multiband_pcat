@@ -25,7 +25,7 @@ class objectview(object):
 		self.__dict__ = d
 
 #generate random seed for initialization
-np.random.seed(20170603)
+# np.random.seed(20170609)
 
 class gdatstrt(object):
 
@@ -171,6 +171,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	chain = np.load(gdat.filepath+'/chain.npz')
 
 	nsrcs = chain['n']
+
 	xsrcs = chain['x']
 	ysrcs = chain['y']
 	fsrcs = chain['f']
@@ -259,8 +260,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
-			# f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+band_dict[bands[b]])
-			# f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+band_dict[bands[b]])
+			f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False)
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
@@ -286,8 +287,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
 					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
-					# f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, b, t], title='Template amplitude, '+gdat.template_names[t]+', '+band_dict[bands[b]])
-					# f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, b, t], title='Template amplitude, '+gdat.template_names[t]+', '+band_dict[bands[b]])
+					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 					f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
 					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
@@ -346,7 +347,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			# fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(xsrcs[j][k]),int(ysrcs[j][k])] != 0.])
 			fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0.])
 
-			nsrc_fov.append(len(fsrcs_in_fov))
+			if b==0:
+				nsrc_fov.append(len(fsrcs_in_fov))
 
 			hist = np.histogram(np.log10(fsrcs_in_fov)+3, bins=binz)
 			logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
@@ -378,7 +380,19 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	f_nsrc = plot_src_number_posterior(nsrc_fov)
 	f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=300)
 
+	f_nsrc_trace = plot_src_number_trace(nsrc_fov)
+	f_nsrc_trace.savefig(gdat.filepath +'/nstar_traceplot.'+plttype, bbox_inches='tight', dpi=300)
 
+
+	nsrc_full = []
+	for i, j in enumerate(np.arange(0, gdat.nsamp)):
+	
+		fsrcs_full = np.array([fsrcs[0][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0.])
+
+		nsrc_full.append(len(fsrcs_full))
+
+	f_nsrc_trace_full = plot_src_number_trace(nsrc_full)
+	f_nsrc_trace_full.savefig(gdat.filepath +'/nstar_traceplot_full.'+plttype, bbox_inches='tight', dpi=300)
 
 class Proposal:
 	_X = 0
@@ -1880,7 +1894,10 @@ class lion():
 		self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
 
 
+		# template_band_idxs = dict({'sze':[0, 1, 2], 'lensing':[0, 1, 2]})
+
 		template_band_idxs = dict({'sze':[1, 2], 'lensing':[0, 1, 2]})
+
 
 		if self.gdat.float_templates:
 			self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
@@ -1999,20 +2016,34 @@ these should be moved out of the script and into the pipeline'''
 # base_path = '/Users/luminatech/Documents/multiband_pcat/'
 # result_path = '/Users/luminatech/Documents/multiband_pcat/spire_results/'
 
-def run_pcat(sim_idx=302, trueminf=0.005):
-	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-			 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
-			  dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
-			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
-			   inject_sz_frac= 0.0)
-	ob.main()
+# # # def run_pcat(sim_idx=302, trueminf=0.005):
+# # # 	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+# # # 			 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
+# # # 			  dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
+# # # 			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
+# # # 			   inject_sz_frac= 0.5)
+# # # 	ob.main()
+
+# # ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+# # 		 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_nr',\
+# # 		  dataname='rxj1347', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# # 		   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
+# # 		   )
+# # ob.main()
 
 
-# for i in range(316, 319):
-# 	run_pcat(sim_idx=i)
-# run_pcat(sim_idx=300)
+# # for i in range(306, 309):
+# # 	run_pcat(sim_idx=i)
+# # run_pcat(sim_idx=300)
 
-# result_plots(timestr='20200513-205018',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# timestr_list_threeband_sz = ['20200607-010226', '20200607-010206', '20200607-010142', '20200605-172052']
+
+# timestr_list_twoband_sz = ['20200607-130436', '20200607-130411', '20200607-130345', '20200605-172157']
+
+# for timestring in timestr_list_threeband_sz:
+
+
+# 	result_plots(timestr=timestring,cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # # from multiprocessing import Pool
 

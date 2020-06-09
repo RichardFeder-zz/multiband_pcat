@@ -53,20 +53,31 @@ def load_in_map(gdat, band=0, astrom=None):
 
 	spire_dat = fits.open(file_path)
 
-	image = np.nan_to_num(spire_dat[0].data)
-	# error = np.nan_to_num(spire_dat[1].data)
-	# exposure = spire_dat[2].data
-	# mask = spire_dat[3].data
-	error = np.nan_to_num(spire_dat[2].data) # temporary for sims_for_richard dataset
+	image = np.nan_to_num(spire_dat[1].data)
+	print('image.shape:', image.shape)
+	error = np.nan_to_num(spire_dat[2].data)
 	exposure = spire_dat[3].data
-	mask = spire_dat[4].data
+	# mask = spire_dat[3].data
+	
+	# error = np.nan_to_num(spire_dat[2].data) # temporary for sims_for_richard dataset
+	# exposure = spire_dat[3].data
+	# mask = spire_dat[4].data
 
-	# plt.figure()
-	# plt.title('early mask')
-	# plt.imshow(mask)
+	# plt.figure(figsize=(12, 4))
+	# plt.subplot(1,3,1)
+	# plt.title('image map')
+	# plt.imshow(image)
+
+	# plt.subplot(1,3,2)
+	# plt.title('err map')
+	# plt.imshow(error)
+
+	# plt.subplot(1,3,3)
+	# plt.title('exp map')
+	# plt.imshow(exposure)
 	# plt.show()
 
-	print(get_rect_mask_bounds(mask))
+	# print(get_rect_mask_bounds(mask))
 
 
 	# image = np.nan_to_num(spire_dat[1].data)
@@ -74,12 +85,12 @@ def load_in_map(gdat, band=0, astrom=None):
 	# exposure = spire_dat[3].data
 
 	# temporary file grab while bolocam mask is not part of .fits file
-	# if gdat.bolocam_mask:
-	# 	print('loading bolocam mask temporarily as separate file..')
-	# 	mask_fits = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')
-	# 	mask = mask_fits[0].data
-	# else:
-	# 	mask = spire_dat[4].data
+	if gdat.bolocam_mask:
+		print('loading bolocam mask temporarily as separate file..')
+		mask_fits = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')
+		mask = mask_fits[0].data
+	else:
+		mask = spire_dat[4].data
 
 	return image, error, exposure, mask, file_path
 
@@ -111,7 +122,8 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 '''
 class pcat_data():
 
-	template_bands = dict({'sze':['M', 'L'], 'lensing':['S', 'M', 'L']})
+	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L']})
+	# template_bands = dict({'sze':['M', 'L'], 'lensing':['S', 'M', 'L']})
 
 	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs = []
@@ -195,7 +207,8 @@ class pcat_data():
 
 				template_list = [] 
 
-				temp_mock_amps = [None, 0.3, 0.5] # MJy/sr
+				temp_mock_amps = [0.0111, 0.1249, 0.6912] # MJy/sr
+				# temp_mock_amps = [None, 0.3, 0.5] # MJy/sr
 				flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
 
 				if gdat.n_templates > 0:
@@ -216,7 +229,11 @@ class pcat_data():
 
 							template = fits.open(template_file_name)[0].data
 
-
+							# plt.figure()
+							# plt.title('template')
+							# plt.imshow(template, origin=[0,0])
+							# plt.colorbar()
+							# plt.show()
 
 							if gdat.inject_sz_frac > 0.:
 								print('injecting SZ frac of ', gdat.inject_sz_frac)
@@ -230,11 +247,11 @@ class pcat_data():
 
 								image += gdat.inject_sz_frac*template*temp_mock_amps[i]*flux_density_conversion_facs[i]
 
-								plt.figure()
-								plt.title('image here ')
-								plt.imshow(image, origin=[0,0])
-								plt.colorbar()
-								plt.show()
+								# plt.figure()
+								# plt.title('image here ')
+								# plt.imshow(image, origin=[0,0])
+								# plt.colorbar()
+								# plt.show()
 
 
 						else:
