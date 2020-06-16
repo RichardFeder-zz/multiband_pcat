@@ -4,10 +4,13 @@ import ctypes
 from ctypes import c_int, c_double
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import time
 import os
+import os.path
+from os import path
+import sys
 import warnings
 import scipy.stats as stats
 from scipy.ndimage import gaussian_filter
@@ -17,7 +20,7 @@ import pickle
 from spire_data_utils import *
 from spire_roc import *
 from spire_plotting_fns import *
-
+import argparse
 np.seterr(divide='ignore', invalid='ignore')
 
 class objectview(object):
@@ -42,7 +45,7 @@ def save_params(dir, gdat):
 	print('param_dict:')
 	print(param_dict)
 	
-	with open(dir+'/params.txt', 'w') as file:
+	with open(dir+'/params.txt', 'wb') as file:
 		file.write(pickle.dumps(param_dict))
 
 	file.close()
@@ -58,7 +61,7 @@ def fluxes_to_color(flux1, flux2):
 def initialize_c(gdat, libmmult, cblas=False):
 
 	if gdat.verbtype > 1:
-		print('initializing c routines and data structs')
+		print('initializing c routines and data structs', file=gdat.flog)
 
 	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
 	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
@@ -149,17 +152,17 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
 
 	for i, band in enumerate(gdat.bands):
-		print(band)
+		print(band, file=gdat.flog)
 
 		if gdat.mock_name is not None:
 
 			if cattype=='SIDES':
 				ref_path = datapath+'sides_cat_P'+gdat.band_dict[band]+'W_20.npy'
-				print('ref path:', ref_path)
+				print('ref path:', ref_path, file=gdat.flog)
 				roc.load_cat(path=ref_path)
 				if i==0:
 					cat_fluxes = np.zeros(shape=(gdat.nbands, len(roc.mock_cat['flux'])))
-					print('cat fluxes has shape', cat_fluxes.shape)
+					print('cat fluxes has shape', cat_fluxes.shape, file=gdat.flog)
 				cat_fluxes[i,:] = roc.mock_cat['flux']
 		else:
 			cat_fluxes=None
@@ -280,9 +283,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 				if not np.isnan(gdat.template_band_idxs[t,b]):
 
-					print('template amplitudes are ', template_amplitudes[:,b,t])
+					print('template amplitudes are ', template_amplitudes[:,b,t], file=gdat.flog)
 
-					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,b,t].shape)
+					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,b,t].shape, file=gdat.flog)
 					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
 					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
@@ -311,8 +314,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	else:
 		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
 
-	print('proposal types:', proposal_types)
-	print('accept_stats is ', accept_stats)
+	print('proposal types:', proposal_types, file=gdat.flog)
+	print('accept_stats is ', accept_stats, file=gdat.flog)
 	f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types)
 	f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=300)
 
@@ -552,7 +555,7 @@ class Model:
 		self.bkg_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 		self.bkg_mus = self.bkg.copy()
 
-		print('bkg_sigs is ', self.bkg_sigs, 'bkg_mus is ', self.bkg_mus)
+		print('bkg_sigs is ', self.bkg_sigs, 'bkg_mus is ', self.bkg_mus, file=gdat.flog)
 
 		self.dback = np.zeros_like(self.bkg)
 		
@@ -567,7 +570,7 @@ class Model:
 				self.color_mus.append(self.mus[col_string])
 				self.color_sigs.append(self.sigs[col_string])
 			
-			print('col string is ', col_string)
+			print('col string is ', col_string, file=gdat.flog)
 
 
 
@@ -584,7 +587,7 @@ class Model:
 					else:
 						self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
 		else:
-			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...')
+			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...', file=gdat.flog)
 			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
 			
 			catload = np.load(catpath)
@@ -592,8 +595,8 @@ class Model:
 			self.bkg = catload['bkg']
 			self.template_amplitudes=catload['templates']
 
-			print('self.bkg is ', self.bkg)
-			print('self.template amplitudes is ', self.template_amplitudes)
+			print('self.bkg is ', self.bkg, file=gdat.flog)
+			print('self.template amplitudes is ', self.template_amplitudes, file=gdat.flog)
 
 			self.stars = np.load(catpath)['cat']
 			self.n = np.count_nonzero(self.stars[self._F,:])
@@ -603,7 +606,7 @@ class Model:
    
 	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):    
 		# fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
-		print('Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2))
+		print('Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2), file=self.gdat.flog)
 		dts *= 1000
 
 		accept_fracs = []
@@ -614,18 +617,18 @@ class Model:
 			timestat_array[j][0] = np.sum(statarrays[j])/1000
 			if j==0:
 				accept_fracs.append(np.sum(statarrays[j])/1000)
-			print statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000),
+			print(statlabels[j]+'\t(all) %0.3f' % (np.sum(statarrays[j])/1000), file=self.gdat.flog)
 			for k in range(len(self.movetypes)):
 				if j==0:
 					accept_fracs.append(np.mean(statarrays[j][movetype==k]))
 				timestat_array[j][1+k] = np.mean(statarrays[j][movetype==k])
-				print '('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])),
-			print
+				print('('+self.movetypes[k]+') %0.3f' % (np.mean(statarrays[j][movetype == k])), end=' ', file=self.gdat.flog)
+			print(file=self.gdat.flog)
 			if j == 1:
-				print('-'*16)
-		print('-'*16)
-		print('Total (s): %0.3f' % (np.sum(statarrays[2:])/1000))
-		print('='*16)
+				print('-'*16, file=self.gdat.flog)
+		print('-'*16, file=self.gdat.flog)
+		print('Total (s): %0.3f' % (np.sum(statarrays[2:])/1000), file=self.gdat.flog)
+		print('='*16, file=self.gdat.flog)
 
 		return timestat_array, accept_fracs
 
@@ -657,13 +660,13 @@ class Model:
 
 
 			if b>0:
-				t4 = time.clock()
+				t4 = time.time()
 				if self.gdat.bands[b] != self.gdat.bands[0]:
 					xp, yp = self.dat.fast_astrom.transform_q(x, y, b-1)
 				else:
 					xp = x
 					yp = y
-				dt_transf += time.clock()-t4
+				dt_transf += time.time()-t4
 
 				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
@@ -711,7 +714,7 @@ class Model:
 	''' run_sampler() completes nloop samples, so the function is called nsamp times'''
 	def run_sampler(self):
 		
-		t0 = time.clock()
+		t0 = time.time()
 		nmov = np.zeros(self.nloop)
 		movetype = np.zeros(self.nloop)
 		accept = np.zeros(self.nloop)
@@ -805,7 +808,7 @@ class Model:
 		movetype = rtype_array
 
 		for i in range(self.nloop):
-			t1 = time.clock()
+			t1 = time.time()
 			rtype = rtype_array[i]
 			
 			if self.verbtype > 1:
@@ -820,10 +823,10 @@ class Model:
 			#proposal types
 			proposal = movefns[rtype]()
 
-			dts[0,i] = time.clock() - t1
+			dts[0,i] = time.time() - t1
 			
 			if proposal.goodmove:
-				t2 = time.clock()
+				t2 = time.time()
 
 				if self.gdat.cblas:
 					lib = self.libmmult.pcat_model_eval
@@ -904,8 +907,8 @@ class Model:
 				
 				assert np.isnan(dlogP).any() == False
 				
-				dts[1,i] = time.clock() - t2
-				t3 = time.clock()
+				dts[1,i] = time.time() - t2
+				t3 = time.time()
 				
 
 				if rtype != 3 and rtype !=4: # template
@@ -1020,7 +1023,7 @@ class Model:
 					if np.sum(acceptreg) > 0:
 						self.dtemplate += proposal.dtemplate
 
-				dts[2,i] = time.clock() - t3
+				dts[2,i] = time.time() - t3
 
 				if rtype != 3 and rtype != 4: # template
 					if acceptprop.size > 0:
@@ -1858,8 +1861,12 @@ class lion():
 			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
 			noise_thresholds=None, \
 
-			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values of 0.3 MJy/sr and 0.5 MJy/sr at 350/500 micron.
-			inject_sz_frac = 0.0):
+			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values of 0.011 MJy/sr, 0.12 MJy/sr, and 0.69 MJy/sr at 250/350/500 micron.
+			inject_sz_frac = 0.0, \
+	
+			timestr_list_file = None, \
+
+			print_log=True):
 
 
 		for attr, valu in locals().items():
@@ -1913,23 +1920,32 @@ class lion():
 		''' Here is where we initialize the C libraries and instantiate the arrays that will store our 
 		thinned samples and other stats. We want the MKL routine if possible, then OpenBLAS, then regular C,
 		with that order in priority.'''
+
+		if self.gdat.print_log:
+			self.gdat.flog = open(self.gdat.result_path+'/'+self.gdat.timestr+'/print_log.txt','w')
+
+		else:
+			self.gdat.flog = None
 		
+
 		if self.gdat.cblas:
-			print('Using CBLAS routines for Intel processors.. :-) ')
+			print('Using CBLAS routines for Intel processors.. :-) ', file=self.gdat.flog)
 			libmmult = npct.load_library('pcat-lion', '.')
 		elif self.gdat.openblas:
-			print('Using OpenBLAS routines... :-/ ')
+			print('Using OpenBLAS routines... :-/ ', file=self.gdat.flog)
 			# libmmult = ctypes.cdll['pcat-lion-openblas.so']
 			# libmmult = npct.load_library('pcat-lion-openblas', '.')
 			libmmult = npct.load_library('blas-open', '.')
 		else:
-			print('Using slower BLAS routines.. :-( ')
-			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
+			print('Using slower BLAS routines.. :-( ', file=self.gdat.flog)
+			libmmult = ctypes.cdll['./blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
 			# libmmult = npct.load_library('blas', '.')
 
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
 
-		start_time = time.clock()
+		start_time = time.time()
+
+		
 
 		samps = Samples(self.gdat)
 		model = Model(self.gdat, self.data, libmmult)
@@ -1939,7 +1955,7 @@ class lion():
 		# run sampler for gdat.nsamp thinned states
 
 		for j in range(self.gdat.nsamp):
-			print('Sample', j)
+			print('Sample', j, file=self.gdat.flog)
 
 			# until bkg_sample_delay steps have been taken, don't float the background
 			if j < self.gdat.bkg_sample_delay:
@@ -1950,7 +1966,7 @@ class lion():
 			
 			# once ready to sample, recompute proposal weights
 			elif j==self.gdat.bkg_sample_delay:
-				print('Starting to sample background/templates now')
+				print('Starting to sample background/templates now', file=self.gdat.flog)
 				if j>0:
 					model.moveweights *= sumweights
 
@@ -1960,14 +1976,14 @@ class lion():
 				if self.gdat.float_templates:
 					model.moveweights[4] = self.gdat.template_moveweight
 
-				print('moveweights:', model.moveweights)
+				print('moveweights:', model.moveweights, file=self.gdat.flog)
 
 			_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts, resids, model_images = model.run_sampler()
 			samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids, model_images)
 
 
 		if self.gdat.save:
-			print('saving...')
+			print('saving...', file=self.gdat.flog)
 
 			# save catalog ensemble and other diagnostics
 			samps.save_samples(self.gdat.result_path, self.gdat.timestr)
@@ -1978,9 +1994,23 @@ class lion():
 		if self.gdat.make_post_plots:
 			result_plots(gdat = self.gdat)
 
-		dt_total = time.clock() - start_time
-		print('Full Run Time (s):', np.round(dt_total,3))
-		print('Time String:', str(self.gdat.timestr))
+		#dt_total = time.clock() - start_time
+
+		dt_total = time.time() - start_time
+
+		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)
+		print('Time String:', str(self.gdat.timestr), file=self.gdat.flog)
+		if self.gdat.timestr_list_file is not None:
+			if path.exists(self.gdat.timestr_list_file):
+				timestr_list = list(np.load(self.gdat.timestr_list_file)['timestr_list'])
+				timestr_list.append(self.gdat.timestr)
+				#np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
+			else:
+				timestr_list = [self.gdat.timestr]
+			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
+		
+
+		self.gdat.flog.close()
 
 		if self.gdat.return_median_model:
 			models = []
@@ -1996,21 +2026,31 @@ class lion():
 version of the lion module every time I make a change, but when Lion is wrapped within another pipeline
 these should be moved out of the script and into the pipeline'''
 
-# base_path = '/Users/luminatech/Documents/multiband_pcat/'
-# result_path = '/Users/luminatech/Documents/multiband_pcat/spire_results/'
+base_path = '/home/mbzsps/multiband_pcat/'
+result_path = '/home/mbzsps/multiband_pcat/spire_results/'
 
 def run_pcat(sim_idx=302, trueminf=0.005):
-	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True,verbtype=0, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
 			 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
-			  dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
-			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
-			   inject_sz_frac= 0.0)
+			  dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=800, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
+			   make_post_plots=True, nsamp=200, residual_samples=50, template_filename=['Data/spire/rxj1347_sz_templates/rxj1347_PSW_nr_sze.fits'], \
+			   inject_sz_frac= 0.0, timestr_list_file='rxj1347_lensed_mocks_sz_0p4.npz')
 	ob.main()
 
+#if __name__ == '__main__':
+
+        #parser = argparse.ArgumentParser()
+        #args = parser.parse_args()
+#        sim_idx_0 = int(sys.argv[1])
+#        sim_idx = int(sys.argv[2])
+#        #sim_idx = args[0]
+        
+#        print('sim indeeeex is ', sim_idx_0+sim_idx)
+#        run_pcat(sim_idx=sim_idx_0+sim_idx)
 
 # for i in range(316, 319):
 # 	run_pcat(sim_idx=i)
-# run_pcat(sim_idx=300)
+#run_pcat(sim_idx=300)
 
 # result_plots(timestr='20200513-205018',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
