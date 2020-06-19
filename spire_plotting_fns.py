@@ -547,9 +547,92 @@ def plot_src_number_trace(nsrc_fov, show=False, title=False):
 	return f
 
 
+import networkx as nx
+from matplotlib.collections import PatchCollection
+import matplotlib.patches as patches
 
 
+def plot_grap(verbtype=0):
+        
+    figr, axis = plt.subplots(figsize=(6, 6))
 
+    grap = nx.DiGraph()   
+    grap.add_edges_from([('muS', 'svec'), ('sigS', 'svec'), ('alpha', 'f0'), ('beta', 'nsrc')])
+    grap.add_edges_from([('back', 'modl'), ('xvec', 'modl'), ('f0', 'modl'), ('svec', 'modl'), ('PSF', 'modl'), ('ASZ', 'modl')])
+    grap.add_edges_from([('modl', 'data')])
+    listcolr = ['black' for i in xrange(7)]
+    
+    labl = {}
+
+    nameelem = r'\rm{pts}'
+
+
+    labl['beta'] = r'$\beta$'
+    labl['alpha'] = r'$\alpha$'
+    labl['muS'] = r'$\vec{\mu}_S$'
+    labl['sigS'] = r'$\vec{\sigma}_S$'
+    labl['xvec'] = r'$\vec{x}$'
+    labl['f0'] = r'$F_0$'
+    labl['svec'] = r'$\vec{s}$'
+    labl['PSF'] = r'PSF'
+    labl['modl'] = r'$M_D$'
+    labl['data'] = r'$D$'
+    labl['back'] = r'$\vec{A_{sky}}$'
+    labl['nsrc'] = r'$N_{src}$'
+    labl['ASZ'] = r'$\vec{A_{SZ}}$'
+    
+    
+    posi = nx.circular_layout(grap)
+    posi['alpha'] = np.array([-0.025, 0.15])
+    posi['muS'] = np.array([0.025, 0.15])
+    posi['sigS'] = np.array([0.075, 0.15])
+    posi['beta'] = np.array([0.12, 0.15])
+
+    posi['xvec'] = np.array([-0.075, 0.05])
+    posi['f0'] = np.array([-0.025, 0.05])
+    posi['svec'] = np.array([0.025, 0.05])
+    posi['PSF'] = np.array([0.07, 0.05])
+    posi['back'] = np.array([-0.125, 0.05])
+    
+    posi['modl'] = np.array([-0.05, -0.05])
+    posi['data'] = np.array([-0.05, -0.1])
+    posi['nsrc'] = np.array([0.08, 0.01])
+    
+    posi['ASZ'] = np.array([-0.175, 0.05])
+
+
+    rect = patches.Rectangle((-0.10,0.105),0.2,-0.11,linewidth=2, facecolor='none', edgecolor='k')
+#     rect2 = patches.Rectangle((-0.155,0.115),0.3,-0.15,linewidth=2, facecolor='none', edgecolor='k')
+
+#     plt.text(x=0.06, y=0.01, fontsize=16, s='$N_{src}$')
+    axis.add_patch(rect)
+#     axis.add_patch(rect2)
+
+    size = 1000
+    nx.draw(grap, posi, labels=labl, ax=axis, edgelist=grap.edges())
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['nsrc'], node_color='white', node_size=500)
+
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['modl'], node_color='xkcd:sky blue', node_size=1000)
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['beta'], node_shape='d', node_color='y', node_size=size)
+    
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['data'],  node_color='grey', node_shape='s', node_size=size)
+#     nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['xvec', 'f0', 'svec', 'PSF', 'back'], node_color='orange', node_size=size)
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['xvec', 'f0', 'svec'], node_color='orange', node_size=size)
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['PSF'], node_shape='d', node_color='orange', node_size=size)
+    
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['back'], node_color='orange', node_size=size)
+    
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['ASZ'], node_color='violet', node_size=size)
+
+    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['alpha', 'muS', 'sigS'], node_shape='d', node_color='y', node_size=size)
+
+    
+#     pathplot = '/Users/richardfeder/Documents/multiband_pcat/figures/'
+    plt.tight_layout()
+#     figr.savefig(pathplot + 'pgm_multiband_diamond.pdf', bbox_inches='tight')
+    plt.show()
+    
+    return figr
 
 
 
