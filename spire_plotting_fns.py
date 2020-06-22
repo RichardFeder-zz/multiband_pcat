@@ -4,6 +4,11 @@ import numpy as np
 from scipy.ndimage import gaussian_filter
 # import scipy as sp
 from scipy.fftpack import fft, ifft
+import networkx as nx
+from matplotlib.collections import PatchCollection
+import matplotlib.patches as patches
+from PIL import Image
+import imageio
 
 
 
@@ -547,10 +552,6 @@ def plot_src_number_trace(nsrc_fov, show=False, title=False):
 	return f
 
 
-import networkx as nx
-from matplotlib.collections import PatchCollection
-import matplotlib.patches as patches
-
 
 def plot_grap(verbtype=0):
         
@@ -560,7 +561,7 @@ def plot_grap(verbtype=0):
     grap.add_edges_from([('muS', 'svec'), ('sigS', 'svec'), ('alpha', 'f0'), ('beta', 'nsrc')])
     grap.add_edges_from([('back', 'modl'), ('xvec', 'modl'), ('f0', 'modl'), ('svec', 'modl'), ('PSF', 'modl'), ('ASZ', 'modl')])
     grap.add_edges_from([('modl', 'data')])
-    listcolr = ['black' for i in xrange(7)]
+    listcolr = ['black' for i in range(7)]
     
     labl = {}
 
@@ -602,11 +603,8 @@ def plot_grap(verbtype=0):
 
 
     rect = patches.Rectangle((-0.10,0.105),0.2,-0.11,linewidth=2, facecolor='none', edgecolor='k')
-#     rect2 = patches.Rectangle((-0.155,0.115),0.3,-0.15,linewidth=2, facecolor='none', edgecolor='k')
 
-#     plt.text(x=0.06, y=0.01, fontsize=16, s='$N_{src}$')
     axis.add_patch(rect)
-#     axis.add_patch(rect2)
 
     size = 1000
     nx.draw(grap, posi, labels=labl, ax=axis, edgelist=grap.edges())
@@ -616,7 +614,6 @@ def plot_grap(verbtype=0):
     nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['beta'], node_shape='d', node_color='y', node_size=size)
     
     nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['data'],  node_color='grey', node_shape='s', node_size=size)
-#     nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['xvec', 'f0', 'svec', 'PSF', 'back'], node_color='orange', node_size=size)
     nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['xvec', 'f0', 'svec'], node_color='orange', node_size=size)
     nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['PSF'], node_shape='d', node_color='orange', node_size=size)
     
@@ -627,12 +624,46 @@ def plot_grap(verbtype=0):
     nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['alpha', 'muS', 'sigS'], node_shape='d', node_color='y', node_size=size)
 
     
-#     pathplot = '/Users/richardfeder/Documents/multiband_pcat/figures/'
     plt.tight_layout()
-#     figr.savefig(pathplot + 'pgm_multiband_diamond.pdf', bbox_inches='tight')
     plt.show()
     
     return figr
 
+def grab_atcr(timestr, paramstr='template_amplitudes', band=0, result_dir=None, nsamp=500, template_idx=0, return_fig=True):
+    
+    band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+    lam_dict = dict({0:250, 1:350, 2:500})
+
+    if result_dir is None:
+        result_dir = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
+        print('Result directory assumed to be '+result_dir)
+        
+    chain = np.load(result_dir+str(timestr)+'/chain.npz')
+    if paramstr=='template_amplitudes':
+        listsamp = chain[paramstr][-nsamp:, band, template_idx]
+    else:
+        listsamp = chain[paramstr][-nsamp:, band]
+        
+    f = plot_atcr(listsamp, title=paramstr+', '+band_dict[band])
+
+    if return_fig:
+    	return f
+
+
+def convert_png_to_gif(n_image, filename_list=None, head_name='median_residual_and_smoothed_band', gifdir='figures/frame_dir', name='multiz', fps=2):
+    images = []
+    
+    if filename_list is not None:
+        for i in range(len(filename_list)):
+            a = Image.open(filename_list[i])
+            images.append(a)
+            
+    else:
+        for i in range(n_image):
+            a = Image.open(gifdir+'/'+head_name+str(i)+'.png')
+            images.append(a)
+    
+    imageio.mimsave(gifdir+'/'+name+'.gif', np.array(images), fps=fps)
+    
 
 

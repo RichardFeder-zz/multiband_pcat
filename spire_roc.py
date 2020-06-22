@@ -3,7 +3,8 @@ import matplotlib
 matplotlib.use('tKAgg')
 import matplotlib.pyplot as plt
 import scipy.spatial
-from astropy import WCS
+from spire_data_utils import *
+# from astropy import WCS
 
 
 def flux_from_mags(mags):
@@ -50,7 +51,7 @@ def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
 def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd, dr=0.5, dmag=0.5):
     complete = np.zeros((test_x.shape[0], ref_x.size))
     for i in xrange(test_x.shape[0]):
-        print 'B', i
+        print('B', i)
         n = test_n[i]
         CCc_one = np.zeros((n,2))
         CCc_one[:, 0] = test_x[i,0:n]
@@ -63,7 +64,7 @@ def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd, d
 
 def plot_fdr(bins, prec_lion=None, prec_condensed=None, show=True, savepath=None, xlabel='$F_{250}$/mJy', labelsize=14):
 
-    plt.figure(figsize=(6, 5))
+    f = plt.figure(figsize=(6, 5))
 
     if prec_lion is not None:
         plt.plot(0.5*(bins[1:]+bins[:-1])*1e3, 1.-prec_lion, label='Catalog ensemble', marker='+', c='b')
@@ -75,18 +76,21 @@ def plot_fdr(bins, prec_lion=None, prec_condensed=None, show=True, savepath=None
     plt.xscale('log')
     plt.xticks([5, 10, 20, 50, 100], ['5', '10', '20', '50', '100'])
 
-    plt.legend(prop={'size':12}, loc='best', frameon=False)
+    plt.legend(prop={'size':12}, loc=2, frameon=False)
     plt.tight_layout()
+    plt.ylim(-0.05, 1.1)
+
     if show:
         plt.show()
     if savepath is not None:
         plt.savefig(savepath, bbox_inches='tight')
     plt.close()
+    return f
 
 
 def plot_completeness(bins, recl_lion=None, recl_condensed=None, show=True, savepath=None, xlabel='$F_{250}$/mJy', labelsize=14):
 
-    plt.figure(figsize=(6, 5))
+    f = plt.figure(figsize=(6, 5))
     if recl_lion is not None:
         plt.plot(0.5*(bins[1:]+bins[:-1])*1e3, recl_lion, c='b', label='Catalog ensemble', marker='+')
 
@@ -99,7 +103,7 @@ def plot_completeness(bins, recl_lion=None, recl_condensed=None, show=True, save
 
     plt.ylim(-0.05, 1.1)
     plt.xticks([5, 10, 20, 50, 100], ['5', '10', '20', '50', '100'])
-    plt.legend(loc='best', frameon=False, prop={'size':12})
+    plt.legend(loc=2, frameon=False, prop={'size':12})
     plt.tight_layout()
     if show:
         plt.show()
@@ -107,12 +111,13 @@ def plot_completeness(bins, recl_lion=None, recl_condensed=None, show=True, save
         plt.savefig(savepath, bbox_inches='tight')
 
     plt.close()
+    return f
 
 
 class cross_match_roc():
 
     def __init__(self, prev_cut = 0.1, minf=0.001, maxf=0.1, nsamp=100, imdim=100, dr=0.5, dmag=None, nbins=18, \
-                flux_keyword='flux', filetype='.npz', timestr=None, fbin_mode='logspace'):
+                flux_keyword='flux', filetype='.npz', timestr=None, fbin_mode='logspace', max_noise_level=0.003):
         
         for attr, valu in locals().items():
             setattr(self, attr, valu)
@@ -137,7 +142,8 @@ class cross_match_roc():
         
         x0 = self.gdat.x0
         y0 = self.gdat.y0
-        
+        print(self.gdat.width)
+        print(self.gdat.height)
         padded_image = np.zeros(shape=(self.gdat.width, self.gdat.height))
         padded_error = np.zeros(shape=(self.gdat.width, self.gdat.height))
 
@@ -178,14 +184,14 @@ class cross_match_roc():
         elif self.filetype=='.npy':
             print('we get here')
             print('.npy file')
-            cat = np.load(path).item()
+            cat = np.load(path, allow_pickle=True).item()
             mags = mag_from_fluxes(cat[self.flux_keyword])
             if mode=='mock_truth':
                 self.mock_cat = dict({'x':np.array(cat['x']), 'y':np.array(cat['y']), self.flux_keyword:np.array(cat[self.flux_keyword]), 'mag':mags})
             
             
     def load_chain(self, path):
-        lion = np.load(path)
+        lion = np.load(path, allow_pickle=True)
         self.lion_cat = dict({'n':lion['n'][-self.nsamp:].astype(np.int), 'x':lion['x'][-self.nsamp:,:], 'y':lion['y'][-self.nsamp:,:], \
             self.flux_keyword:lion['f'][0,-self.nsamp:], 'mags':mag_from_fluxes(lion['f'][0, -self.nsamp:])})
         self.nbands = lion['f'].shape[0]
@@ -194,7 +200,7 @@ class cross_match_roc():
         
 
 
-    def compute_kd_tree(self, mode='lion', mask_hwhm=0., max_noise_level=0.003):
+    def compute_kd_tree(self, mode='lion', mask_hwhm=0.):
         if mode=='lion':
             cat = self.lion_cat
             print('lion cat has shape', cat['x'].shape)
@@ -214,7 +220,7 @@ class cross_match_roc():
         
         if self.image is not None:
             noise_mask = (self.image[cat['y'].astype(np.int), cat['x'].astype(np.int)] != 0.0)
-            noise_mask *= (self.error[cat['y'].astype(np.int), cat['x'].astype(np.int)] < max_noise_level)
+            noise_mask *= (self.error[cat['y'].astype(np.int), cat['x'].astype(np.int)] < self.max_noise_level)
             mask *= noise_mask
             
         coords= np.zeros((np.sum(mask), 2))
@@ -273,9 +279,14 @@ class cross_match_roc():
         mags_lion = mag_from_fluxes(lion_fs)
         mags_ref = mag_from_fluxes(ref_fs)
         
-        plt.figure(figsize=(10,10))
-        plt.scatter(ref_coords[:,1], ref_coords[:,0], marker='x', s=3*ref_fs*1e3)
-        plt.scatter(lion_coords[:,1], lion_coords[:,0], marker='+', alpha=0.01, s=3*lion_fs*1e3, color='r')
+        f = plt.figure(figsize=(10,10))
+        plt.title('RXJ 1347', fontsize=24)
+        plt.scatter(ref_coords[:,1], ref_coords[:,0], marker='x', s=3*ref_fs*1e3, label='SIDES Mock Truth')
+        plt.scatter(lion_coords[:,1], lion_coords[:,0], marker='+', alpha=0.01, s=3*lion_fs*1e3, color='r', label='PCAT')
+        leg = plt.legend(frameon=False, fontsize=16)
+        for lh in leg.legendHandles: 
+            lh.set_alpha(1)
+#         plt.legend(frameon=False)
         plt.show()
         
         goodmatch_lion = associate(lion_kd, mags_lion, ref_kd, mags_ref, self.dr, self.dmag)
@@ -311,6 +322,7 @@ class cross_match_roc():
             plot_completeness(mag_from_fluxes(self.fbins), recl_condensed=self.reclPC_lion, xlabel='magnitude')
             plot_fdr(mag_from_fluxes(self.fbins), prec_condensed=self.prec_lion, xlabel='magnitude')
             
+        return f   
          
 
 

@@ -5,6 +5,8 @@ from image_eval import psf_poly_fit, image_model_eval
 import pickle
 import matplotlib
 import matplotlib.pyplot as plt
+from astropy.wcs import WCS
+
 
 class objectview(object):
 	def __init__(self, d):
@@ -440,5 +442,98 @@ class pcat_data():
 		print('self.dat.fracs is ', self.fracs)
 		gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2 # 2 instead of 4 for spire beam size
 		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/10
+
+
+
+class spire_data():
+    
+    image = None
+    wcs = None
+    
+    def __init__(self, filename, base_path='/Users/richardfeder/Documents/multiband_pcat/Data/spire/'):
+        self.base_path = base_path
+        self.file_path = self.base_path+filename
+        
+    def get_wcs_header(self):
+        
+        self.wcs = WCS(self.spire_dat[1].header)
+        
+    
+    def load_in_maps(self, zero_nans=True):
+        self.spire_dat = fits.open(self.file_path)
+        self.image = self.spire_dat[1].data
+        self.error = self.spire_dat[2].data
+        self.exposure = self.spire_dat[3].data
+        self.mask = self.spire_dat[4].data
+        self.imsz = self.image.shape
+        print('self imsz is ', self.imsz)
+        
+        if zero_nans:
+            self.image[np.isnan(self.image)] = 0.0
+            self.error[np.isnan(self.error)] = 0.0
+            self.exposure[np.isnan(self.exposure)] = 0.0
+            self.mask[np.isnan(self.mask)] = 0.0
+        
+    
+        
+    def show_hist(self, median_plot=True):
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1,2,1)
+        plt.hist(self.image.ravel(), bins=100)
+        if median_plot:
+            plt.axvline(np.median(self.image), label='median='+str(np.round(np.median(self.image), 3)), linestyle='dashed')
+        plt.subplot(1,2,2)
+        plt.hist(self.error, bins=100)
+        if median_plot:
+            plt.axvline(np.median(self.error), label='median='+str(np.round(np.median(self.error), 3)), linestyle='dashed')
+        plt.show()
+        
+        
+    def show_maps(self, noise_max = 0.002, err_vrange=[0., 5e-3], im_vrange_percentiles=[5, 95], wcs_project=True):
+        
+        if wcs_project:
+            if self.wcs is None:
+                self.get_wcs_header()
+            project = self.wcs
+        else:
+            project = None
+            
+        if self.image is None:
+            self.load_in_maps()
+            
+        err = self.error.copy()
+        
+        mask = (err < noise_max)*(err != 0.)
+        im = self.image.copy()
+        im[~mask] = 0
+        
+        mindim, maxdim = np.min(np.nonzero(mask)[1]), np.max(np.nonzero(mask)[1])
+        print('min/max dim:', mindim, maxdim)
+        f = plt.figure(figsize=(15,15))
+        
+        plt.subplot(2,2,1, projection=project)
+        plt.title('Raw Image')
+        plt.imshow(im[mindim:maxdim,mindim:maxdim], cmap='Greys', origin=(0,0), vmin=np.percentile(im[mindim:maxdim,mindim:maxdim], im_vrange_percentiles[0]), vmax=np.percentile(im[mindim:maxdim,mindim:maxdim], im_vrange_percentiles[1]))
+        plt.colorbar()
+        
+        plt.subplot(2,2,2, projection=project)
+        plt.title('Error')
+        err[~mask] = 0
+        plt.imshow(err[mindim:maxdim, mindim:maxdim], origin=(0,0),cmap='Greys', vmin=err_vrange[0], vmax=err_vrange[1])
+        plt.colorbar()
+        
+        plt.subplot(2,2,3, projection=project)
+        plt.title('Exposure')
+        plt.imshow(self.exposure[mindim:maxdim,mindim:maxdim],origin=(0,0), cmap='Greys')
+        plt.colorbar()
+        
+        plt.subplot(2,2,4, projection=project)
+        plt.title('Mask')
+        plt.imshow(self.mask,origin=(0,0), cmap='Greys')
+        plt.colorbar()
+        plt.savefig('maps.pdf', bbox_inches='tight')
+        plt.show()
+        
+        return f
 
 
