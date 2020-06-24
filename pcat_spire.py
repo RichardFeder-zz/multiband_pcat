@@ -1,3 +1,4 @@
+from __future__ import print_function
 import numpy as np
 import numpy.ctypeslib as npct
 import ctypes
@@ -20,6 +21,7 @@ import pickle
 from spire_data_utils import *
 from spire_roc import *
 from spire_plotting_fns import *
+
 
 
 np.seterr(divide='ignore', invalid='ignore')
@@ -281,21 +283,25 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			os.makedirs(template_dir)
 
 		for t in range(gdat.n_templates):
+			print('looking at template with name ', gdat.template_order[t])
 			for b in range(gdat.nbands):
 
 				if not np.isnan(gdat.template_band_idxs[t,b]):
 
-					print('template amplitudes are ', template_amplitudes[:,b,t], file=gdat.flog)
-					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,b,t].shape, file=gdat.flog)
+					print('template amplitudes are ', template_amplitudes[:,t,b], file=gdat.flog)
+					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,t,b].shape, file=gdat.flog)
 
-					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
-					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]]) # newt
+					# f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
+					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					
+					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+band_dict[bands[b]]) # newt
+					# f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, b, t], title='Template amplitude, '+gdat.template_names[t]+', '+band_dict[bands[b]])
+					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
-					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, b, t], title='Template amplitude, '+gdat.template_names[t]+', '+band_dict[bands[b]])
-					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-
-					f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
-					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_names[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]]) # newt
+					# f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, b, t], template_name=gdat.template_names[t], band=band_dict[bands[b]])
+					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
 
@@ -503,7 +509,7 @@ class Model:
 
 	k =2.5/np.log(10)
 
-	pixel_per_beam = 2*np.pi*((3)/2.355)**2
+	pixel_per_beam = 2*np.pi*((3.)/2.355)**2
 
 	# linear color priors, e.g. F_250/F_350 for S/M, etc.
 	linear_mus = dict({'S/M':1.0, 'M/S':1.0, 'M/L':1.4, 'L/M':1./1.4, 'S/L':1.4, 'L/S':1./1.4})
@@ -538,10 +544,46 @@ class Model:
 		
 		self.moveweights = np.array([80., 40., 40., 0., 0.]) # template
 		self.n_templates = gdat.n_templates # template
-		self.temp_amplitude_sigs = np.array([0.002 for x in range(self.n_templates)]) # template
-		self.template_amplitudes = np.array(self.gdat.template_amplitudes) # template shape nbands x n_templates
+		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.3}) # newt sz template normalized to unity, dust template in units of Jy/beam
+		# self.temp_amplitude_sigs = np.array([0.001 for x in range(self.n_templates)]) # template newt 0.002 to 0.001
+		
+		# self.template_amplitudes = np.array(self.gdat.template_amplitudes) # template shape nbands x n_templates
+		self.template_amplitudes = np.zeros((self.n_templates, gdat.nbands))
+		# self.template_amplitudes = [] # newt
+
+		self.init_template_amplitude_dicts = self.gdat.init_template_amplitude_dicts # newt
+		
+		print('init_template dict has length', len(self.init_template_amplitude_dicts))
+		print('init_template_dict (551 pcat_spire):', self.init_template_amplitude_dicts)
+		
 		self.dtemplate = np.zeros_like(self.template_amplitudes)
 		
+		print('self.dtemplate has shape', self.dtemplate.shape)
+		
+		# nt = 0
+		for i, key in enumerate(self.gdat.template_order):
+			print('key:', key)
+
+			for b, band in enumerate(gdat.bands):
+
+				self.template_amplitudes[i][b] = self.init_template_amplitude_dicts[key][gdat.band_dict[band]]
+		# for key, val in self.init_template_amplitude_dicts.items():
+			# print('key:', key)
+			# for b, band in enumerate(gdat.bands):
+
+				# print('band at 561 is ', band, gdat.band_dict[band], val[gdat.band_dict[band]])
+				
+				# self.template_amplitudes[nt][b] = val[gdat.band_dict[band]]
+			# nt += 1
+			# print('self.init_template_amplitude_dicts[i] is ', val)
+
+
+			# self.template_amplitudes.append(self.init_template_amplitude_dicts[i])
+		self.template_amplitudes = np.array(self.template_amplitudes)
+		
+		print('self.template_amplitudes has shape', self.template_amplitudes.shape)
+		print(self.template_amplitudes)
+
 		self.movetypes = ['P *', 'BD *', 'MS *', 'BKG', 'TEMPLATE'] # template
 		self.n = np.random.randint(gdat.max_nsrc)+1
 		self.nbands = gdat.nbands
@@ -620,10 +662,10 @@ class Model:
 	namely acceptance fractions for the different proposals and some time performance statistics as well. '''
    
 	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):    
-		# fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
+		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
 		print('Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2), file=self.gdat.flog)
 		dts *= 1000
-
+		print('hoooooyaaa')
 		accept_fracs = []
 		timestat_array = np.zeros((6, 1+len(self.moveweights)), dtype=np.float32)
 		statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)', 'Coordinates (s)']
@@ -659,20 +701,47 @@ class Model:
 			if dtemplate is not None:
 
 				dtemp = []
-				for i, temp in enumerate(self.dat.template_array[b]):
 
-					if temp is not None and dtemplate[b][i] != 0.:
-						dtemp.append(dtemplate[b][i]*temp)
+				# print('self.dat.template_array has shape', len(self.dat.template_array[0]))
+
+				for i, temp in enumerate(self.dat.template_array[b]):
+					
+					if self.gdat.verbtype > 1:
+						print('dtemplate in multiband eval is ', dtemplate.shape)
+					
+					if temp is not None and dtemplate[i][b] != 0.: # newt
+					# if temp is not None and dtemplate[b][i] != 0.:
+
+						# print('dtemplate[i] here is ', dtemplate[i], 'i=', i)
+
+						# plt.figure()
+						# plt.title('temp with no norm')
+						# plt.imshow(temp)
+						# plt.colorbar()
+						# plt.show()
+
+						dtemp.append(dtemplate[i][b]*temp) # newt
+						# plt.figure()
+						# plt.title('dtemplate[i][b] is '+str(dtemplate[i][b]))
+						# plt.imshow(dtemplate[i][b]*temp)
+						# plt.colorbar()
+						# plt.show()
 
 				if len(dtemp) > 0:
 					dtemp = np.sum(np.array(dtemp), axis=0).astype(np.float32)
-				
+					# plt.figure()
+					# plt.title('full template')
+					# plt.imshow(dtemp)
+					# plt.colorbar()
+					# plt.show()
+
 				else:
 					dtemp = None
 			
+
+
 			else:
 				dtemp = None
-
 
 			if b>0:
 				t4 = time.time()
@@ -794,6 +863,7 @@ class Model:
 
 
 		if self.gdat.float_templates:
+			# print('before main loop, model evaluation')
 			models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam, dtemplate=self.template_amplitudes)
 		else:
 			models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam)
@@ -850,6 +920,8 @@ class Model:
 
 				if rtype == 3: # background
 
+					# print('background proposal')
+
 					margin_fac = 0
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
 
@@ -864,6 +936,9 @@ class Model:
 															beam_fac=self.pixel_per_beam, margin_fac=0, rtype=rtype)
 					logL = -0.5*diff2s_nomargin
 
+					# print('background proposal, dback')
+
+
 					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype)
 	
@@ -871,10 +946,14 @@ class Model:
 				elif rtype == 4: # template
 					margin_fac = 0
 
+					# print('template proposal, current template values')
+
 					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 															self.bkg+self.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 															beam_fac=self.pixel_per_beam, margin_fac=0, dtemplate=self.template_amplitudes+self.dtemplate, rtype=rtype)
 					logL = -0.5*diff2s_nomargin
+
+					# print('dtemplate proposal')
 
 					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=proposal.dtemplate, rtype=rtype)
@@ -887,28 +966,6 @@ class Model:
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype)
 	
 				
-				# if rtype == 4:
-				# 	print('for template proposal, proposal.dtemplate is ', proposal.dtemplate, 'proposal.dback is ', proposal.dback)
-				# # else:
-				# # 	print('for a non template proposal, proposal.dtemplate is ', proposal.dtemplate, 'proposal.dback is ', proposal.dback)
-				# print('before proposal multiband eval, proposal.dtemplate is ', proposal.dtemplate)
-				# print('rtype is ', rtype, 'proposal.dback is ', proposal.dback)
-
-				# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
-				# 									ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=proposal.dtemplate, rtype=rtype)
-	
-				# print('after proposal multiband eval')
-				# if rtype==4:
-				# 	plt.figure()
-				# 	plt.subplot(1,2,1)
-				# 	plt.imshow(dmodels[1])
-				# 	plt.colorbar()
-				# 	plt.subplot(1,2,2)
-				# 	plt.imshow(dmodels[2])
-				# 	plt.colorbar()
-				# 	plt.show()
-					# print('diff2s:', diff2s)
-					# print('while logL is ', logL)
 
 				plogL = -0.5*diff2s  
 
@@ -927,7 +984,6 @@ class Model:
 				
 
 				if rtype != 3 and rtype !=4: # template
-				# if rtype != 3:
 
 					refx, refy = proposal.get_ref_xy()
 
@@ -1036,7 +1092,12 @@ class Model:
 
 				if proposal.change_template_amp_bool: # template
 					if np.sum(acceptreg) > 0:
+						# print('self.dtemplate is now changed from', self.dtemplate)
+
 						self.dtemplate += proposal.dtemplate
+
+						# print('toooo ', self.dtemplate)
+
 
 				dts[2,i] = time.time() - t3
 
@@ -1081,7 +1142,7 @@ class Model:
 		if self.gdat.float_templates:
 			self.template_amplitudes += self.dtemplate # template 
 			print('at the end of nloop, self.dtemplate is', self.dtemplate)
-			print('so self.template_amplitudes is now ', self.template_amplitudes[:,0]) # template
+			print('so self.template_amplitudes are now ', self.template_amplitudes) # template
 			self.dtemplate = np.zeros_like(self.template_amplitudes) # template
 
 
@@ -1152,6 +1213,7 @@ class Model:
 
 		temp_band_idxs = self.gdat.template_band_idxs[template_idx]
 
+		# print('chosen temp_band_idxs on this proposal:', temp_band_idxs)
 		band_weights = []
 		for idx in temp_band_idxs:
 			if np.isnan(idx):
@@ -1163,11 +1225,15 @@ class Model:
 
 		band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
 
-		d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[template_idx])
+		d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[self.gdat.template_order[template_idx]])
 		
-		proposal.dtemplate = np.zeros((self.gdat.nbands, self.gdat.n_templates))
+		proposal.dtemplate = np.zeros((self.gdat.n_templates, self.gdat.nbands)) # newt
+		proposal.dtemplate[template_idx, band_idx] = d_amp # newt
 
-		proposal.dtemplate[band_idx,template_idx] = d_amp
+		# print('proposal.dtemplate is ', proposal.dtemplate)
+
+		# proposal.dtemplate = np.zeros((self.gdat.nbands, self.gdat.n_templates))
+		# proposal.dtemplate[band_idx,template_idx] = d_amp
 
 		# uniform prior on template amplitude so setting to zero for now
 
@@ -1658,7 +1724,7 @@ class Samples():
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in range(gdat.nbands)]
 		self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands))
 
-		self.template_amplitudes = np.zeros((gdat.nsamp, gdat.nbands, gdat.n_templates)) # template
+		self.template_amplitudes = np.zeros((gdat.nsamp, gdat.n_templates, gdat.nbands)) # template # newt
 
 		self.colorsample = [[] for x in range(gdat.nbands-1)]
 		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in range(gdat.nbands)]
@@ -1751,7 +1817,7 @@ class lion():
 			bkg_sig_fac = 20., \
 			# bkg_moveweight sets what fraction of the MCMC proposals are dedicated to perturbing the background level, 
 			# as opposed to changing source positions/births/deaths/splits/merges
-			bkg_moveweight = 20., \
+			bkg_moveweight = 10., \
 
 			# bkg_sample_delay determines how long Lion waits before sampling from the background. I figure it might be 
 			# useful to have this slightly greater than zero so the chain can do a little burn in first.
@@ -1764,10 +1830,13 @@ class lion():
 			# names of templates to use in fit, I think there will be a separate template folder where the names specify which files to read in
 			template_names = None, \
 			# initial amplitudes for specified templates
-			template_amplitudes = None, \
+			
+			init_template_amplitude_dicts = None, \
+			# template_amplitudes = None, \ # newt
 			
 			# if template file name is not None then it will grab the template from this path and replace PSW with appropriate band
 			template_filename = None, \
+			# newt
 
 
 			# same idea here as bkg_moveweight
@@ -1838,7 +1907,7 @@ class lion():
 			truealpha = 3.0, \
 
 			# minimum flux allowed in fit for SPIRE sources (Jy)
-			trueminf = 0.001, \
+			trueminf = 0.003, \
 
 			# interactive backend should be loaded before importing pyplot
 			visual = False, \
@@ -1881,14 +1950,14 @@ class lion():
 
 			timestr_list_file = None, \
 
-			print_log=True):
+			print_log=False):
 
 
 		for attr, valu in locals().items():
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
 
-			print(attr, valu)
+			# print(attr, valu)
 
 
 
@@ -1901,21 +1970,31 @@ class lion():
 		self.gdat.nbands = len(self.gdat.bands)
 		self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
 
+		template_band_idxs = dict({'sze':[0, 1, 2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2]})
 
-		# template_band_idxs = dict({'sze':[0, 1, 2], 'lensing':[0, 1, 2]})
-
-		template_band_idxs = dict({'sze':[1, 2], 'lensing':[0, 1, 2]})
-
-
+		self.gdat.template_order = []
+		# print('da keys are')
+		# print(self.gdat.template_names.keys)
+		
 		if self.gdat.float_templates:
+		
 			self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
+		
 			for i, temp_name in enumerate(self.gdat.template_names):
+				print('template name here is ', temp_name)
+		
 				for b, band in enumerate(self.gdat.bands):
+					
+
 					if band in template_band_idxs[temp_name]:
 						self.gdat.template_band_idxs[i,b] = band
 					else:
 						self.gdat.template_band_idxs[i,b] = None
 
+				self.gdat.template_order.append(temp_name)
+
+		print('self.gdat.template_order is ', self.gdat.template_order)
+		print('self.gdat.template_band_idxs is ', self.gdat.template_band_idxs)
 
 		print('self.gdat.n_templates is ', self.gdat.n_templates)
 		if self.gdat.data_path is None:
@@ -1945,17 +2024,24 @@ class lion():
 		else:
 			self.gdat.flog = None
 		
-
-
-
 		if self.gdat.cblas:
 			print('Using CBLAS routines for Intel processors.. :-) ', file=self.gdat.flog)
-			libmmult = npct.load_library('pcat-lion', '.')
+
+			if sys.version_info[0] == 2:
+				libmmult = npct.load_library('pcat-lion', '.')
+			else:
+				libmmult = npct.load_library('pcat-lion.so', '.')
+
+
 		elif self.gdat.openblas:
 			print('Using OpenBLAS routines... :-/ ', file=self.gdat.flog)
 			# libmmult = ctypes.cdll['pcat-lion-openblas.so']
 			# libmmult = npct.load_library('pcat-lion-openblas', '.')
-			libmmult = npct.load_library('blas-open', '.')
+			if sys.version_info[0] == 2:
+				libmmult = npct.load_library('blas-open', '.')
+			else:
+				libmmult = npct.load_library('blas-open.so', '.')
+
 		else:
 			print('Using slower BLAS routines.. :-( ', file=self.gdat.flog)
 			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
@@ -2025,7 +2111,8 @@ class lion():
 				timestr_list = [self.gdat.timestr]
 			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
 		
-		self.gdat.flog.close()
+		if self.gdat.print_log:
+			self.gdat.flog.close()
 
 
 		if self.gdat.return_median_model:

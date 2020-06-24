@@ -7,20 +7,40 @@ these should be moved out of the script and into the pipeline'''
 base_path = '/Users/luminatech/Documents/multiband_pcat/'
 result_path = '/Users/luminatech/Documents/multiband_pcat/spire_results/'
 
-def run_pcat(sim_idx=302, trueminf=0.005):
-	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-			 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
-			  dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
-			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
-			   inject_sz_frac= 0.5)
-	ob.main()
+# def run_pcat(sim_idx=302, trueminf=0.005):
+# 	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+# 			 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
+# 			  dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
+# 			   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
+# 			   inject_sz_frac= 0.5)
+# 	ob.main()
 
-# # ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-# # 		 cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_nr',\
-# # 		  dataname='rxj1347', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
-# # 		   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits'], \
-# # 		   )
-# # ob.main()
+initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01}), 'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
+# initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01})})
+# initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
+
+t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
+# t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits']
+# t_filenames = ['Data/spire/rxj1347/dust_template_PSW.npz']
+
+template_names = ['sze', 'dust']
+# template_names = ['sze']
+# template_names = ['dust']
+
+ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+		 cblas=True, openblas=False, visual=False, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_nr',\
+		  dataname='rxj1347', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+		   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=t_filenames, \
+		   )
+ob.main()
+
+
+# ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+# 		 cblas=True, openblas=False, visual=True, float_templates=True, template_names=['sze', 'dust'], init_template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_nr',\
+# 		  dataname='rxj1347', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# 		   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz'], \
+# 		   )
+# ob.main()
 
 
 # # for i in range(306, 309):

@@ -21,7 +21,7 @@ def get_gaussian_psf_template_3_5_20(pixel_fwhm = 3., nbin=5):
 def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 	nc = 25
 	psfnew = Gaussian2DKernel((pixel_fwhm/2.355)*nbin, x_size=125, y_size=125).array.astype(np.float32)
-	print('psfmax is ', np.max(psfnew))
+	# print('psfmax is ', np.max(psfnew))
 
 	if normalization == 'max':
 		print('Normalizing PSF by kernel maximum')
@@ -43,11 +43,12 @@ def load_in_map(gdat, band=0, astrom=None):
 	else:
 		file_path = gdat.file_path
 
-	print('band is ', gdat.band_dict[band])
 	file_path = file_path.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
 
 
-	print('file_path:', file_path)
+	if gdat.verbtype > 1:
+		print('band is ', gdat.band_dict[band])
+		print('file_path:', file_path)
 
 	if astrom is not None:
 		print('loading from ', gdat.band_dict[band])
@@ -56,7 +57,10 @@ def load_in_map(gdat, band=0, astrom=None):
 	spire_dat = fits.open(file_path)
 
 	image = np.nan_to_num(spire_dat[1].data)
-	print('image.shape:', image.shape)
+
+	if gdat.verbtype > 1:
+		print('image.shape:', image.shape)
+
 	error = np.nan_to_num(spire_dat[2].data)
 	exposure = spire_dat[3].data
 	# mask = spire_dat[3].data
@@ -101,12 +105,12 @@ def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_
 	
 	filepath = result_path + timestr
 	filen = open(filepath+'/params.txt','rb')
-	print('filename is ', filen)
+	# print('filename is ', filen)
 	pdict = pickle.load(filen)
-	print(pdict)
+	# print(pdict)
 	opt = objectview(pdict)
 
-	print('param dict load')
+	# print('param dict load')
 	return opt, filepath, result_path
 
 
@@ -124,7 +128,7 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 '''
 class pcat_data():
 
-	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L']})
+	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
 	# template_bands = dict({'sze':['M', 'L'], 'lensing':['S', 'M', 'L']})
 
 	def __init__(self, auto_resize=False, nregion=1):
@@ -152,7 +156,9 @@ class pcat_data():
 		gdat.bounds = []
 
 		for i, band in enumerate(gdat.bands):
-			print('band:', band)
+
+			if gdat.verbtype > 1:
+				print('band (157 at spire_data_utils):', band)
 
 			if map_object is not None:
 
@@ -165,7 +171,6 @@ class pcat_data():
 				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize']# gives it in arcseconds and neet to convert to pixels
 				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'], round_up_or_down=gdat.round_up_or_down)
 				gdat.dataname = obj['name']
-				print('gdat.dataname:', gdat.dataname)
 				if i > 0:
 					self.fast_astrom.fit_astrom_arrays(0, i)
 
@@ -191,8 +196,8 @@ class pcat_data():
 				# plt.imshow(mask)
 				# plt.show()
 
-
-				print('bounds for band ', i, 'are ', bounds)
+				if gdat.verbtype > 1:
+					print('bounds for band ', i, 'are ', bounds)
 
 				if bounds is not None:
 					if gdat.round_up_or_down == 'up':
@@ -200,8 +205,8 @@ class pcat_data():
 					else:
 						big_dim = np.maximum(find_lowest_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_lowest_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
 
-
-					print('big dim at thiiiiis point is ', big_dim)
+					if gdat.verbtype > 1:
+						print('big dim at thiiiiis point is ', big_dim)
 					self.fast_astrom.dims[i] = (big_dim, big_dim)
 
 
@@ -209,8 +214,18 @@ class pcat_data():
 
 				template_list = [] 
 
+
+				sed_cirr = dict({100:1.7, 250:3.5, 350:1.6, 500:0.85}) # MJy/sr
+
+				relative_dust_sed_dict = dict({'S':sed_cirr[250]/sed_cirr[100], 'M':sed_cirr[350]/sed_cirr[100], 'L':sed_cirr[500]/sed_cirr[100]}) # relative to 100 micron
+
+
+
+				temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
 				temp_mock_amps = [0.0111, 0.1249, 0.6912] # MJy/sr
 				# temp_mock_amps = [None, 0.3, 0.5] # MJy/sr
+
+				flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
 				flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
 
 				if gdat.n_templates > 0:
@@ -218,7 +233,9 @@ class pcat_data():
 					for t, template_name in enumerate(gdat.template_names):
 						print('template name is ', template_name)
 						if gdat.band_dict[band] in self.template_bands[template_name]:
-							print('were in business, ', gdat.band_dict[band], self.template_bands[template_name])
+
+							if gdat.verbtype > 1:
+								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name])
 
 							if gdat.template_filename is not None:
 								temp_name = gdat.template_filename[t]
@@ -229,25 +246,32 @@ class pcat_data():
 							
 							print('template file name is ', template_file_name)
 
-							template = fits.open(template_file_name)[0].data
+							if template_name=='sze':
+								template = fits.open(template_file_name)[0].data
+							elif template_name=='dust':
+								template = np.load(template_file_name)['iris_map']
+								template *= relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
+								template -= np.mean(template)
+
 
 							# plt.figure()
-							# plt.title('template')
+							# plt.title(template_name+', '+gdat.band_dict[band])
 							# plt.imshow(template, origin=[0,0])
 							# plt.colorbar()
 							# plt.show()
 
-							if gdat.inject_sz_frac > 0.:
+							if gdat.inject_sz_frac > 0. and template_name=='sze':
 								print('injecting SZ frac of ', gdat.inject_sz_frac)
 
 								plt.figure()
-								plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps[i]*flux_density_conversion_facs[i]))
+								plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]))
+								# plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps[i]*flux_density_conversion_facs[i]))
 								plt.imshow(template, origin=[0,0])
 								plt.colorbar()
 								plt.show()
 
-
-								image += gdat.inject_sz_frac*template*temp_mock_amps[i]*flux_density_conversion_facs[i]
+								image += gdat.inject_sz_frac*template*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
+								# image += gdat.inject_sz_frac*template*temp_mock_amps[i]*flux_density_conversion_facs[i]
 
 								# plt.figure()
 								# plt.title('image here ')
@@ -264,7 +288,8 @@ class pcat_data():
 
 
 				if i > 0:
-					print('we have more than one band:', gdat.bands[0], band)
+					if gdat.verbtype > 1:
+						print('we have more than one band:', gdat.bands[0], band)
 					self.fast_astrom.fit_astrom_arrays(0, i, bounds0=gdat.bounds[0], bounds1=gdat.bounds[i])
 
 
@@ -290,8 +315,9 @@ class pcat_data():
 					smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
 					larger_dim = np.max([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0])
 
-				print('smaller dim is', smaller_dim)
-				print('larger dim is ', larger_dim)
+				if gdat.verbtype > 1:
+					print('smaller dim is', smaller_dim)
+					print('larger dim is ', larger_dim)
 				
 				if gdat.round_up_or_down=='up':
 					gdat.width = find_nearest_upper_mod(larger_dim, gdat.nregion)
@@ -346,14 +372,18 @@ class pcat_data():
 
 				# print(self.template_array)
 				# if i==1:
-				# 	plt.figure()
-				# 	plt.title('template')
-				# 	plt.imshow(self.template_array[i-1][0], origin=[0,0], cmap='Greys')
-				# 	plt.show()
+				# plt.figure()
+				# plt.suptitle('templates')
+				# plt.subplot(1,2,1)
+				# plt.imshow(self.template_array[i][0], origin='lower', cmap='Greys')
+				# plt.colorbar()
+				# plt.subplot(1,2,2)
+				# plt.imshow(self.template_array[i][1], origin='lower', cmap='Greys')
+				# plt.colorbar()
+				# plt.show()
 
 
 			elif gdat.width > 0:
-				print('were here now')
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
@@ -414,14 +444,16 @@ class pcat_data():
 			gdat.imszs.append(image_size)
 			gdat.regsizes.append(image_size[0]/gdat.nregion)
 
-			print('image maximum is ', np.max(self.data_array[0]))
 
 			gdat.frac = np.count_nonzero(weight)/float(gdat.width*gdat.height)
-			print('gdat.frac is ', gdat.frac)
 			# psf, cf, nc, nbin = get_gaussian_psf_template(pixel_fwhm=gdat.psf_pixel_fwhm, normalization=gdat.normalization)
 			psf, cf, nc, nbin = get_gaussian_psf_template_3_5_20(pixel_fwhm=gdat.psf_pixel_fwhm)
 
-			print('sum of PSF is ', np.sum(psf))
+			if gdat.verbtype > 1:
+				print('image maximum is ', np.max(self.data_array[0]))
+				print('gdat.frac is ', gdat.frac)
+				print('sum of PSF is ', np.sum(psf))
+
 			self.psfs.append(psf)
 			self.cfs.append(cf)
 			self.ncs.append(nc)
@@ -430,10 +462,8 @@ class pcat_data():
 			self.fracs.append(gdat.frac)
 
 
-
-
 		gdat.regions_factor = 1./float(gdat.nregion**2)
-		print(gdat.imsz0[0], gdat.regsizes[0], gdat.regions_factor)
+
 		assert gdat.imsz0[0] % gdat.regsizes[0] == 0 
 		assert gdat.imsz0[1] % gdat.regsizes[0] == 0 
 
