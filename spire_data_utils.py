@@ -129,7 +129,6 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 class pcat_data():
 
 	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
-	# template_bands = dict({'sze':['M', 'L'], 'lensing':['S', 'M', 'L']})
 
 	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs = []
@@ -249,16 +248,24 @@ class pcat_data():
 							if template_name=='sze':
 								template = fits.open(template_file_name)[0].data
 							elif template_name=='dust':
+
 								template = np.load(template_file_name)['iris_map']
+
+								# plt.figure()
+								# plt.title('loaded in dust map [MJy/sr]')
+								# plt.imshow(template, origin='lower', cmap='Greys')
+								# plt.colorbar()
+								# plt.show()
+								# print('conversion fac is ', relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]])
 								template *= relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
-								template -= np.mean(template)
+								# template -= np.mean(template) # newt, this is now done after cropping which is the correct procedure I think
 
 
-							# plt.figure()
-							# plt.title(template_name+', '+gdat.band_dict[band])
-							# plt.imshow(template, origin=[0,0])
-							# plt.colorbar()
-							# plt.show()
+								# plt.figure()
+								# plt.title(template_name+', '+gdat.band_dict[band])
+								# plt.imshow(template-np.mean(template), origin=[0,0])
+								# plt.colorbar()
+								# plt.show()
 
 							if gdat.inject_sz_frac > 0. and template_name=='sze':
 								print('injecting SZ frac of ', gdat.inject_sz_frac)
@@ -342,7 +349,7 @@ class pcat_data():
 				resized_exposure[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = exposure[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 
 				resized_template_list = []
-				for template in template_list:
+				for t, template in enumerate(template_list):
 					if template is not None:
 
 						resized_template = np.zeros(shape=(gdat.width, gdat.height))
@@ -352,6 +359,15 @@ class pcat_data():
 
 
 						resized_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
+
+						if gdat.template_order[t] == 'dust':
+
+							resized_template -= np.mean(resized_template)
+
+							# plt.figure()
+							# plt.imshow(resized_template, cmap='Greys', origin='lower')
+							# plt.colorbar()
+							# plt.show()
 
 						resized_template_list.append(resized_template.astype(np.float32))
 					else:

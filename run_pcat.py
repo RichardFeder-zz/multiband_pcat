@@ -15,7 +15,7 @@ result_path = '/Users/luminatech/Documents/multiband_pcat/spire_results/'
 # 			   inject_sz_frac= 0.5)
 # 	ob.main()
 
-initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01}), 'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
+initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01}), 'dust': dict({'S':0.0, 'M':0.0, 'L':0.0})})
 # initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01})})
 # initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
 
@@ -27,12 +27,12 @@ template_names = ['sze', 'dust']
 # template_names = ['sze']
 # template_names = ['dust']
 
-ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-		 cblas=True, openblas=False, visual=False, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_nr',\
-		  dataname='rxj1347', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
-		   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=t_filenames, \
-		   )
-ob.main()
+# ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+# 		 cblas=True, openblas=False, visual=False, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_nr',\
+# 		  dataname='rxj1347', bias=[-0.006, -0.008, -0.01], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# 		   make_post_plots=True, nsamp=4000, residual_samples=300, template_filename=t_filenames, \
+# 		   )
+# ob.main()
 
 
 # ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
@@ -124,7 +124,7 @@ ob.main()
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200428-192453',cattype=None, burn_in_frac=0.5, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200618-010116',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)

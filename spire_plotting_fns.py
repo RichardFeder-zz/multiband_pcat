@@ -285,15 +285,15 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 
 	return f
 
-def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False):
+def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Sample index', ylabel='Amplitude [Jy/beam]'):
 
 	f = plt.figure()
 	if title:
 		plt.title(template_name +' template level - '+str(band))
 
 	plt.plot(np.arange(len(template_samples)), template_samples, label=band)
-	plt.xlabel('Sample index')
-	plt.ylabel('Amplitude [Jy/beam]')
+	plt.xlabel(xlabel)
+	plt.ylabel(ylabel)
 	plt.legend()
 	
 	if show:
@@ -301,13 +301,13 @@ def plot_template_amplitude_sample_chain(template_samples, band='250 micron', te
 
 	return f
 
-def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False):
+def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False, xlabel='Amplitude [Jy/beam]'):
 	f = plt.figure()
 	if title:
 		plt.title('Uniform background level - '+str(band))
 
 	plt.hist(bkg_samples, label=band, histtype='step', bins=scotts_rule_bins(bkg_samples))
-	plt.xlabel('Amplitude [Jy/beam]')
+	plt.xlabel(xlabel)
 	plt.ylabel('$N_{samp}$')
 	
 	if show:
@@ -315,13 +315,13 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 
 	return f	
 
-def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False):
+def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude [Jy/beam]'):
 	f = plt.figure()
 	if title:
 		plt.title(template_name +' template level - '+str(band))
 
 	plt.hist(template_samples, label=band, histtype='step', bins=scotts_rule_bins(template_samples))
-	plt.xlabel('Amplitude [Jy/beam]')
+	plt.xlabel(xlabel)
 	plt.ylabel('$N_{samp}$')
 	
 	if show:
@@ -377,6 +377,96 @@ def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, band=
 
 	return f
 
+
+
+def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-density Color Distribution', titlefontsize=14, show=False, xmin=0.005, xmax=4e-1, ymin=1e-2, ymax=40, fmin=0.005, colormax=40, \
+								flux_sizes=None):
+
+	print('fmin here is', fmin)
+	
+	xlims=[xmin, xmax]
+	ylims=[ymin, ymax]
+
+	f_str = band_strs[0]
+	col_str = band_strs[1]
+
+	nanmask = ~np.isnan(colors)
+
+	if flux_sizes is not None:
+		zeromask = (flux_sizes > fmin)
+	else:
+		zeromask = (fsrcs > fmin)
+
+	colormask = (colors < colormax)
+
+	print('lennanmask:', len(nanmask))
+	print('zeromask:', zeromask)
+
+	print('sums are ', np.sum(nanmask), np.sum(zeromask), np.sum(colormask))
+
+	f = plt.figure()
+	if title:
+		plt.title(title, fontsize=titlefontsize)
+
+	if flux_sizes is not None:
+		pt_sizes = (1.5e2*flux_sizes[nanmask*zeromask*colormask])**2
+		print('pt sizes heere is ', pt_sizes)
+		c = np.log10(flux_sizes[nanmask*zeromask*colormask])
+
+		print('minimum c is ', np.min(flux_sizes[nanmask*zeromask*colormask]))
+		# c = flux_sizes[nanmask*zeromask*colormask]
+
+		alpha=0.2
+
+		# ylims = [0, 5.0]
+		# xlims = [0, 5.0]
+
+
+
+	else:
+		pt_sizes = 10
+		c = 'k'
+		alpha=0.01
+
+
+	bright_src_mask = (flux_sizes > 0.05)
+	not_bright_src_mask = ~bright_src_mask
+
+	if flux_sizes is not None:
+		# plt.scatter(colors[nanmask*zeromask*colormask*not_bright_src_mask], fsrcs[nanmask*zeromask*colormask*not_bright_src_mask], alpha=alpha, c=np.log10(flux_sizes[nanmask*zeromask*colormask*not_bright_src_mask]), s=(2e2*flux_sizes[nanmask*zeromask*colormask*not_bright_src_mask])**2, marker='+', label='PCAT ($F_{250} > 5$ mJy')
+		# plt.scatter(colors[nanmask*zeromask*colormask*bright_src_mask], fsrcs[nanmask*zeromask*colormask*bright_src_mask], alpha=0.5, c=np.log10(flux_sizes[nanmask*zeromask*colormask*bright_src_mask]), s=(2e2*flux_sizes[nanmask*zeromask*colormask*bright_src_mask])**2, marker='+')
+		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, s=pt_sizes, marker='.', label='PCAT ($F_{250} > 5$ mJy')
+
+	else:
+		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, cmap='viridis_r', s=pt_sizes, marker='+', label='PCAT ($F_{250} > 5$ mJy')
+
+
+	if flux_sizes is not None:
+
+		plt.scatter(0.*colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=1.0, c=c, s=pt_sizes, marker='+')
+
+		cbar = plt.colorbar()
+		cbar.ax.set_ylabel("$\\log_{10} F_{250}$")
+	plt.ylabel(f_str, fontsize=14)
+	plt.xlabel(col_str, fontsize=14)
+
+	plt.ylim(ylims)
+	plt.xlim(xlims)
+
+	plt.yscale('log')
+	plt.xscale('log')
+
+	if flux_sizes is None:
+		plt.yscale('log')
+		plt.xscale('log')
+		plt.xlim(0, 5)
+
+	plt.legend()
+
+	if show:
+		plt.show()
+
+	return f
 
 def plot_color_posterior(fsrcs, band0, band1, lam_dict, mock_truth_fluxes=None, title=True, titlefontsize=14, show=False, \
 	):
