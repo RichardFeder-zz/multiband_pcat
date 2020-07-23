@@ -72,15 +72,15 @@ def load_in_map(gdat, band=0, astrom=None):
 	# plt.figure(figsize=(12, 4))
 	# plt.subplot(1,3,1)
 	# plt.title('image map')
-	# plt.imshow(image)
+	# plt.imshow(image, origin='lower')
 
 	# plt.subplot(1,3,2)
 	# plt.title('err map')
-	# plt.imshow(error)
+	# plt.imshow(error, origin='lower')
 
 	# plt.subplot(1,3,3)
 	# plt.title('exp map')
-	# plt.imshow(exposure)
+	# plt.imshow(exposure, origin='lower')
 	# plt.show()
 
 	# print(get_rect_mask_bounds(mask))
@@ -249,7 +249,9 @@ class pcat_data():
 								template = fits.open(template_file_name)[0].data
 							elif template_name=='dust':
 
-								template = np.load(template_file_name)['iris_map']
+
+								template = fits.open(file_name)[5].data
+								# template = np.load(template_file_name)['iris_map']
 
 								# plt.figure()
 								# plt.title('loaded in dust map [MJy/sr]')
@@ -257,7 +259,7 @@ class pcat_data():
 								# plt.colorbar()
 								# plt.show()
 								# print('conversion fac is ', relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]])
-								template *= relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
+								# template *= relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
 								# template -= np.mean(template) # newt, this is now done after cropping which is the correct procedure I think
 
 
@@ -273,7 +275,7 @@ class pcat_data():
 								plt.figure()
 								plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]))
 								# plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps[i]*flux_density_conversion_facs[i]))
-								plt.imshow(template, origin=[0,0])
+								plt.imshow(template, origin='lower')
 								plt.colorbar()
 								plt.show()
 
@@ -365,7 +367,8 @@ class pcat_data():
 							resized_template -= np.mean(resized_template)
 
 							# plt.figure()
-							# plt.imshow(resized_template, cmap='Greys', origin='lower')
+							# plt.title('zero-centered template')
+							# plt.imshow(resized_template-np.mean(resized_template), cmap='Greys', origin='lower')
 							# plt.colorbar()
 							# plt.show()
 

@@ -126,7 +126,7 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 	return np.flatnonzero(np.logical_and(match_x, match_y))
 
 
-def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4):
+def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4, dpi=150, flux_density_unit='MJy/sr'):
 
 	
 	band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
@@ -176,6 +176,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	chain = np.load(gdat.filepath+'/chain.npz')
 
+	flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
+
+	fd_conv_fac = None # if units are MJy/sr this changes to a number, otherwise default flux density units are mJy/beam
 	nsrcs = chain['n']
 
 	xsrcs = chain['x']
@@ -222,18 +225,24 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			if not os.path.isdir(onept_dir):
 				os.makedirs(onept_dir)
 
-		f_last = plot_residual_map(residz[-1], mode='last', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
-		f_last.savefig(resid_map_dir +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		if flux_density_unit=='MJy/sr':
+			fd_conv_fac = flux_density_conversion_dict[gdat.band_dict[bands[b]]]
+			print('fd conv fac is ', fd_conv_fac)
+		
+
+		f_last = plot_residual_map(residz[-1], mode='last', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
+		f_last.savefig(resid_map_dir +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
-		f_median = plot_residual_map(median_resid, mode='median', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow)
-		f_median.savefig(resid_map_dir +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_median = plot_residual_map(median_resid, mode='median', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
+		f_median.savefig(resid_map_dir +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
 
+		noise_mod = dat.errors[b]
 
-		f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', band=band_dict[bands[b]], show=False)
-		f_1pt_resid.savefig(onept_dir +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', noise_model=noise_mod, band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
+		f_1pt_resid.savefig(onept_dir +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		plt.close()	
 
@@ -249,11 +258,11 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	for b in range(gdat.nbands):
 
 		fchi = plot_chi_squared(chi2[:,b], sample_number, band=band_dict[bands[b]], show=False)
-		fchi.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+		fchi.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		plt.close()
 
-	# # ------------------------- BACKGROUND AMPLITUDE ---------------------
+	# ------------------------- BACKGROUND AMPLITUDE ---------------------
 	if gdat.float_background:
 
 		bkg_dir = gdat.filepath+'/bkg'
@@ -263,14 +272,18 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 		for b in range(gdat.nbands):
 
-			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False)
-			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			if flux_density_unit=='MJy/sr':
+				fd_conv_fac = flux_density_conversion_dict[gdat.band_dict[bands[b]]]
+				print('fd conv fac is ', fd_conv_fac)
+
+			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+band_dict[bands[b]])
-			f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
-			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False)
-			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 	
 	# ------------------------- TEMPLATE AMPLITUDES ---------------------
@@ -286,24 +299,34 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			print('looking at template with name ', gdat.template_order[t])
 			for b in range(gdat.nbands):
 
+				if flux_density_unit=='MJy/sr':
+					fd_conv_fac = flux_density_conversion_dict[gdat.band_dict[bands[b]]]
+					print('fd conv fac is ', fd_conv_fac)
+
 				if not np.isnan(gdat.template_band_idxs[t,b]):
 
-					print('template amplitudes are ', template_amplitudes[:,t,b], file=gdat.flog)
-					print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,t,b].shape, file=gdat.flog)
+					# print('template amplitudes are ', template_amplitudes[:,t,b], file=gdat.flog)
+					# print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,t,b].shape, file=gdat.flog)
 
 					if gdat.template_order[t]=='dust':
-						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], ylabel='Relative amplitude') # newt
-						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], xlabel='Relative amplitude') # newt
+						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], ylabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
+						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], xlabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
+					
+						f_temp_median_and_variance = plot_template_median_std(dat.template_array[b][t], template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+						
+						f_temp_median_and_variance.savefig(template_dir+'/'+gdat.template_order[t]+'_template_median_std_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
 					else:
-						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]]) # newt
-						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]]) # newt
+						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
 
 
-					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
-					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+
+					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+band_dict[bands[b]]) # newt
-					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=300)
+					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
@@ -311,10 +334,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	labels = ['Proposal', 'Likelihood', 'Implement']
 
 	f_comp = plot_comp_resources(timestats, gdat.nsamp, labels=labels)
-	f_comp.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight', dpi=300)
+	f_comp.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight', dpi=dpi)
 	plt.close()
 
-	# # ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
+	# ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
 	
 
 	if gdat.float_background:
@@ -328,7 +351,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	print('proposal types:', proposal_types)
 	print('accept_stats is ', accept_stats)
 	f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types)
-	f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=300)
+	f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 	# -------------------------------- ITERATE OVER BANDS -------------------------------------
@@ -380,10 +403,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 
 		f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=band_dict[bands[b]])
-		f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=band_dict[bands[b]])
-		f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+		f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 
@@ -404,24 +427,23 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 
 				f_flux_color = plot_flux_color_posterior(np.array(fov_sources[sub_b]), np.array(fov_sources[sub_b])/np.array(fov_sources[b]), [band_dict[sub_b], band_dict[sub_b]+' / '+band_dict[b]], xmin=1e-2, xmax=40, ymin=0.005, ymax=ymax)
-				f_flux_color.savefig(flux_color_dir+'/posterior_flux_color_diagram_'+gdat.band_dict[sub_b]+'_'+gdat.band_dict[b]+'_nonlogx.'+plttype, bbox_inches='tight', dpi=300)
+				f_flux_color.savefig(flux_color_dir+'/posterior_flux_color_diagram_'+gdat.band_dict[sub_b]+'_'+gdat.band_dict[b]+'_nonlogx.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 
 			f_color_post = plot_color_posterior(fsrcs, b-1, b, lam_dict, mock_truth_fluxes=cat_fluxes)
-			f_color_post.savefig(flux_color_dir +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=300)
+			f_color_post.savefig(flux_color_dir +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 	if gdat.nbands == 3:
 
-		f_color_color = plot_flux_color_posterior(np.array(fov_sources[0])/np.array(fov_sources[1]), np.array(fov_sources[1])/np.array(fov_sources[2]), [band_dict[0]+' / '+band_dict[1], band_dict[1]+' / '+band_dict[2]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.035, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[1]))
-		f_color_color.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[1]+'-'+gdat.band_dict[2]+'_35mJy_band1.'+plttype, bbox_inches='tight', dpi=300)
+		f_color_color = plot_flux_color_posterior(np.array(fov_sources[0])/np.array(fov_sources[1]), np.array(fov_sources[1])/np.array(fov_sources[2]), [band_dict[0]+' / '+band_dict[1], band_dict[1]+' / '+band_dict[2]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[1]+'-'+gdat.band_dict[2]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
 
+		f_color_color2 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[1]), np.array(fov_sources[0])/np.array(fov_sources[1]), [band_dict[2]+' / '+band_dict[1], band_dict[0]+' / '+band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color2.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
 
-		f_color_color2 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[1]), np.array(fov_sources[0])/np.array(fov_sources[1]), [band_dict[2]+' / '+band_dict[1], band_dict[0]+' / '+band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.035, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[1]))
-		f_color_color2.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_35mJy_band.'+plttype, bbox_inches='tight', dpi=300)
-
-		f_color_color3 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[0]), np.array(fov_sources[0])/np.array(fov_sources[1]), [band_dict[2]+' / '+band_dict[0], band_dict[0]+' / '+band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.035, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[1]))
-		f_color_color3.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[0]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_35mJy_band1.'+plttype, bbox_inches='tight', dpi=300)
+		f_color_color3 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[0]), np.array(fov_sources[0])/np.array(fov_sources[1]), [band_dict[2]+' / '+band_dict[0], band_dict[0]+' / '+band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color3.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[0]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 
@@ -429,10 +451,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 
 	f_nsrc = plot_src_number_posterior(nsrc_fov)
-	f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=300)
+	f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=dpi)
 
 	f_nsrc_trace = plot_src_number_trace(nsrc_fov)
-	f_nsrc_trace.savefig(gdat.filepath +'/nstar_traceplot.'+plttype, bbox_inches='tight', dpi=300)
+	f_nsrc_trace.savefig(gdat.filepath +'/nstar_traceplot.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 	nsrc_full = []
@@ -443,7 +465,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 		nsrc_full.append(len(fsrcs_full))
 
 	f_nsrc_trace_full = plot_src_number_trace(nsrc_full)
-	f_nsrc_trace_full.savefig(gdat.filepath +'/nstar_traceplot_full.'+plttype, bbox_inches='tight', dpi=300)
+	f_nsrc_trace_full.savefig(gdat.filepath +'/nstar_traceplot_full.'+plttype, bbox_inches='tight', dpi=dpi)
 
 class Proposal:
 	_X = 0
@@ -1280,6 +1302,20 @@ class Model:
 
 		proposal.change_template_amplitude()
 
+
+		# need to put in a color prior for the cirrus, maybe have general factor that gets applied but defaults
+		# to flat prior
+
+		# if band_idx > 0 and self.gdat.template_order[template_idx] == 'dust': # newtcp
+		# 	orig_dust_color = self.template_amplitudes[band_idx] / self.template_amplitudes[0]
+		# 	new_dust_color = (self.template_amplitudes[band_idx]+d_amp)/self.template_amplitudes[0]
+		# 	color_factor -= (new_dust_color - self.temp_cp_mus[template_idx][band_idx])**2/(2*self.temp_cp_sigs[template_idx][band_idx]**2)
+		# 	color_factor += (orig_dust_color - self.temp_cp_mus[template_idx][band_idx])**2/(2*self.temp_cp_sigs[template_idx][band_idx]**2)
+
+		# 	print('color factor is ', color_factor)
+		# 	proposal.set_factor(color_factor)
+
+
 		return proposal
 
 
@@ -1998,8 +2034,6 @@ class lion():
 		for attr, valu in locals().items():
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
-
-			# print(attr, valu)
 
 
 

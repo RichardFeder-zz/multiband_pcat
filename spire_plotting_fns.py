@@ -253,15 +253,21 @@ def scotts_rule_bins(samples):
 	bins = np.linspace(np.min(samples), np.max(samples), k)
 	return bins
 
-def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False):
+def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False, convert_to_MJy_sr_fac=None):
+
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		ylabel_unit = ' [Jy/beam]'
+	else:
+		ylabel_unit = ' [MJy/sr]'
 
 	f = plt.figure()
 	if title:
 		plt.title('Uniform background level - '+str(band))
 
-	plt.plot(np.arange(len(bkg_samples)), bkg_samples, label=band)
+	plt.plot(np.arange(len(bkg_samples)), bkg_samples/convert_to_MJy_sr_fac, label=band)
 	plt.xlabel('Sample index')
-	plt.ylabel('Background amplitude [Jy/beam]')
+	plt.ylabel('Background amplitude'+ylabel_unit)
 	plt.legend()
 	
 	if show:
@@ -269,15 +275,21 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 
 	return f
 
-def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False):
+def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False, convert_to_MJy_sr_fac=None):
+
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		ylabel_unit = ' [Jy/beam]'
+	else:
+		ylabel_unit = ' [MJy/sr]'
 
 	f = plt.figure()
 	if title:
 		plt.title('Uniform background level - '+str(band))
 
-	plt.plot(np.arange(len(bkg_samples)), bkg_samples, label=band)
+	plt.plot(np.arange(len(bkg_samples)), bkg_samples/convert_to_MJy_sr_fac, label=band)
 	plt.xlabel('Sample index')
-	plt.ylabel('Amplitude [Jy/beam]')
+	plt.ylabel('Amplitude'+ylabel_unit)
 	plt.legend()
 	
 	if show:
@@ -285,7 +297,20 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 
 	return f
 
-def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Sample index', ylabel='Amplitude [Jy/beam]'):
+def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Sample index', ylabel='Amplitude', convert_to_MJy_sr_fac=None):
+
+	ylabel_unit = None
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		ylabel_unit = ' [Jy/beam]'
+	else:
+		ylabel_unit = ' [MJy/sr]'
+
+
+	if template_name=='dust':
+		ylabel_unit = None
+
+		# ylabel_unit = ' [MJy/sr]'
 
 	f = plt.figure()
 	if title:
@@ -301,13 +326,50 @@ def plot_template_amplitude_sample_chain(template_samples, band='250 micron', te
 
 	return f
 
-def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False, xlabel='Amplitude [Jy/beam]'):
+def plot_template_median_std(template, template_samples, band='250 micron', template_name='cirrus dust', title=True, show=False, convert_to_MJy_sr_fac=None):
+
+
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		xlabel_unit = ' [Jy/beam]'
+	else:
+		xlabel_unit = ' [MJy/sr]'
+
+	f = plt.figure(figsize=(10, 5))
+
+	if title:
+		plt.suptitle(template_name)
+
+	mean_t, std_t = np.mean(template_samples), np.std(template_samples)
+
+	plt.subplot(1,2,1)
+	plt.title('Median'+xlabel_unit)
+	plt.imshow(mean_t*template/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_t*template, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_t*template, 95)/convert_to_MJy_sr_fac)
+	plt.colorbar()
+	plt.subplot(1,2,2)
+	plt.title('Standard deviation'+xlabel_unit)
+	plt.imshow(std_t*np.abs(template)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_t*np.abs(template), 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_t*np.abs(template), 95)/convert_to_MJy_sr_fac)
+	plt.colorbar()
+
+	if show:
+		plt.show()
+	return f
+
+
+def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None):
+	
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		xlabel_unit = ' [Jy/beam]'
+	else:
+		xlabel_unit = ' [MJy/sr]'
+
 	f = plt.figure()
 	if title:
 		plt.title('Uniform background level - '+str(band))
 
-	plt.hist(bkg_samples, label=band, histtype='step', bins=scotts_rule_bins(bkg_samples))
-	plt.xlabel(xlabel)
+	plt.hist(np.array(bkg_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=scotts_rule_bins(bkg_samples/convert_to_MJy_sr_fac))
+	plt.xlabel(xlabel+xlabel_unit)
 	plt.ylabel('$N_{samp}$')
 	
 	if show:
@@ -315,13 +377,24 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 
 	return f	
 
-def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude [Jy/beam]'):
+def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None):
+	
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		xlabel_unit = ' [Jy/beam]'
+	else:
+		xlabel_unit = ' [MJy/sr]'
+
+	if template_name=='dust':
+		xlabel_unit = ''
+
 	f = plt.figure()
 	if title:
 		plt.title(template_name +' template level - '+str(band))
 
-	plt.hist(template_samples, label=band, histtype='step', bins=scotts_rule_bins(template_samples))
-	plt.xlabel(xlabel)
+	print()
+	plt.hist(np.array(template_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=scotts_rule_bins(template_samples/convert_to_MJy_sr_fac))
+	plt.xlabel(xlabel+xlabel_unit)
 	plt.ylabel('$N_{samp}$')
 	
 	if show:
@@ -337,13 +410,13 @@ def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=
 	upper = np.percentile(raw_number_counts, 84, axis=0)
 	f = plt.figure()
 	if title:
-		plt.title('Posterior Flux Distribution - ' +str(band))
+		plt.title('Posterior Flux Density Distribution - ' +str(band))
 
 	plt.errorbar(logSv+3, mean_number_cts, yerr=np.array([np.abs(mean_number_cts-lower), np.abs(upper - mean_number_cts)]),fmt='.', label='Posterior')
 	
 	plt.legend()
 	plt.yscale('log', nonposy='clip')
-	plt.xlabel('log10(Flux) - ' + str(band))
+	plt.xlabel('log10(Flux density) - ' + str(band))
 	plt.ylim(5e-1, 5e2)
 
 	if show:
@@ -359,7 +432,7 @@ def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, band=
 	upper = np.percentile(lit_number_counts, 84, axis=0)
 	f = plt.figure()
 	if title:
-		plt.title('Posterior Flux Distribution - ' +str(band))
+		plt.title('Posterior Flux Density Distribution - ' +str(band))
 
 	plt.errorbar(logSv+3, mean_number_cts, yerr=np.array([np.abs(mean_number_cts-lower), np.abs(upper - mean_number_cts)]), marker='.', label='Posterior')
 	
@@ -409,19 +482,17 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 		plt.title(title, fontsize=titlefontsize)
 
 	if flux_sizes is not None:
-		pt_sizes = (1.5e2*flux_sizes[nanmask*zeromask*colormask])**2
+		pt_sizes = (2e2*flux_sizes[nanmask*zeromask*colormask])**2
 		print('pt sizes heere is ', pt_sizes)
 		c = np.log10(flux_sizes[nanmask*zeromask*colormask])
 
 		print('minimum c is ', np.min(flux_sizes[nanmask*zeromask*colormask]))
 		# c = flux_sizes[nanmask*zeromask*colormask]
 
-		alpha=0.2
+		alpha=0.1
 
-		# ylims = [0, 5.0]
-		# xlims = [0, 5.0]
-
-
+		ylims = [0, 3.0]
+		xlims = [0, 3.0]
 
 	else:
 		pt_sizes = 10
@@ -429,16 +500,16 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 		alpha=0.01
 
 
-	bright_src_mask = (flux_sizes > 0.05)
-	not_bright_src_mask = ~bright_src_mask
+	# bright_src_mask = (flux_sizes > 0.05)
+	# not_bright_src_mask = ~bright_src_mask
 
 	if flux_sizes is not None:
 		# plt.scatter(colors[nanmask*zeromask*colormask*not_bright_src_mask], fsrcs[nanmask*zeromask*colormask*not_bright_src_mask], alpha=alpha, c=np.log10(flux_sizes[nanmask*zeromask*colormask*not_bright_src_mask]), s=(2e2*flux_sizes[nanmask*zeromask*colormask*not_bright_src_mask])**2, marker='+', label='PCAT ($F_{250} > 5$ mJy')
 		# plt.scatter(colors[nanmask*zeromask*colormask*bright_src_mask], fsrcs[nanmask*zeromask*colormask*bright_src_mask], alpha=0.5, c=np.log10(flux_sizes[nanmask*zeromask*colormask*bright_src_mask]), s=(2e2*flux_sizes[nanmask*zeromask*colormask*bright_src_mask])**2, marker='+')
-		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, s=pt_sizes, marker='.', label='PCAT ($F_{250} > 5$ mJy')
+		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, s=pt_sizes, marker='.', label='PCAT ($F_{250} > 5$ mJy)')
 
 	else:
-		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, cmap='viridis_r', s=pt_sizes, marker='+', label='PCAT ($F_{250} > 5$ mJy')
+		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, cmap='viridis_r', s=pt_sizes, marker='+', label='PCAT ($F_{250} > 5$ mJy)')
 
 
 	if flux_sizes is not None:
@@ -446,15 +517,15 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 		plt.scatter(0.*colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=1.0, c=c, s=pt_sizes, marker='+')
 
 		cbar = plt.colorbar()
-		cbar.ax.set_ylabel("$\\log_{10} F_{250}$")
+		cbar.ax.set_ylabel("$\\log_{10} S_{250}\\mu m$")
 	plt.ylabel(f_str, fontsize=14)
 	plt.xlabel(col_str, fontsize=14)
 
 	plt.ylim(ylims)
 	plt.xlim(xlims)
 
-	plt.yscale('log')
-	plt.xscale('log')
+	# plt.yscale('log')
+	# plt.xscale('log')
 
 	if flux_sizes is None:
 		plt.yscale('log')
@@ -481,7 +552,7 @@ def plot_color_posterior(fsrcs, band0, band1, lam_dict, mock_truth_fluxes=None, 
 
 	plt.legend()
 	plt.ylabel('PDF')
-	plt.xlabel('$F_{'+str(lam_dict[band0])+'}/F_{'+str(lam_dict[band1])+'}$', fontsize=14)
+	plt.xlabel('$S_{'+str(lam_dict[band0])+'}\\mu m/S_{'+str(lam_dict[band1])+'} \\mu m$', fontsize=14)
 
 	if show:
 		plt.show()
@@ -491,14 +562,25 @@ def plot_color_posterior(fsrcs, band0, band1, lam_dict, mock_truth_fluxes=None, 
 
 
 def plot_residual_map(resid, mode='median', band='S', titlefontsize=14, smooth=True, smooth_sigma=3, \
-					minmax_smooth=None, minmax=None, show=False, plot_refcat=False):
+					minmax_smooth=None, minmax=None, show=False, plot_refcat=False, convert_to_MJy_sr_fac=None):
 
 
 	# TODO - overplot reference catalog on image
 
+
+
 	if minmax_smooth is None:
 		minmax_smooth = [-0.005, 0.005]
 		minmax = [-0.005, 0.005]
+
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		title_unit = ' [Jy/beam]'
+	else:
+		title_unit = ' [MJy/sr]'
+
+	minmax_smooth = np.array(minmax_smooth)/convert_to_MJy_sr_fac
+	minmax = np.array(minmax)/convert_to_MJy_sr_fac
 
 	if mode=='median':
 		title_mode = 'Median residual'
@@ -513,14 +595,14 @@ def plot_residual_map(resid, mode='median', band='S', titlefontsize=14, smooth=T
 	if smooth:
 		plt.subplot(1,2,1)
 
-	plt.title(title_mode+' -- '+band, fontsize=titlefontsize)
-	plt.imshow(resid, cmap='Greys', interpolation=None, vmin=minmax[0], vmax=minmax[1], origin='lower')
+	plt.title(title_mode+' -- '+band+title_unit, fontsize=titlefontsize)
+	plt.imshow(resid/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, vmin=minmax[0], vmax=minmax[1], origin='lower')
 	plt.colorbar()
 
 	if smooth:
 		plt.subplot(1,2,2)
-		plt.title('Smoothed Residual', fontsize=titlefontsize)
-		plt.imshow(gaussian_filter(resid, sigma=smooth_sigma), interpolation=None, cmap='Greys', vmin=minmax_smooth[0], vmax=minmax_smooth[1], origin='lower')
+		plt.title('Smoothed Residual'+title_unit, fontsize=titlefontsize)
+		plt.imshow(gaussian_filter(resid, sigma=smooth_sigma)/convert_to_MJy_sr_fac, interpolation=None, cmap='Greys', vmin=minmax_smooth[0], vmax=minmax_smooth[1], origin='lower')
 		plt.colorbar()
 
 	if show:
@@ -529,12 +611,28 @@ def plot_residual_map(resid, mode='median', band='S', titlefontsize=14, smooth=T
 
 	return f
 
-def plot_residual_1pt_function(resid, mode='median', band='S', show=False, binmin=-0.02, binmax=0.02, nbin=50):
+def plot_residual_1pt_function(resid, mode='median', band='S', noise_model=None, show=False, binmin=-0.02, binmax=0.02, nbin=50, convert_to_MJy_sr_fac=None):
+
+	if noise_model is not None:
+		noise_model *= np.random.normal(0, 1, noise_model.shape)
+		density=True
+	else:
+		density=False
+
+
+
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		xlabel_unit = '[Jy/beam]'
+	else:
+		xlabel_unit = '[MJy/sr]'
+		binmin /= convert_to_MJy_sr_fac
+		binmax /= convert_to_MJy_sr_fac
 
 	if len(resid.shape) > 1:
-		median_resid_rav = resid.ravel()
+		median_resid_rav = resid.ravel()/convert_to_MJy_sr_fac
 	else:
-		median_resid_rav = resid
+		median_resid_rav = resid/convert_to_MJy_sr_fac
 
 	if mode=='median':
 		title_mode = 'Median residual'
@@ -543,11 +641,20 @@ def plot_residual_1pt_function(resid, mode='median', band='S', show=False, binmi
 	
 	f = plt.figure()
 	plt.title(title_mode+' 1pt function -- '+band)
-	plt.hist(median_resid_rav, bins=np.linspace(binmin, binmax, nbin), histtype='step')
+	plt.hist(median_resid_rav, bins=np.linspace(binmin, binmax, nbin), histtype='step', density=density)
+
+	if noise_model is not None:
+		plt.hist(noise_model.ravel(), bins=np.linspace(binmin, binmax, nbin), histtype='step', color='r', label='Noise model (Gaussian draw)', density=density)
+
 	plt.axvline(np.median(median_resid_rav), label='Median='+str(np.round(np.median(median_resid_rav), 5))+'\n $\\sigma=$'+str(np.round(np.std(median_resid_rav), 5)))
 	plt.legend(frameon=False)
-	plt.ylabel('$N_{pix}$')
-	plt.xlabel('data - model [Jy/beam]')
+
+	if density:
+		plt.ylabel('PDF')
+	else:
+		plt.ylabel('$N_{pix}$')
+
+	plt.xlabel('data - model '+xlabel_unit)
 
 	if show:
 		plt.show()
