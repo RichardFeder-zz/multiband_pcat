@@ -129,7 +129,8 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4, dpi=150, flux_density_unit='MJy/sr'):
 
 	
-	band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+	title_band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+	# band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
 	lam_dict = dict({0:250, 1:350, 2:500})
 
 
@@ -230,18 +231,18 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			print('fd conv fac is ', fd_conv_fac)
 		
 
-		f_last = plot_residual_map(residz[-1], mode='last', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
+		f_last = plot_residual_map(residz[-1], mode='last', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
 		f_last.savefig(resid_map_dir +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
-		f_median = plot_residual_map(median_resid, mode='median', band=band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
+		f_median = plot_residual_map(median_resid, mode='median', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
 		f_median.savefig(resid_map_dir +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
 
 		noise_mod = dat.errors[b]
 
-		f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', noise_model=noise_mod, band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
+		f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', noise_model=noise_mod, band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
 		f_1pt_resid.savefig(onept_dir +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		plt.close()	
@@ -257,7 +258,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	
 	for b in range(gdat.nbands):
 
-		fchi = plot_chi_squared(chi2[:,b], sample_number, band=band_dict[bands[b]], show=False)
+		fchi = plot_chi_squared(chi2[:,b], sample_number, band=title_band_dict[bands[b]], show=False)
 		fchi.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		plt.close()
@@ -276,13 +277,13 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				fd_conv_fac = flux_density_conversion_dict[gdat.band_dict[bands[b]]]
 				print('fd conv fac is ', fd_conv_fac)
 
-			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
 			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
-			f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+band_dict[bands[b]])
+			f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+title_band_dict[bands[b]])
 			f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
-			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 	
@@ -309,23 +310,23 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 					# print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,t,b].shape, file=gdat.flog)
 
 					if gdat.template_order[t]=='dust':
-						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], ylabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
-						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], xlabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
+						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], ylabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
+						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
 					
-						f_temp_median_and_variance = plot_template_median_std(dat.template_array[b][t], template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+						f_temp_median_and_variance = plot_template_median_std(dat.template_array[b][t], template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
 						
 						f_temp_median_and_variance.savefig(template_dir+'/'+gdat.template_order[t]+'_template_median_std_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 					else:
-						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
-						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
 
 
 
 					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
-					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+band_dict[bands[b]]) # newt
+					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
 					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
@@ -402,11 +403,11 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			lit_number_counts[i,:] = dNdS_S_twop5/n_steradian/dSz
 
 
-		f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=band_dict[bands[b]])
-		f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
+		f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
+		f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
-		f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=band_dict[bands[b]])
-		f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
+		f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=title_band_dict[bands[b]])
+		f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 
@@ -426,7 +427,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 					ymax = 0.1
 
 
-				f_flux_color = plot_flux_color_posterior(np.array(fov_sources[sub_b]), np.array(fov_sources[sub_b])/np.array(fov_sources[b]), [band_dict[sub_b], band_dict[sub_b]+' / '+band_dict[b]], xmin=1e-2, xmax=40, ymin=0.005, ymax=ymax)
+				f_flux_color = plot_flux_color_posterior(np.array(fov_sources[sub_b]), np.array(fov_sources[sub_b])/np.array(fov_sources[b]), [title_band_dict[sub_b], title_band_dict[sub_b]+' / '+title_band_dict[b]], xmin=1e-2, xmax=40, ymin=0.005, ymax=ymax)
 				f_flux_color.savefig(flux_color_dir+'/posterior_flux_color_diagram_'+gdat.band_dict[sub_b]+'_'+gdat.band_dict[b]+'_nonlogx.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
@@ -436,13 +437,13 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	if gdat.nbands == 3:
 
-		f_color_color = plot_flux_color_posterior(np.array(fov_sources[0])/np.array(fov_sources[1]), np.array(fov_sources[1])/np.array(fov_sources[2]), [band_dict[0]+' / '+band_dict[1], band_dict[1]+' / '+band_dict[2]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color = plot_flux_color_posterior(np.array(fov_sources[0])/np.array(fov_sources[1]), np.array(fov_sources[1])/np.array(fov_sources[2]), [title_band_dict[0]+' / '+title_band_dict[1], title_band_dict[1]+' / '+title_band_dict[2]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
 		f_color_color.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[1]+'-'+gdat.band_dict[2]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
 
-		f_color_color2 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[1]), np.array(fov_sources[0])/np.array(fov_sources[1]), [band_dict[2]+' / '+band_dict[1], band_dict[0]+' / '+band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color2 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[1]), np.array(fov_sources[0])/np.array(fov_sources[1]), [title_band_dict[2]+' / '+title_band_dict[1], title_band_dict[0]+' / '+title_band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
 		f_color_color2.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
 
-		f_color_color3 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[0]), np.array(fov_sources[0])/np.array(fov_sources[1]), [band_dict[2]+' / '+band_dict[0], band_dict[0]+' / '+band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color3 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[0]), np.array(fov_sources[0])/np.array(fov_sources[1]), [title_band_dict[2]+' / '+title_band_dict[0], title_band_dict[0]+' / '+title_band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
 		f_color_color3.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[0]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
@@ -606,8 +607,9 @@ class Model:
 		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
 		
 		self.moveweights = np.array([80., 40., 40., 0., 0.]) # template
+
 		self.n_templates = gdat.n_templates # template
-		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1}) # newt sz template normalized to unity, dust template in units of Jy/beam
+		self.temp_amplitude_sigs = dict({'sze':0.0005, 'dust':0.1}) # newt sz template normalized to unity, dust template in units of Jy/beam
 		# self.temp_amplitude_sigs = np.array([0.001 for x in range(self.n_templates)]) # template newt 0.002 to 0.001
 		
 		# self.template_amplitudes = np.array(self.gdat.template_amplitudes) # template shape nbands x n_templates
@@ -720,6 +722,11 @@ class Model:
 
 			self.stars = np.load(catpath)['cat']
 			self.n = np.count_nonzero(self.stars[self._F,:])
+
+	def normalize_weights(self, weights):
+		normalized_weights = weights / np.sum(weights)
+
+		return normalized_weights
 
 	''' this function prints out some information at the end of each thinned sample, 
 	namely acceptance fractions for the different proposals and some time performance statistics as well. '''
@@ -947,12 +954,13 @@ class Model:
 		movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_background, self.perturb_template_amplitude] # template
 
 		# movefns = [self.move_stars, self.birth_death_stars, self.merge_split_stars, self.perturb_background]
-		self.moveweights /= np.sum(self.moveweights)
+		# self.moveweights /= np.sum(self.moveweights)
 		if self.gdat.nregion > 1:
 			xparities = np.random.randint(2, size=self.nloop)
 			yparities = np.random.randint(2, size=self.nloop)
-		
-		rtype_array = np.random.choice(self.moveweights.size, p=self.moveweights, size=self.nloop)
+
+		rtype_array = np.random.choice(self.moveweights.size, p=self.normalize_weights(self.moveweights), size=self.nloop)
+		# rtype_array = np.random.choice(self.moveweights.size, p=self.moveweights, size=self.nloop)
 		movetype = rtype_array
 
 		for i in range(self.nloop):
@@ -1155,11 +1163,9 @@ class Model:
 
 				if proposal.change_template_amp_bool: # template
 					if np.sum(acceptreg) > 0:
-						# print('self.dtemplate is now changed from', self.dtemplate)
 
 						self.dtemplate += proposal.dtemplate
 
-						# print('toooo ', self.dtemplate)
 
 
 				dts[2,i] = time.time() - t3
@@ -1293,12 +1299,18 @@ class Model:
 		proposal.dtemplate = np.zeros((self.gdat.n_templates, self.gdat.nbands)) # newt
 		proposal.dtemplate[template_idx, band_idx] = d_amp # newt
 
-		# print('proposal.dtemplate is ', proposal.dtemplate)
+		# update: now using a non-negativity prior on SZ amplitudes (might be good for dust as well at some point).
+		# the lines below are implementing a step function prior where the ln(prior) = -np.inf when the amplitude is negative
+		if self.gdat.template_order[template_idx] == 'sze':
+			
+			old_temp_amp = self.template_amplitudes[template_idx,band_idx] +self.dtemplate[template_idx, band_idx]
+			new_temp_amp = old_temp_amp+proposal.dtemplate[template_idx,band_idx]
+			
+			if new_temp_amp < 0:
 
-		# proposal.dtemplate = np.zeros((self.gdat.nbands, self.gdat.n_templates))
-		# proposal.dtemplate[band_idx,template_idx] = d_amp
+				proposal.goodmove = False
 
-		# uniform prior on template amplitude so setting to zero for now
+				return proposal
 
 		proposal.change_template_amplitude()
 
@@ -1852,8 +1864,7 @@ class Samples():
 		else:
 			np.savez(result_path + '/' + str(timestr) + '/chain.npz', n=self.nsample, x=self.xsample, y=self.ysample, f=self.fsample, \
 				chi2=self.chi2sample, times=self.timestats, accept=self.accept_stats, diff2s=self.diff2_all, rtypes=self.rtypes, \
-				accepts=self.accept_all, residuals0=self.residuals[0], model_images=self.model_images[0], bkg=self.bkg_sample, template_amplitudes=self.template_amplitudes, \
-				templates=self.gdat.template)
+				accepts=self.accept_all, residuals0=self.residuals[0], model_images=self.model_images[0], bkg=self.bkg_sample, template_amplitudes=self.template_amplitudes)
 
 
 # -------------------- actually execute the thing ----------------
@@ -1899,9 +1910,10 @@ class lion():
 
 			# bkg_sample_delay determines how long Lion waits before sampling from the background. I figure it might be 
 			# useful to have this slightly greater than zero so the chain can do a little burn in first.
-			# Note that bkg_sample_delay also currently dictates when additional templates start getting fit, if they are included
-			# in the model.
 			bkg_sample_delay = 50, \
+
+			# this determines when templates start getting fit
+			temp_sample_delay = 100, \
 
 			# boolean determining whether to float emission template amplitudes, e.g. for SZ or lensing templates
 			float_templates = False, \
@@ -1910,12 +1922,9 @@ class lion():
 			# initial amplitudes for specified templates
 			
 			init_template_amplitude_dicts = None, \
-			# template_amplitudes = None, \ # newt
 			
 			# if template file name is not None then it will grab the template from this path and replace PSW with appropriate band
 			template_filename = None, \
-			# newt
-
 
 			# same idea here as bkg_moveweight
 			template_moveweight = 20., \
@@ -1935,7 +1944,6 @@ class lion():
 			# the default tail name should be for PSW, as this is picked up in a later routine and modified to the appropriate band.
 			tail_name = 'PSW_sim2300', \
 
-			
 			# file_path can be provided if only one image is desired with a specific path not consistent with the larger directory structure
 			file_path = None, \
 			
@@ -2023,24 +2031,29 @@ class lion():
 			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
 			noise_thresholds=None, \
 
-			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values of 0.3 MJy/sr and 0.5 MJy/sr at 350/500 micron.
+			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values at 250/350/500 micron
 			inject_sz_frac = 0.0, \
+
+			inject_dust = False, \
 
 			timestr_list_file = None, \
 
-			print_log=False):
+			print_log=False, \
+
+			# this parameter can be set to true when validating the input data products are correct
+			show_input_maps=False):
 
 
 		for attr, valu in locals().items():
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
 
-
-
 		if self.gdat.mean_offsets is None:
 			self.gdat.mean_offsets = np.zeros_like(self.gdat.bias)
 
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
+		self.gdat.lam_dict = dict({'S':250, 'M':350, 'L':500})
+
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
@@ -2051,7 +2064,6 @@ class lion():
 		self.gdat.template_order = []
 		
 		if self.gdat.float_templates:
-		
 			self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
 		
 			for i, temp_name in enumerate(self.gdat.template_names):
@@ -2059,7 +2071,6 @@ class lion():
 		
 				for b, band in enumerate(self.gdat.bands):
 					
-
 					if band in template_band_idxs[temp_name]:
 						self.gdat.template_band_idxs[i,b] = band
 					else:
@@ -2076,7 +2087,7 @@ class lion():
 		print('data path is ', self.gdat.data_path)
 
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
-		self.data.load_in_data(self.gdat, map_object=map_object)
+		self.data.load_in_data(self.gdat, map_object=map_object, show_input_maps=self.gdat.show_input_maps)
 
 		if self.gdat.save:
 			#create directory for results, save config file from run
@@ -2106,7 +2117,6 @@ class lion():
 			else:
 				libmmult = npct.load_library('pcat-lion.so', '.')
 
-
 		elif self.gdat.openblas:
 			print('Using OpenBLAS routines... :-/ ', file=self.gdat.flog)
 			# libmmult = ctypes.cdll['pcat-lion-openblas.so']
@@ -2130,6 +2140,8 @@ class lion():
 		# initial sum of weights used when reweighting after the weights have been normalized to 1
 		sumweights = np.sum(model.moveweights)
 
+
+		print('SUM WEIGHTS IS THE FOLLOWING ---------- ', sumweights)
 		# run sampler for gdat.nsamp thinned states
 
 		for j in range(self.gdat.nsamp):
@@ -2137,24 +2149,39 @@ class lion():
 
 			# until bkg_sample_delay steps have been taken, don't float the background
 			if j < self.gdat.bkg_sample_delay:
-				model.moveweights[3] = 0
+				model.moveweights[3] = 0.
 				
 				if self.gdat.float_templates:
 					model.moveweights[4] = 0.
+
+				print('moveweights is ', model.moveweights)
 			
 			# once ready to sample, recompute proposal weights
 			elif j==self.gdat.bkg_sample_delay:
 				print('Starting to sample background/templates now', file=self.gdat.flog)
-				if j>0:
-					model.moveweights *= sumweights
+				# if j>0:
+					# model.moveweights *= sumweights
+
 
 				if self.gdat.float_background:
 					model.moveweights[3] = self.gdat.bkg_moveweight
+
+				# if self.gdat.float_templates:
+				# 	model.moveweights[4] = self.gdat.template_moveweight
+
+				print('moveweights:', model.moveweights, file=self.gdat.flog)
+
+			if j==self.gdat.temp_sample_delay:
+				print('starting to sample templates')
+
+
 
 				if self.gdat.float_templates:
 					model.moveweights[4] = self.gdat.template_moveweight
 
 				print('moveweights:', model.moveweights, file=self.gdat.flog)
+
+
 
 			_, chi2_all, statarrays,  accept_fracs, diff2_list, rtype_array, accepts, resids, model_images = model.run_sampler()
 			samps.add_sample(j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids, model_images)
@@ -2180,7 +2207,6 @@ class lion():
 			if path.exists(self.gdat.timestr_list_file):
 				timestr_list = list(np.load(self.gdat.timestr_list_file)['timestr_list'])
 				timestr_list.append(self.gdat.timestr)
-				#np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
 			else:
 				timestr_list = [self.gdat.timestr]
 			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)

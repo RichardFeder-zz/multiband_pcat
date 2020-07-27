@@ -21,7 +21,6 @@ def get_gaussian_psf_template_3_5_20(pixel_fwhm = 3., nbin=5):
 def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 	nc = 25
 	psfnew = Gaussian2DKernel((pixel_fwhm/2.355)*nbin, x_size=125, y_size=125).array.astype(np.float32)
-	# print('psfmax is ', np.max(psfnew))
 
 	if normalization == 'max':
 		print('Normalizing PSF by kernel maximum')
@@ -34,12 +33,10 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 	return psfnew, cf, nc, nbin
 
 
-def load_in_map(gdat, band=0, astrom=None):
+def load_in_map(gdat, band=0, astrom=None, show_input_maps=False):
 
 	if gdat.file_path is None:
-		# file_path = gdat.data_path+gdat.dataname+'/'+gdat.dataname+'_'+gdat.tail_name+'.fits'
 		file_path = gdat.data_path+gdat.dataname+'/'+gdat.tail_name+'.fits'
-
 	else:
 		file_path = gdat.file_path
 
@@ -56,65 +53,54 @@ def load_in_map(gdat, band=0, astrom=None):
 
 	spire_dat = fits.open(file_path)
 
-	image = np.nan_to_num(spire_dat[1].data)
+	image = np.nan_to_num(spire_dat['SIGNAL'].data)
+	error = np.nan_to_num(spire_dat['ERROR'].data)
+	if gdat.bolocam_mask:
+		mask = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')[0].data
+	else:
+		mask = spire_dat['MASK'].data
 
-	if gdat.verbtype > 1:
-		print('image.shape:', image.shape)
-
-	error = np.nan_to_num(spire_dat[2].data)
-	exposure = spire_dat[3].data
+	# image = np.nan_to_num(spire_dat[1].data)
+	# error = np.nan_to_num(spire_dat[2].data)
+	# exposure = spire_dat[3].data
 	# mask = spire_dat[3].data
 	
 	# error = np.nan_to_num(spire_dat[2].data) # temporary for sims_for_richard dataset
 	# exposure = spire_dat[3].data
 	# mask = spire_dat[4].data
 
-	# plt.figure(figsize=(12, 4))
-	# plt.subplot(1,3,1)
-	# plt.title('image map')
-	# plt.imshow(image, origin='lower')
+	if show_input_maps:
 
-	# plt.subplot(1,3,2)
-	# plt.title('err map')
-	# plt.imshow(error, origin='lower')
+		plt.figure(figsize=(12, 4))
+		plt.subplot(1,3,1)
+		plt.title('image map')
+		plt.imshow(image, vmin=np.percentile(image, 5), vmax=np.percentile(image, 95), origin='lower')
+		plt.colorbar()
+		plt.subplot(1,3,2)
+		plt.title('err map')
+		plt.imshow(error, vmin=np.percentile(error, 5), vmax=np.percentile(error, 95), origin='lower')
+		plt.colorbar()
+		plt.subplot(1,3,3)
+		plt.title('mask')
+		plt.imshow(mask, origin='lower')
 
-	# plt.subplot(1,3,3)
-	# plt.title('exp map')
-	# plt.imshow(exposure, origin='lower')
-	# plt.show()
+		plt.show()
 
-	# print(get_rect_mask_bounds(mask))
-
-
-	# image = np.nan_to_num(spire_dat[1].data)
-	# error = np.nan_to_num(spire_dat[2].data)
-	# exposure = spire_dat[3].data
-
-	# temporary file grab while bolocam mask is not part of .fits file
-	if gdat.bolocam_mask:
-		print('loading bolocam mask temporarily as separate file..')
-		mask_fits = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')
-		mask = mask_fits[0].data
-	else:
-		mask = spire_dat[4].data
-
-	return image, error, exposure, mask, file_path
+	return image, error, mask, file_path
 
 
 def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'):
 	
 	filepath = result_path + timestr
 	filen = open(filepath+'/params.txt','rb')
-	# print('filename is ', filen)
 	pdict = pickle.load(filen)
-	# print(pdict)
 	opt = objectview(pdict)
 
-	# print('param dict load')
 	return opt, filepath, result_path
 
 
 def get_rect_mask_bounds(mask):
+
 	''' this function assumes the mask is rectangular in shape, with ones in the desired region and zero otherwise. '''
 
 	idxs = np.argwhere(mask == 1.0)
@@ -131,33 +117,16 @@ class pcat_data():
 	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
 
 	def __init__(self, auto_resize=False, nregion=1):
-		self.ncs = []
-		self.nbins = []
-		self.psfs = []
-		self.cfs = []
-		self.biases = []
-		self.data_array = []
-		self.weights = []
-		self.masks = []
-		self.exposures = []
-		self.errors = []
+		self.ncs, self.nbins, self.psfs, self.cfs, self.biases, self.data_array, self.weights, self.masks, self.errors, \
+			self.widths, self.heights, self.fracs, self.template_array = [[] for x in range(13)]
 		self.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
-		self.widths = []
-		self.heights = []
-		self.fracs = []
-		self.template_array = []
 
-	def load_in_data(self, gdat, map_object=None, tail_name=None):
+	def load_in_data(self, gdat, map_object=None, tail_name=None, show_input_maps=False):
 
-		gdat.imszs = []
-		gdat.regsizes = []
-		gdat.margins = []
-		gdat.bounds = []
+		gdat.imszs, gdat.regsizes, gdat.margins, gdat.bounds = [[] for x in range(4)]
 
 		for i, band in enumerate(gdat.bands):
 
-			if gdat.verbtype > 1:
-				print('band (157 at spire_data_utils):', band)
 
 			if map_object is not None:
 
@@ -176,24 +145,12 @@ class pcat_data():
 
 			elif gdat.mock_name is None:
 
-				image, error, exposure, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom)
+				image, error, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps)
 
-				# plt.figure()
-				# plt.title('mask')
-				# plt.imshow(mask)
-				# plt.show()
+				# bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
+				bounds = get_rect_mask_bounds(mask)
 
-
-				# plt.figure()
-				# plt.title('imaage')
-				# plt.imshow(image)
-				# plt.show()
-				bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
-
-				# plt.figure()
-				# plt.title('mask')
-				# plt.imshow(mask)
-				# plt.show()
+				print('bounds are ', bounds)
 
 				if gdat.verbtype > 1:
 					print('bounds for band ', i, 'are ', bounds)
@@ -204,8 +161,6 @@ class pcat_data():
 					else:
 						big_dim = np.maximum(find_lowest_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_lowest_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
 
-					if gdat.verbtype > 1:
-						print('big dim at thiiiiis point is ', big_dim)
 					self.fast_astrom.dims[i] = (big_dim, big_dim)
 
 
@@ -213,16 +168,10 @@ class pcat_data():
 
 				template_list = [] 
 
-
 				sed_cirr = dict({100:1.7, 250:3.5, 350:1.6, 500:0.85}) # MJy/sr
-
 				relative_dust_sed_dict = dict({'S':sed_cirr[250]/sed_cirr[100], 'M':sed_cirr[350]/sed_cirr[100], 'L':sed_cirr[500]/sed_cirr[100]}) # relative to 100 micron
-
-
-
 				temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
 				temp_mock_amps = [0.0111, 0.1249, 0.6912] # MJy/sr
-				# temp_mock_amps = [None, 0.3, 0.5] # MJy/sr
 
 				flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
 				flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
@@ -234,59 +183,63 @@ class pcat_data():
 						if gdat.band_dict[band] in self.template_bands[template_name]:
 
 							if gdat.verbtype > 1:
-								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name])
+								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name], gdat.lam_dict[gdat.band_dict[band]])
 
 							if gdat.template_filename is not None:
 								temp_name = gdat.template_filename[t]
 								template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
-
 							else:
 								template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
 							
 							print('template file name is ', template_file_name)
 
-							if template_name=='sze':
-								template = fits.open(template_file_name)[0].data
-							elif template_name=='dust':
+							if template_name=='planck':
+								template = fits.open(file_name)[template_name +'_'+str(gdat.lam_dict[gdat.band_dict[band]])].data
+							else:
+								template = fits.open(file_name)[template_name].data
 
-
-								template = fits.open(file_name)[5].data
-								# template = np.load(template_file_name)['iris_map']
-
-								# plt.figure()
-								# plt.title('loaded in dust map [MJy/sr]')
-								# plt.imshow(template, origin='lower', cmap='Greys')
-								# plt.colorbar()
-								# plt.show()
-								# print('conversion fac is ', relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]])
-								# template *= relative_dust_sed_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
-								# template -= np.mean(template) # newt, this is now done after cropping which is the correct procedure I think
-
-
-								# plt.figure()
-								# plt.title(template_name+', '+gdat.band_dict[band])
-								# plt.imshow(template-np.mean(template), origin=[0,0])
-								# plt.colorbar()
-								# plt.show()
-
-							if gdat.inject_sz_frac > 0. and template_name=='sze':
-								print('injecting SZ frac of ', gdat.inject_sz_frac)
-
+							if show_input_maps:
 								plt.figure()
-								plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]))
-								# plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps[i]*flux_density_conversion_facs[i]))
+								plt.title(template_name)
 								plt.imshow(template, origin='lower')
 								plt.colorbar()
 								plt.show()
 
-								image += gdat.inject_sz_frac*template*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
-								# image += gdat.inject_sz_frac*template*temp_mock_amps[i]*flux_density_conversion_facs[i]
+							# if template_name=='sze':
+							# 	template = fits.open(template_file_name)[0].data
+							# elif template_name=='dust':
+							# 	template = fits.open(file_name)[5].data
+							# 	# template = np.load(template_file_name)['iris_map']
 
-								# plt.figure()
-								# plt.title('image here ')
-								# plt.imshow(image, origin=[0,0])
-								# plt.colorbar()
-								# plt.show()
+
+							if gdat.inject_dust and template_name=='planck':
+								print('we are putting in dust now')
+
+								image += template
+
+								if show_input_maps:
+									plt.figure()
+									plt.title('image + dust')
+									plt.imshow(image, origin='lower')
+									plt.colorbar()
+									plt.show()
+
+							if gdat.inject_sz_frac > 0. and template_name=='sze':
+								print('injecting SZ frac of ', gdat.inject_sz_frac)
+								
+								image += gdat.inject_sz_frac*template*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
+
+								if show_input_maps:
+									plt.figure(figsize=(8, 4))
+									plt.subplot(1,2,1)
+									plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]))
+									plt.imshow(template, origin='lower')
+									plt.colorbar()
+									plt.subplot(1,2,2)
+									plt.title('image + sz')
+									plt.imshow(image, origin='lower')
+									plt.colorbar()
+									plt.show()
 
 
 						else:
@@ -307,22 +260,21 @@ class pcat_data():
 
 
 			else:
-				image, error, exposure, mask = load_in_mock_map(gdat.mock_name, band)
+				image, error, mask = load_in_mock_map(gdat.mock_name, band)
 			
 			if gdat.auto_resize:
 
-				if gdat.bolocam_mask:
+				# if gdat.bolocam_mask:
 
-					error = error[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
-					image = image[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
-					exposure = exposure[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
-					smaller_dim = np.min(image.shape)
-					larger_dim = np.max(image.shape)
+				error = error[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+				image = image[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+				smaller_dim = np.min(image.shape)
+				larger_dim = np.max(image.shape)
 
-				else:
+				# else:
 
-					smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
-					larger_dim = np.max([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0])
+				# 	smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
+				# 	larger_dim = np.max([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0])
 
 				if gdat.verbtype > 1:
 					print('smaller dim is', smaller_dim)
@@ -338,17 +290,13 @@ class pcat_data():
 
 				resized_image = np.zeros(shape=(gdat.width, gdat.height))
 				resized_error = np.zeros(shape=(gdat.width, gdat.height))
-				resized_exposure = np.zeros(shape=(gdat.width, gdat.height))
 				resized_mask = np.zeros(shape=(gdat.width, gdat.height))
-
 
 				crop_size_x = np.minimum(gdat.width, image.shape[0])
 				crop_size_y = np.minimum(gdat.height, image.shape[1])
 
-
 				resized_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 				resized_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
-				resized_exposure[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = exposure[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 
 				resized_template_list = []
 				for t, template in enumerate(template_list):
@@ -356,21 +304,29 @@ class pcat_data():
 
 						resized_template = np.zeros(shape=(gdat.width, gdat.height))
 
-						if gdat.bolocam_mask:
-							template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+						# if gdat.bolocam_mask:
+						template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
 
 
 						resized_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 
-						if gdat.template_order[t] == 'dust':
+						if show_input_maps:
+							plt.figure()
+							plt.title('resized template -- '+gdat.template_order[t])
+							plt.imshow(resized_template, cmap='Greys', origin='lower')
+							plt.colorbar()
+							plt.show()
+
+						if gdat.template_order[t] == 'dust' or gdat.template_order[t] == 'planck':
 
 							resized_template -= np.mean(resized_template)
 
-							# plt.figure()
-							# plt.title('zero-centered template')
-							# plt.imshow(resized_template-np.mean(resized_template), cmap='Greys', origin='lower')
-							# plt.colorbar()
-							# plt.show()
+							if show_input_maps:
+								plt.figure()
+								plt.title('zero-centered template -- '+gdat.template_order[t])
+								plt.imshow(resized_template, cmap='Greys', origin='lower')
+								plt.colorbar()
+								plt.show()
 
 						resized_template_list.append(resized_template.astype(np.float32))
 					else:
@@ -385,27 +341,12 @@ class pcat_data():
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(resized_error.astype(np.float32))
 				self.data_array.append(resized_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
-				self.exposures.append(resized_exposure.astype(np.float32))
 				self.template_array.append(resized_template_list)
-
-
-				# print(self.template_array)
-				# if i==1:
-				# plt.figure()
-				# plt.suptitle('templates')
-				# plt.subplot(1,2,1)
-				# plt.imshow(self.template_array[i][0], origin='lower', cmap='Greys')
-				# plt.colorbar()
-				# plt.subplot(1,2,2)
-				# plt.imshow(self.template_array[i][1], origin='lower', cmap='Greys')
-				# plt.colorbar()
-				# plt.show()
 
 
 			elif gdat.width > 0:
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				error = error[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
-				exposure = exposure[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
 				cropped_template_list = []
 				for template in template_list:
 					if template is not None:
@@ -426,7 +367,6 @@ class pcat_data():
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
 				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
-				self.exposures.append(exposure.astype(np.float32))
 				self.template_array.append(cropped_template_list)
 
 			else:
@@ -438,8 +378,6 @@ class pcat_data():
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
 				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) 
-				self.exposures.append(exposure.astype(np.float32))
-
 				self.template_array.append(template_list)
 
 
@@ -448,17 +386,18 @@ class pcat_data():
 				gdat.imsz0 = image_size
 
 			
-			# plt.figure()
-			# plt.title('data')
-			# plt.imshow(self.data_array[i], cmap='Greys', origin=[0,0])
-			# plt.colorbar()
-			# plt.show()
+			if show_input_maps:
+				plt.figure()
+				plt.title('data')
+				plt.imshow(self.data_array[i], vmin=np.percentile(self.data_array[i], 5), vmax=np.percentile(self.data_array[i], 95), cmap='Greys', origin=[0,0])
+				plt.colorbar()
+				plt.show()
 
-			# plt.figure()
-			# plt.title('errors')
-			# plt.imshow(self.errors[i], cmap='Greys', origin=[0,0])
-			# plt.colorbar()
-			# plt.show()
+				plt.figure()
+				plt.title('errors')
+				plt.imshow(self.errors[i], vmin=np.percentile(self.errors[i], 5), vmax=np.percentile(self.errors[i], 95), cmap='Greys', origin=[0,0])
+				plt.colorbar()
+				plt.show()
 
 			gdat.imszs.append(image_size)
 			gdat.regsizes.append(image_size[0]/gdat.nregion)
