@@ -275,7 +275,7 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 
 	return f
 
-def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False, convert_to_MJy_sr_fac=None):
+def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False, convert_to_MJy_sr_fac=None, smooth_fac=None):
 
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
@@ -287,6 +287,9 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 	if title:
 		plt.title('Uniform background level - '+str(band))
 
+	if smooth_fac is not None:
+		bkg_samples = np.convolve(bkg_samples, np.ones((smooth_fac,))/smooth_fac, mode='valid')
+
 	plt.plot(np.arange(len(bkg_samples)), bkg_samples/convert_to_MJy_sr_fac, label=band)
 	plt.xlabel('Sample index')
 	plt.ylabel('Amplitude'+ylabel_unit)
@@ -297,7 +300,8 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 
 	return f
 
-def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Sample index', ylabel='Amplitude', convert_to_MJy_sr_fac=None):
+def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Sample index', ylabel='Amplitude',\
+									 convert_to_MJy_sr_fac=None, smooth_fac = None):
 
 	ylabel_unit = None
 	if convert_to_MJy_sr_fac is None:
@@ -307,10 +311,15 @@ def plot_template_amplitude_sample_chain(template_samples, band='250 micron', te
 		ylabel_unit = ' [MJy/sr]'
 
 
-	if template_name=='dust':
+	if template_name=='dust' or template_name == 'planck':
 		ylabel_unit = None
 
 		# ylabel_unit = ' [MJy/sr]'
+
+
+
+	if smooth_fac is not None:
+		template_samples = np.convolve(template_samples, np.ones((smooth_fac,))/smooth_fac, mode='valid')
 
 	f = plt.figure()
 	if title:
@@ -377,15 +386,17 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 
 	return f	
 
-def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None):
+def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None, \
+									mock_truth=None):
 	
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
+
 		xlabel_unit = ' [Jy/beam]'
 	else:
 		xlabel_unit = ' [MJy/sr]'
 
-	if template_name=='dust':
+	if template_name=='dust' or template_name == 'planck':
 		xlabel_unit = ''
 
 	f = plt.figure()
@@ -394,6 +405,9 @@ def plot_posterior_template_amplitude(template_samples, band='250 micron', templ
 
 	print()
 	plt.hist(np.array(template_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=scotts_rule_bins(template_samples/convert_to_MJy_sr_fac))
+	if mock_truth is not None:
+		plt.axvline(mock_truth, linestyle='dashdot', color='r', label='Mock truth')
+		plt.legend()
 	plt.xlabel(xlabel+xlabel_unit)
 	plt.ylabel('$N_{samp}$')
 	
@@ -524,9 +538,6 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 	plt.ylim(ylims)
 	plt.xlim(xlims)
 
-	# plt.yscale('log')
-	# plt.xscale('log')
-
 	if flux_sizes is None:
 		plt.yscale('log')
 		plt.xscale('log')
@@ -539,8 +550,7 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 
 	return f
 
-def plot_color_posterior(fsrcs, band0, band1, lam_dict, mock_truth_fluxes=None, title=True, titlefontsize=14, show=False, \
-	):
+def plot_color_posterior(fsrcs, band0, band1, lam_dict, mock_truth_fluxes=None, title=True, titlefontsize=14, show=False):
 
 	f = plt.figure()
 	if title:
@@ -693,7 +703,7 @@ def plot_comp_resources(timestats, nsamp, labels=['Proposal', 'Likelihood', 'Imp
 	
 	return f
 
-def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birth/Death', 'Merge/Split', 'Templates'], show=False):
+def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birth/Death', 'Merge/Split', 'Templates'], show=False, smooth_fac=None):
 
 	f = plt.figure()
 	
@@ -701,7 +711,16 @@ def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birt
 	for x in range(len(proposal_types)):
 		print(accept_stats[0,x])
 		accept_stats[:,x][np.isnan(accept_stats[:,x])] = 0.
-		plt.plot(samp_range, accept_stats[:,x], label=proposal_types[x])
+
+	# if smooth_fac is not None:
+		# bkg_samples = np.convolve(bkg_samples, np.ones((smooth_fac,))/smooth_fac, mode='valid')
+		if smooth_fac is not None:
+			accept_stat_chain = np.convolve(accept_stats[:,x], np.ones((smooth_fac,))/smooth_fac, mode='valid')
+		else:
+			accept_stat_chain = accept_stats[:,x]
+		# plt.plot(samp_range, accept_stats[:,x], label=proposal_types[x])
+
+		plt.plot(np.arange(len(accept_stat_chain)), accept_stat_chain, label=proposal_types[x])
 	plt.legend()
 	plt.xlabel('Sample number')
 	plt.ylabel('Acceptance fraction')

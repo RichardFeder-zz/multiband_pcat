@@ -15,32 +15,111 @@ result_path = '/Users/luminatech/Documents/multiband_pcat/spire_results/'
 # 			   inject_sz_frac= 0.5)
 # 	ob.main()
 
-initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01}), 'dust': dict({'S':0.0, 'M':0.0, 'L':0.0})})
-# initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01})})
+# initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01}), 'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
+# initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.002, 'L':0.01})})
 # initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
+initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.01})})
 
-t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
-# t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits']
+# t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
+t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits']
 # t_filenames = ['Data/spire/rxj1347/dust_template_PSW.npz']
 
-template_names = ['sze', 'dust']
-# template_names = ['sze']
+# template_names = ['sze', 'dust']
+template_names = ['sze']
 # template_names = ['dust']
 
 # ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-# 		 cblas=True, openblas=False, visual=False, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_nr',\
-# 		  dataname='rxj1347', bias=[-0.006, -0.008, -0.01], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# 		 cblas=True, openblas=False, visual=True, show_input_maps=True, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='RXJ1347_PSW_nr_1',\
+# 		  dataname='rxj1347_721', bias=[-0.006, -0.008, -0.01], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
 # 		   make_post_plots=True, nsamp=4000, residual_samples=300, template_filename=t_filenames, \
 # 		   )
 # ob.main()
 
-
-# ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-# 		 cblas=True, openblas=False, visual=True, float_templates=True, template_names=['sze', 'dust'], init_template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_nr',\
-# 		  dataname='rxj1347', bias=[-0.003, -0.003, -0.003], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
-# 		   make_post_plots=True, nsamp=2000, residual_samples=300, template_filename=['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz'], \
+# ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=False, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=20,\
+# 		 cblas=True, openblas=False, visual=False, show_input_maps=False, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0202_dust',\
+# 		  dataname='sim_w_dust', bias=[0.00, 0.00, 0.0], max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# 		   make_post_plots=True, nsamp=4000, residual_samples=300, template_filename=t_filenames, \
 # 		   )
 # ob.main()
+
+# def run_pcat2(sim_idx=202):
+
+
+# 	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=20, temp_sample_delay=200, \
+# 			 cblas=True, openblas=False, visual=False, show_input_maps=False, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
+# 			  dataname='sim_w_dust', bias=None, max_nsrc=600, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# 			   make_post_plots=True, nsamp=3000, residual_samples=300, template_filename=t_filenames, inject_sz_frac=1.5)
+# 	ob.main()
+
+# # for i in [206, 207, 208]:
+# # # for i in [207, 208, 209]:
+# # 	run_pcat2(sim_idx=i)
+
+
+# template_names = ['planck']
+# t_filenames = ['Data/spire/rxj1347/dust_template_PSW.npz']
+# initial_template_amplitude_dicts = dict({'dust': dict({'S':0.0, 'M':0.0, 'L':0.0}), 'planck': dict({'S':1.0, 'M':1.0, 'L':1.0})})
+
+
+# def run_pcat_dusttest(sim_idx=202, inject_dust=False, show_input_maps=False):
+
+
+# 	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=20, temp_sample_delay=50, \
+# 			 cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
+# 			  dataname='sim_w_dust', bias=None, max_nsrc=600, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+# 			   make_post_plots=True, nsamp=3000, residual_samples=300, template_filename=t_filenames, inject_dust=inject_dust)
+# 	ob.main()
+
+
+''' note to self -- check the acceptance fraction for templates on bad fits. is there any difference? why would a higher acceptance ratio imply larger bias? 
+
+If the dust is not easy to constrain, maybe we should use the full field of view? We can probably validate that using a larger field of view improves the bias
+
+If there are still issues with non-convergence, then perhaps we need to make more targeted proposals, like perhaps jumping in 2d space with the slope and the amplitude? 
+
+maybe we can compute the covariance of the amplitude for an arbitrary zero-centered template with a flat background. I guess you can remain agnostic to the generating
+process while characterizing it in this way. the question then becomes, how do I explore this linear combination of components best? 
+
+'''
+# for i in [204, 205, 206]:
+	# run_pcat_dusttest(sim_idx = i)
+# for i in [200, 201, 202]:
+# 	run_pcat_dusttest(sim_idx = i, inject_dust=True, show_input_maps=False)
+
+
+template_names = ['sze', 'planck']
+t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
+
+
+# template_names = ['planck']
+# t_filenames = ['Data/spire/rxj1347/dust_template_PSW.npz']
+
+initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'planck': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'sze': dict({'S':0.00, 'M':0.001, 'L':0.02})})
+
+
+def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
+
+
+	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=20, \
+			 cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
+			  dataname='sim_w_dust', bias=None, max_nsrc=1500, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+			   make_post_plots=True, nsamp=50, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenames, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac)
+	ob.main()
+
+# template_names = ['sze']
+# t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits']
+
+# sz_fracs_2 = [0.5, 1.5]
+# idxs = [209, 209]
+
+# sz_fracs = [1.0, 0.0]
+# for i, idx in enumerate(idxs):
+# 	run_pcat_dust_and_sz_test(sim_idx=idx, show_input_maps=True, inject_dust=True, inject_sz_frac=sz_fracs_2[i])
+
+# for idx in [207, 208, 209]:
+	# run_pcat_dust_and_sz_test(sim_idx=idx, show_input_maps=False, inject_dust=True, inject_sz_frac=1.0)
+run_pcat_dust_and_sz_test(sim_idx=203, show_input_maps=False, inject_dust=True, inject_sz_frac=1.0)
+
 
 
 # # for i in range(306, 309):
@@ -124,7 +203,7 @@ template_names = ['sze', 'dust']
 # ob = lion(band0=0, openblas=True, visual=True, cblas=False, x0=50, y0=50, width=100, height=60, nregion=5, make_post_plots=True, nsamp=100, residual_samples=100, weighted_residual=True)
 
 
-# result_plots(timestr='20200618-010116',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20200727-151751',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)
