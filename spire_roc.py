@@ -1,9 +1,19 @@
 import numpy as np
+#import matplotlib
+#matplotlib.use('tKAgg')
+#import matplotlib
+#matplotlib.use('TkAgg')
+#import matplotlib.pyplot as plt
+
 import matplotlib
-matplotlib.use('tKAgg')
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+
+
+
+
 import scipy.spatial
-from astropy import WCS
+#from astropy import WCS
 
 
 def flux_from_mags(mags):
@@ -50,7 +60,7 @@ def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
 def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd, dr=0.5, dmag=0.5):
     complete = np.zeros((test_x.shape[0], ref_x.size))
     for i in xrange(test_x.shape[0]):
-        print 'B', i
+        print('B', i)
         n = test_n[i]
         CCc_one = np.zeros((n,2))
         CCc_one[:, 0] = test_x[i,0:n]
