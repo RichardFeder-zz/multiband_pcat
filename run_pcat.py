@@ -87,24 +87,24 @@ process while characterizing it in this way. the question then becomes, how do I
 # 	run_pcat_dusttest(sim_idx = i, inject_dust=True, show_input_maps=False)
 
 
-template_names = ['sze', 'planck']
-t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
+#template_names = ['sze', 'planck']
+#t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
 
 
 # template_names = ['planck']
 # t_filenames = ['Data/spire/rxj1347/dust_template_PSW.npz']
 
-initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'planck': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'sze': dict({'S':0.00, 'M':0.001, 'L':0.02})})
+#initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'planck': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'sze': dict({'S':0.00, 'M':0.001, 'L':0.02})})
 
 
-def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
+#def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
 
 
-	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=20, \
-			 cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
-			  dataname='sim_w_dust', bias=None, max_nsrc=1500, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
-			   make_post_plots=True, nsamp=50, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenames, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac)
-	ob.main()
+#	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=20, \
+#			 cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
+#			  dataname='sim_w_dust', bias=None, max_nsrc=1500, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+#			   make_post_plots=True, nsamp=50, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenames, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac)
+#	ob.main()
 
 # template_names = ['sze']
 # t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits']
@@ -118,7 +118,7 @@ def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=Fa
 
 # for idx in [207, 208, 209]:
 	# run_pcat_dust_and_sz_test(sim_idx=idx, show_input_maps=False, inject_dust=True, inject_sz_frac=1.0)
-run_pcat_dust_and_sz_test(sim_idx=203, show_input_maps=False, inject_dust=True, inject_sz_frac=1.0)
+#run_pcat_dust_and_sz_test(sim_idx=203, show_input_maps=False, inject_dust=True, inject_sz_frac=1.0)
 
 
 
@@ -208,3 +208,66 @@ run_pcat_dust_and_sz_test(sim_idx=203, show_input_maps=False, inject_dust=True, 
 # ob_goodsn = lion(band0=0, mean_offset=0.005, cblas=True, visual=False, auto_resize=False, width=200, height=200, x0=150, y0=150, trueminf=0.015, nregion=5, dataname='GOODSN_image_SMAP', nsamp=5, residual_samples=1, max_nsrc=2500, make_post_plots=True)
 # ob_goodsn = lion(band0=0, band1=1, cblas=True, visual=True, auto_resize=True, trueminf=0.001, nregion=5, dataname='GOODSN_image_SMAP', nsamp=200, residual_samples=50, max_nsrc=2000, make_post_plots=True)
 # ob_goodsn.main()
+
+
+'''These lines below here are to instantiate the script without having to load an updated                                                       
+version of the lion module every time I make a change, but when Lion is wrapped within another pipeline                                         
+these should be moved out of the script and into the pipeline'''
+
+base_path = '/home/mbzsps/multiband_pcat/'
+result_path = '/home/mbzsps/multiband_pcat/spire_results/'
+
+def run_pcat(sim_idx=302, trueminf=0.005):
+        ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True,verbtype=\
+0, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+         cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0\
+.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
+                          dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=800, auto_resize=True, trueminf=trueminf, nregio\
+n=5, weighted_residual=True,\
+                           make_post_plots=True, nsamp=200, residual_samples=50, template_filename=['Data/spire/rxj1347_sz_templates/rxj1347_PS\
+W_nr_sze.fits'], \
+                           inject_sz_frac= 0.0, timestr_list_file='rxj1347_lensed_mocks_sz_0p4.npz')
+        ob.main()
+
+
+template_names = ['sze', 'planck']
+t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
+
+# template_names = ['planck']                                                                                                                  
+# t_filenames = ['Data/spire/rxj1347/dust_template_PSW.npz']                                                                                    
+initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'planck': dict({'S':1.0, 'M':1.0, 'L':1.0}), 'sze': dict({'\
+S':0.00, 'M':0.001, 'L':0.02})})
+
+
+
+def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
+
+
+        ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_ba\
+ckground=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=20, \
+                         cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=templa\
+te_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
+                          dataname='sim_w_dust', bias=None, max_nsrc=1500, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+\
+                           make_post_plots=True, nsamp=50, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenam\
+es, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac)
+        ob.main()
+
+
+
+#if __name__ == '__main__':
+ 
+#        sim_idx_0 = int(sys.argv[1])
+#        sim_idx = int(sys.argv[2])
+#        #sim_idx = args[0]                                                                                                                     
+
+#        print('sim indeeeex is ', sim_idx_0+sim_idx)
+#        run_pcat(sim_idx=sim_idx_0+sim_idx)
+#        run_pcat_dust_and_sz_test(sim_idx=sim_idx_0+sim_idx, inject_dust=True, inject_sz_frac=1.0)
+
+
+def run_pcat_dust_and_sz_test_real(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
+
+
+        ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=40, cblas=False, openblas=False,verbtype=0, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',dataname='sim_w_dust', bias=None, max_nsrc=600, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,make_post_plots=True, nsamp=2000, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenames, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac, timestr_list_file='rxj1347_mock_test_8_26_20_100sims.npz')
+        ob.main()

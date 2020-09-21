@@ -5,7 +5,7 @@ import ctypes
 from ctypes import c_int, c_double
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import time
 import os
@@ -19,7 +19,7 @@ from image_eval import psf_poly_fit, image_model_eval
 from fast_astrom import *
 import pickle
 from spire_data_utils import *
-from spire_roc import *
+#from spire_roc import *
 from spire_plotting_fns import *
 
 
@@ -152,7 +152,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	# filepath = result_path + timestr
 	# gdat.float_background = None
 
-	roc = cross_match_roc(filetype='.npy')
+	#roc = cross_match_roc(filetype='.npy')
 	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
 
 	for i, band in enumerate(gdat.bands):
@@ -279,9 +279,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
 			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
-
-			f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+title_band_dict[bands[b]])
-			f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+			if gdat.nsamp > 50:
+				f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+title_band_dict[bands[b]])
+				f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
@@ -332,9 +332,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
-
-					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
-					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+					if gdat.nsamp > 50:
+						f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
+						f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
@@ -643,7 +643,7 @@ class Model:
 			# print('key:', key)
 			# for b, band in enumerate(gdat.bands):
 
-				# print('band at 561 is ', band, gdat.band_dict[band], val[gdat.band_dict[band]])
+				# print('band at 61 is ', band, gdat.band_dict[band], val[gdat.band_dict[band]])
 				
 				# self.template_amplitudes[nt][b] = val[gdat.band_dict[band]]
 			# nt += 1
@@ -2135,7 +2135,8 @@ class lion():
 			if sys.version_info[0] == 2:
 				libmmult = npct.load_library('pcat-lion', '.')
 			else:
-				libmmult = npct.load_library('pcat-lion.so', '.')
+                                libmmult = npct.load_library('pcat-lion', '.')
+				#libmmult = npct.load_library('pcat-lion.so', '.')
 
 		elif self.gdat.openblas:
 			print('Using OpenBLAS routines... :-/ ', file=self.gdat.flog)
@@ -2148,7 +2149,7 @@ class lion():
 
 		else:
 			print('Using slower BLAS routines.. :-( ', file=self.gdat.flog)
-			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
+			libmmult = ctypes.cdll['./blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
 			# libmmult = npct.load_library('blas', '.')
 
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
@@ -2221,7 +2222,12 @@ class lion():
 
 		dt_total = time.time() - start_time
 		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)
+
 		print('Time String:', str(self.gdat.timestr), file=self.gdat.flog)
+
+		with open(self.gdat.newdir+'/time_elapsed.txt', 'w') as filet:
+			filet.write('time elapsed: '+str(np.round(dt_total,3))+'\n')
+			
 		
 		if self.gdat.timestr_list_file is not None:
 			if path.exists(self.gdat.timestr_list_file):
