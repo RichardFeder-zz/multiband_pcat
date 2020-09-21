@@ -96,10 +96,23 @@ def initialize_c(gdat, libmmult, cblas=False):
 
 def create_directories(gdat):
 	new_dir_name = gdat.result_path+'/'+gdat.timestr
+	timestr = gdat.timestr
+	if os.path.isdir(gdat.result_path+'/'+gdat.timestr):
+		i = 0
+		while os.path.isdir(gdat.result_path+'/'+gdat.timestr+'_'+str(i)):
+			i += 1
+		
+		timestr = gdat.timestr+'_'+str(i)
+		new_dir_name = gdat.result_path+'/'+timestr
+		
 	frame_dir_name = new_dir_name+'/frames'
+	
 	if not os.path.isdir(frame_dir_name):
 		os.makedirs(frame_dir_name)
-	return frame_dir_name, new_dir_name
+	
+
+	print('timestr:', timestr)
+	return frame_dir_name, new_dir_name, timestr
 
 ''' neighbours function is used in merge proposal, where you have some source and you want to choose a nearby source with some probability to merge'''
 def neighbours(x,y,neigh,i,generate=False):
@@ -333,7 +346,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 							pixel_sizes = dict({'S':6, 'M':8, 'L':12}) # arcseconds
 
 							npix = dat.template_array[b][t].shape[0]*dat.template_array[b][t].shape[1]
-							geom_fac = npix*(np.pi*pixel_sizes[gdat.band_dict[bands[b]]]/(180.*3600.))**2
+							geom_fac = (np.pi*pixel_sizes[gdat.band_dict[bands[b]]]/(180.*3600.))**2
 							print('geometric factor is ', geom_fac)
 
 							print('integrating sz profiles..')
@@ -343,7 +356,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 							print('template_flux densities:', template_flux_densities)
 
 							if fd_conv_fac is not None:
-								template_flux_densities *= fd_conv_fac
+								template_flux_densities /= fd_conv_fac
 
 							template_flux_densities *= geom_fac
 
@@ -2099,7 +2112,9 @@ class lion():
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.lam_dict = dict({'S':250, 'M':350, 'L':500})
 
+		#self.gdat.timestr = '20200921-182006'
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
+		
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
 		self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
@@ -2151,7 +2166,8 @@ class lion():
 
 		if self.gdat.save:
 			#create directory for results, save config file from run
-			frame_dir, newdir = create_directories(self.gdat)
+			frame_dir, newdir, timestr = create_directories(self.gdat)
+			self.gdat.timestr = timestr
 			self.gdat.frame_dir = frame_dir
 			self.gdat.newdir = newdir
 			save_params(newdir, self.gdat)
