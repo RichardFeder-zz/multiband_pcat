@@ -181,7 +181,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	fd_conv_fac = None # if units are MJy/sr this changes to a number, otherwise default flux density units are mJy/beam
 	nsrcs = chain['n']
-
 	xsrcs = chain['x']
 	ysrcs = chain['y']
 	fsrcs = chain['f']
@@ -321,12 +320,45 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 						mock_truth = None
 						if gdat.template_order[t]=='sze':
 							temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
+							mock_truth = None
+							if gdat.inject_sz_frac is not None:
+								mock_truth = temp_mock_amps_dict[gdat.band_dict[bands[b]]]*gdat.inject_sz_frac
+								print('mock truth is ', mock_truth)
 
-							mock_truth = temp_mock_amps_dict[gdat.band_dict[bands[b]]]*gdat.inject_sz_frac
-							print('mock truth is ', mock_truth)
 
-						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
-						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+						# integrate_sz_prof = True
+						# if integrate_sz_prof:
+						if gdat.integrate_sz_prof:
+
+							pixel_sizes = dict({'S':6, 'M':8, 'L':12}) # arcseconds
+
+							npix = dat.template_array[b][t].shape[0]*dat.template_array[b][t].shape[1]
+							geom_fac = npix*(np.pi*pixel_sizes[gdat.band_dict[bands[b]]]/(180.*3600.))**2
+							print('geometric factor is ', geom_fac)
+
+							print('integrating sz profiles..')
+
+							template_flux_densities = np.array([np.sum(amp*dat.template_array[b][t]) for amp in template_amplitudes[burn_in:, t, b]])
+
+							print('template_flux densities:', template_flux_densities)
+
+							if fd_conv_fac is not None:
+								template_flux_densities *= fd_conv_fac
+
+							template_flux_densities *= geom_fac
+
+							template_flux_densities *= 1e6 # MJy to Jy
+
+							f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+						
+							f_temp_amp_post = plot_posterior_template_amplitude(template_flux_densities, mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel_unit='[Jy]') # newt
+
+
+						else:
+							f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+							
+
+							f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
 
 
 
@@ -643,7 +675,6 @@ class Model:
 			# print('key:', key)
 			# for b, band in enumerate(gdat.bands):
 
-				# print('band at 61 is ', band, gdat.band_dict[band], val[gdat.band_dict[band]])
 				
 				# self.template_amplitudes[nt][b] = val[gdat.band_dict[band]]
 			# nt += 1
@@ -1306,6 +1337,11 @@ class Model:
 				else:
 					band_weights.append(1.)
 
+			# uncomment to institute DELTA FN PRIOR SZE @ 250 micron
+			if self.gdat.template_order[template_idx] == 'sze':
+				# print('setting weight to zero')
+				band_weights[0] = 0.
+
 			band_weights /= np.sum(band_weights)
 
 			band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
@@ -1949,7 +1985,8 @@ class lion():
 			# same idea here as bkg_moveweight
 			template_moveweight = 20., \
 			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values at 250/350/500 micron
-			inject_sz_frac = 0.0, \
+			# inject_sz_frac = 0.0, \
+			inject_sz_frac = None, \
 			# if true, prior is renormalized with zero probability for amplitudes less than zero
 			sz_positivity_prior = False, \
 			# if True, look for dust template in input data structure and inject directly to map once resized
@@ -2039,6 +2076,9 @@ class lion():
 			print_log=False, \
 			# this parameter can be set to true when validating the input data products are correct
 			show_input_maps=False, \
+			# when we have different SZ models to test from Bolocam, setting this to True will report integrated SZ contribution in Jy,
+			# rather than the peak normalized amplitude.
+			integrate_sz_prof=False, \
 
 			# ----------------------------------- COMPUTATIONAL ROUTINE OPTIONS -------------------------------
 			
@@ -2135,7 +2175,7 @@ class lion():
 			if sys.version_info[0] == 2:
 				libmmult = npct.load_library('pcat-lion', '.')
 			else:
-                                libmmult = npct.load_library('pcat-lion', '.')
+				libmmult = npct.load_library('pcat-lion', '.')
 				#libmmult = npct.load_library('pcat-lion.so', '.')
 
 		elif self.gdat.openblas:

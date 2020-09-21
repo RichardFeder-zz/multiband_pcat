@@ -15,17 +15,47 @@ result_path = '/Users/luminatech/Documents/multiband_pcat/spire_results/'
 # 			   inject_sz_frac= 0.5)
 # 	ob.main()
 
-# initial_template_amplitude_dicts = dict({'sze': dict({'S':0.001, 'M':0.002, 'L':0.01}), 'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
+initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.002, 'L':0.01}), 'planck': dict({'S':1.0, 'M':1.0, 'L':1.0})})
 # initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.002, 'L':0.01})})
 # initial_template_amplitude_dicts = dict({'dust': dict({'S':1.0, 'M':1.0, 'L':1.0})})
-initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.01})})
+# initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.01})})
 
 # t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits', 'Data/spire/rxj1347/dust_template_PSW.npz']
 t_filenames = ['Data/spire/rxj1347/rxj1347_PSW_nr_sze.fits']
 # t_filenames = ['Data/spire/rxj1347/dust_template_PSW.npz']
 
 # template_names = ['sze', 'dust']
-template_names = ['sze']
+template_names = ['sze', 'planck']
+
+
+
+# base_path = '/home/mbzsps/multiband_pcat/'
+# result_path = '/home/mbzsps/multiband_pcat/spire_results/'
+
+bolo_noise_at_spire_fpath = '/Users/luminatech/Documents/multiband_pcat/Data/spire/bolo_noise_at_spire/bolo_noise_at_spire_8_PSW.fits'
+
+# def run_pcat_realdat_bolotest(sim_idx=302, trueminf=0.005):
+#     ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True,verbtype=0, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+#      cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
+#                       dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=800, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
+#                        make_post_plots=True, nsamp=200, residual_samples=50, template_filename=['Data/spire/rxj1347_sz_templates/rxj1347_PSW_nr_sze.fits'], \
+#                        inject_sz_frac= 0.0)
+#     ob.main()
+
+def run_pcat_realdat_bolotest(trueminf=0.005):
+
+	ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=10,\
+			 cblas=True, openblas=False, visual=False, show_input_maps=False, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_nr_1_ext',\
+			  dataname='rxj1347_831', bias=[-0.006, -0.008, -0.01], delta_cp_bool=True, use_mask=True, max_nsrc=1200, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
+			   make_post_plots=True, nsamp=50, residual_samples=3, template_filename=dict({'sze': bolo_noise_at_spire_fpath}), integrate_sz_prof=True)
+	ob.main()
+
+# run_pcat_realdat_bolotest()
+
+# result_plots(timestr='20200921-145335',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+
+
+
 # template_names = ['dust']
 
 # ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
@@ -218,14 +248,10 @@ base_path = '/home/mbzsps/multiband_pcat/'
 result_path = '/home/mbzsps/multiband_pcat/spire_results/'
 
 def run_pcat(sim_idx=302, trueminf=0.005):
-        ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True,verbtype=\
-0, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
-         cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0\
-.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
-                          dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=800, auto_resize=True, trueminf=trueminf, nregio\
-n=5, weighted_residual=True,\
-                           make_post_plots=True, nsamp=200, residual_samples=50, template_filename=['Data/spire/rxj1347_sz_templates/rxj1347_PS\
-W_nr_sze.fits'], \
+        ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True,verbtype=0, float_background=True, burn_in_frac=0.75, bkg_sig_fac=5.0, bkg_sample_delay=50,\
+        cblas=True, openblas=False, visual=False, float_templates=True, template_names=['sze'], template_amplitudes=[[0.0], [0.0], [0.0]], tail_name='rxj1347_PSW_sim0'+str(sim_idx),\
+                          dataname='sims_for_richard', bias=[-0.003, -0.003, -0.003], max_nsrc=800, auto_resize=True, trueminf=trueminf, nregion=5, weighted_residual=True,\
+                           make_post_plots=True, nsamp=200, residual_samples=50, template_filename=['Data/spire/rxj1347_sz_templates/rxj1347_PSW_nr_sze.fits'], \
                            inject_sz_frac= 0.0, timestr_list_file='rxj1347_lensed_mocks_sz_0p4.npz')
         ob.main()
 
@@ -243,15 +269,10 @@ S':0.00, 'M':0.001, 'L':0.02})})
 def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
 
 
-        ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_ba\
-ckground=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=20, \
-                         cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=templa\
-te_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
-                          dataname='sim_w_dust', bias=None, max_nsrc=1500, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
-\
-                           make_post_plots=True, nsamp=50, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenam\
-es, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac)
-        ob.main()
+    ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=20, \
+                     cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
+                      dataname='sim_w_dust', bias=None, max_nsrc=1500, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True, make_post_plots=True, nsamp=50, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenames, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac)
+    ob.main()
 
 
 

@@ -52,6 +52,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False):
 		astrom.load_wcs_header_and_dim(file_path)
 
 	spire_dat = fits.open(file_path)
+	# image = np.nan_to_num(spire_dat['IMAGE'].data)
 
 	image = np.nan_to_num(spire_dat['SIGNAL'].data)
 	error = np.nan_to_num(spire_dat['ERROR'].data)
@@ -189,20 +190,42 @@ class pcat_data():
 							if gdat.verbtype > 1:
 								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name], gdat.lam_dict[gdat.band_dict[band]])
 
-							# if gdat.template_filename is not None:
-							# 	temp_name = gdat.template_filename[t]
-							# 	template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
-							# else:
+
+
+							if gdat.template_filename is not None and template_name=='sze':
+								print('we want to load in a template!!')
+								
+								temp_name = gdat.template_filename[template_name]
+								template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
+
+								print('template file name is ', template_file_name)
+
+								template = fits.open(template_file_name)[0].data
+
+								if show_input_maps:
+									plt.figure()
+									plt.title(template_file_name)
+									plt.imshow(template, origin='lower')
+									plt.colorbar()
+									plt.show()
+
+
+
+							else:
+								template = fits.open(file_name)[template_name].data
+
 							# 	template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
 							
 							# print('template file name is ', template_file_name)
 
-							if template_name=='planck':
-								print('file name here is ', file_name)
-								template = fits.open(file_name)[template_name +'_500'].data # temporary
-								# template = fits.open(file_name)[template_name +'_'+str(gdat.lam_dict[gdat.band_dict[band]])].data
-							else:
-								template = fits.open(file_name)[template_name].data
+							# if template_name=='planck':
+							# 	print('file name here is ', file_name)
+							# 	# template = fits.open(file_name)[template_name +'_500'].data # temporary
+							# 	template = fits.open(file_name)[template_name +'_'+str(gdat.lam_dict[gdat.band_dict[band]])].data
+							# else:
+							# 	template = fits.open(file_name)[template_name].data
+							
+							# template = fits.open(file_name)[template_name].data
 
 							if show_input_maps:
 								plt.figure()
@@ -236,7 +259,7 @@ class pcat_data():
 							# 		plt.tight_layout()
 							# 		plt.show()
 
-							if gdat.inject_sz_frac > 0. and template_name=='sze':
+							if gdat.inject_sz_frac is not None and template_name=='sze':
 								print('injecting SZ frac of ', gdat.inject_sz_frac)
 								
 								template_inject = gdat.inject_sz_frac*template*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
@@ -246,12 +269,12 @@ class pcat_data():
 								if show_input_maps:
 									plt.figure(figsize=(8, 4))
 									plt.subplot(1,2,1)
-									plt.title('inj. amp is '+str(np.round(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]], 4)))
-									plt.imshow(template_inject, origin='lower')
+									plt.title('injected amp is '+str(np.round(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]], 4)))
+									plt.imshow(template_inject, origin='lower', cmap='Greys')
 									plt.colorbar()
 									plt.subplot(1,2,2)
 									plt.title('image + sz')
-									plt.imshow(image, origin='lower')
+									plt.imshow(image, origin='lower', cmap='Greys')
 									plt.colorbar()
 									plt.tight_layout()
 									plt.show()
@@ -327,9 +350,15 @@ class pcat_data():
 
 						if show_input_maps:
 							plt.figure()
+							plt.subplot(1,2,1)
 							plt.title('resized template -- '+gdat.template_order[t])
 							plt.imshow(resized_template, cmap='Greys', origin='lower')
 							plt.colorbar()
+							plt.subplot(1,2,2)
+							plt.title('image + '+gdat.template_order[t])
+							plt.imshow(resized_image, origin='lower', cmap='Greys')
+							plt.colorbar()
+							plt.tight_layout()
 							plt.show()
 
 						if gdat.template_order[t] == 'dust' or gdat.template_order[t] == 'planck':

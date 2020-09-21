@@ -392,14 +392,16 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 	return f	
 
 def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None, \
-									mock_truth=None):
+									mock_truth=None, xlabel_unit=None):
 	
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
 
-		xlabel_unit = ' [Jy/beam]'
+		if xlabel_unit is None:
+			xlabel_unit = ' [Jy/beam]'
 	else:
-		xlabel_unit = ' [MJy/sr]'
+		if xlabel_unit is None:
+			xlabel_unit = ' [MJy/sr]'
 
 	if template_name=='dust' or template_name == 'planck':
 		xlabel_unit = ''
