@@ -8,7 +8,7 @@ import networkx as nx
 from matplotlib.collections import PatchCollection
 import matplotlib.patches as patches
 from PIL import Image
-import imageio
+#import imageio
 
 
 
@@ -376,8 +376,13 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 	f = plt.figure()
 	if title:
 		plt.title('Uniform background level - '+str(band))
+        
+	if len(bkg_samples)>50:
+		binz = scotts_rule_bins(bkg_samples/convert_to_MJy_sr_fac)
+	else:
+		binz = 10
 
-	plt.hist(np.array(bkg_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=scotts_rule_bins(bkg_samples/convert_to_MJy_sr_fac))
+	plt.hist(np.array(bkg_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=binz)
 	plt.xlabel(xlabel+xlabel_unit)
 	plt.ylabel('$N_{samp}$')
 	
@@ -403,8 +408,11 @@ def plot_posterior_template_amplitude(template_samples, band='250 micron', templ
 	if title:
 		plt.title(template_name +' template level - '+str(band))
 
-	print()
-	plt.hist(np.array(template_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=scotts_rule_bins(template_samples/convert_to_MJy_sr_fac))
+	if len(template_samples)>50:
+		binz = scotts_rule_bins(template_samples/convert_to_MJy_sr_fac)
+	else:
+		binz = 10
+	plt.hist(np.array(template_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=binz)
 	if mock_truth is not None:
 		plt.axvline(mock_truth, linestyle='dashdot', color='r', label='Mock truth')
 		plt.legend()
@@ -866,20 +874,20 @@ def grab_atcr(timestr, paramstr='template_amplitudes', band=0, result_dir=None, 
     	return f
 
 
-def convert_png_to_gif(n_image, filename_list=None, head_name='median_residual_and_smoothed_band', gifdir='figures/frame_dir', name='multiz', fps=2):
-    images = []
+#def convert_png_to_gif(n_image, filename_list=None, head_name='median_residual_and_smoothed_band', gifdir='figures/frame_dir', name='multiz', fps=2):
+#    images = []
     
-    if filename_list is not None:
-        for i in range(len(filename_list)):
-            a = Image.open(filename_list[i])
-            images.append(a)
+#    if filename_list is not None:
+#        for i in range(len(filename_list)):
+#            a = Image.open(filename_list[i])
+#            images.append(a)
             
-    else:
-        for i in range(n_image):
-            a = Image.open(gifdir+'/'+head_name+str(i)+'.png')
-            images.append(a)
+#    else:
+#        for i in range(n_image):
+#            a = Image.open(gifdir+'/'+head_name+str(i)+'.png')
+#            images.append(a)
     
-    imageio.mimsave(gifdir+'/'+name+'.gif', np.array(images), fps=fps)
+#    imageio.mimsave(gifdir+'/'+name+'.gif', np.array(images), fps=fps)
     
 
 
