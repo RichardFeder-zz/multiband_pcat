@@ -361,22 +361,24 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 							template_flux_densities *= geom_fac
 
 							template_flux_densities *= 1e6 # MJy to Jy
-
-							f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+							
+							if b > 0:
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
 						
-							f_temp_amp_post = plot_posterior_template_amplitude(template_flux_densities, mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel_unit='[Jy]') # newt
+								f_temp_amp_post = plot_posterior_template_amplitude(template_flux_densities, mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel_unit='[Jy]') # newt
 
 
 						else:
-							f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+							if b > 0:
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
 							
+								
+								f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,	template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
 
-							f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
 
-
-
-					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
-					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+					if gdat.template_order != 'sze' or b > 0:
+						f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+						f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 					if gdat.nsamp > 50:
 						f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
 						f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
@@ -1331,7 +1333,8 @@ class Model:
 		proposal = Proposal(self.gdat)
 		proposal.dtemplate = np.zeros((self.gdat.n_templates, self.gdat.nbands)) # newt
 
-		template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
+		#template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
+		template_idx = 0 # for this test we are only perturbing the SZ amplitudes, not the dust
 		temp_band_idxs = self.gdat.template_band_idxs[template_idx]
 
 		d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[self.gdat.template_order[template_idx]])
@@ -2273,6 +2276,16 @@ class lion():
 			# save final catalog state
 			np.savez(self.gdat.result_path + '/'+str(self.gdat.timestr)+'/final_state.npz', cat=model.stars, bkg=model.bkg, templates=model.template_amplitudes)
 
+
+		if self.gdat.timestr_list_file is not None:
+			if path.exists(self.gdat.timestr_list_file):
+				timestr_list = list(np.load(self.gdat.timestr_list_file)['timestr_list'])
+				timestr_list.append(self.gdat.timestr)
+			else:
+				timestr_list = [self.gdat.timestr]
+			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
+
+
 		if self.gdat.make_post_plots:
 			result_plots(gdat = self.gdat)
 
@@ -2284,15 +2297,6 @@ class lion():
 		with open(self.gdat.newdir+'/time_elapsed.txt', 'w') as filet:
 			filet.write('time elapsed: '+str(np.round(dt_total,3))+'\n')
 			
-		
-		if self.gdat.timestr_list_file is not None:
-			if path.exists(self.gdat.timestr_list_file):
-				timestr_list = list(np.load(self.gdat.timestr_list_file)['timestr_list'])
-				timestr_list.append(self.gdat.timestr)
-			else:
-				timestr_list = [self.gdat.timestr]
-			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
-		
 		if self.gdat.print_log:
 			self.gdat.flog.close()
 
