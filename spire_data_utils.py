@@ -52,13 +52,18 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False):
 		astrom.load_wcs_header_and_dim(file_path)
 
 	spire_dat = fits.open(file_path)
+	# image = np.nan_to_num(spire_dat['IMAGE'].data)
 
 	image = np.nan_to_num(spire_dat['SIGNAL'].data)
 	error = np.nan_to_num(spire_dat['ERROR'].data)
-	if gdat.bolocam_mask:
-		mask = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')[0].data
+
+	if gdat.use_mask:
+		if gdat.bolocam_mask:
+			mask = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')[0].data
+		else:
+			mask = spire_dat['MASK'].data
 	else:
-		mask = spire_dat['MASK'].data
+		mask = np.ones_like(image)
 
 	# image = np.nan_to_num(spire_dat[1].data)
 	# error = np.nan_to_num(spire_dat[2].data)
@@ -114,7 +119,7 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 '''
 class pcat_data():
 
-	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
+	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L'], 'planck':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
 
 	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs, self.nbins, self.psfs, self.cfs, self.biases, self.data_array, self.weights, self.masks, self.errors, \
@@ -185,18 +190,42 @@ class pcat_data():
 							if gdat.verbtype > 1:
 								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name], gdat.lam_dict[gdat.band_dict[band]])
 
-							if gdat.template_filename is not None:
-								temp_name = gdat.template_filename[t]
-								template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
-							else:
-								template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
-							
-							print('template file name is ', template_file_name)
 
-							if template_name=='planck':
-								template = fits.open(file_name)[template_name +'_'+str(gdat.lam_dict[gdat.band_dict[band]])].data
+
+							if gdat.template_filename is not None and template_name=='sze':
+								print('we want to load in a template!!')
+								
+								temp_name = gdat.template_filename[template_name]
+								template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
+
+								print('template file name is ', template_file_name)
+
+								template = fits.open(template_file_name)[0].data
+
+								if show_input_maps:
+									plt.figure()
+									plt.title(template_file_name)
+									plt.imshow(template, origin='lower')
+									plt.colorbar()
+									plt.show()
+
+
+
 							else:
 								template = fits.open(file_name)[template_name].data
+
+							# 	template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
+							
+							# print('template file name is ', template_file_name)
+
+							# if template_name=='planck':
+							# 	print('file name here is ', file_name)
+							# 	# template = fits.open(file_name)[template_name +'_500'].data # temporary
+							# 	template = fits.open(file_name)[template_name +'_'+str(gdat.lam_dict[gdat.band_dict[band]])].data
+							# else:
+							# 	template = fits.open(file_name)[template_name].data
+							
+							# template = fits.open(file_name)[template_name].data
 
 							if show_input_maps:
 								plt.figure()
@@ -212,33 +241,42 @@ class pcat_data():
 							# 	# template = np.load(template_file_name)['iris_map']
 
 
-							if gdat.inject_dust and template_name=='planck':
-								print('we are putting in dust now')
+							# if gdat.inject_dust and template_name=='planck':
+							# 	print('we are putting in dust now')
 
-								image += template
+							# 	image += template
 
-								if show_input_maps:
-									plt.figure()
-									plt.title('image + dust')
-									plt.imshow(image, origin='lower')
-									plt.colorbar()
-									plt.show()
+							# 	if show_input_maps:
+							# 		plt.figure()
+							# 		plt.subplot(1,2,1)
+							# 		plt.title('injected dust')
+							# 		plt.imshow(template, origin='lower')
+							# 		plt.colorbar()
+							# 		plt.subplot(1,2,2)
+							# 		plt.title('image + dust')
+							# 		plt.imshow(image, origin='lower')
+							# 		plt.colorbar()
+							# 		plt.tight_layout()
+							# 		plt.show()
 
-							if gdat.inject_sz_frac > 0. and template_name=='sze':
+							if gdat.inject_sz_frac is not None and template_name=='sze':
 								print('injecting SZ frac of ', gdat.inject_sz_frac)
 								
-								image += gdat.inject_sz_frac*template*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
+								template_inject = gdat.inject_sz_frac*template*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
+
+								image += template_inject
 
 								if show_input_maps:
 									plt.figure(figsize=(8, 4))
 									plt.subplot(1,2,1)
-									plt.title('template here, injected amplitude is '+str(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]))
-									plt.imshow(template, origin='lower')
+									plt.title('injected amp is '+str(np.round(gdat.inject_sz_frac*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]], 4)))
+									plt.imshow(template_inject, origin='lower', cmap='Greys')
 									plt.colorbar()
 									plt.subplot(1,2,2)
 									plt.title('image + sz')
-									plt.imshow(image, origin='lower')
+									plt.imshow(image, origin='lower', cmap='Greys')
 									plt.colorbar()
+									plt.tight_layout()
 									plt.show()
 
 
@@ -312,9 +350,15 @@ class pcat_data():
 
 						if show_input_maps:
 							plt.figure()
+							plt.subplot(1,2,1)
 							plt.title('resized template -- '+gdat.template_order[t])
 							plt.imshow(resized_template, cmap='Greys', origin='lower')
 							plt.colorbar()
+							plt.subplot(1,2,2)
+							plt.title('image + '+gdat.template_order[t])
+							plt.imshow(resized_image, origin='lower', cmap='Greys')
+							plt.colorbar()
+							plt.tight_layout()
 							plt.show()
 
 						if gdat.template_order[t] == 'dust' or gdat.template_order[t] == 'planck':
@@ -323,10 +367,31 @@ class pcat_data():
 
 							if show_input_maps:
 								plt.figure()
-								plt.title('zero-centered template -- '+gdat.template_order[t])
-								plt.imshow(resized_template, cmap='Greys', origin='lower')
+								plt.title(gdat.template_order[t]+', '+gdat.tail_name)
+								# plt.title('zero-centered template -- '+gdat.template_order[t]+', '+gdat.tail_name)
+								plt.imshow(resized_template, cmap='Greys', origin='lower', vmin=np.percentile(resized_template, 5), vmax=np.percentile(resized_template, 95))
 								plt.colorbar()
+								# plt.savefig('../zc_dust_temps/zc_dust_'+gdat.tail_name+'_band'+str(i)+'.png', bbox_inches='tight')
 								plt.show()
+
+
+							if gdat.inject_dust and template_name=='planck':
+								print('we are putting in dust now')
+
+								resized_image += resized_template
+
+								if show_input_maps:
+									plt.figure()
+									plt.subplot(1,2,1)
+									plt.title('injected dust')
+									plt.imshow(resized_template, origin='lower')
+									plt.colorbar()
+									plt.subplot(1,2,2)
+									plt.title('image + dust')
+									plt.imshow(resized_image, origin='lower')
+									plt.colorbar()
+									plt.tight_layout()
+									plt.show()
 
 						resized_template_list.append(resized_template.astype(np.float32))
 					else:
@@ -337,6 +402,8 @@ class pcat_data():
 
 				variance[variance==0.]=np.inf
 				weight = 1. / variance
+
+				print('GDAT.MEAN OFFSET[i] is ', gdat.mean_offsets[i])
 
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(resized_error.astype(np.float32))
@@ -388,9 +455,12 @@ class pcat_data():
 			
 			if show_input_maps:
 				plt.figure()
-				plt.title('data')
+				plt.title('data, '+gdat.tail_name)
 				plt.imshow(self.data_array[i], vmin=np.percentile(self.data_array[i], 5), vmax=np.percentile(self.data_array[i], 95), cmap='Greys', origin=[0,0])
 				plt.colorbar()
+				if i==2:
+					print('saving this one boyyyy')
+					plt.savefig('../data_sims/'+gdat.tail_name+'_data_500micron.png', bbox_inches='tight')
 				plt.show()
 
 				plt.figure()
@@ -416,7 +486,7 @@ class pcat_data():
 			self.cfs.append(cf)
 			self.ncs.append(nc)
 			self.nbins.append(nbin)
-			self.biases.append(gdat.bias)
+			# self.biases.append(gdat.bias)
 			self.fracs.append(gdat.frac)
 
 

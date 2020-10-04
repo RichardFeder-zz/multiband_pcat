@@ -5,7 +5,7 @@ import ctypes
 from ctypes import c_int, c_double
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import time
 import os
@@ -19,7 +19,7 @@ from image_eval import psf_poly_fit, image_model_eval
 from fast_astrom import *
 import pickle
 from spire_data_utils import *
-from spire_roc import *
+#from spire_roc import *
 from spire_plotting_fns import *
 
 
@@ -96,10 +96,23 @@ def initialize_c(gdat, libmmult, cblas=False):
 
 def create_directories(gdat):
 	new_dir_name = gdat.result_path+'/'+gdat.timestr
+	timestr = gdat.timestr
+	if os.path.isdir(gdat.result_path+'/'+gdat.timestr):
+		i = 0
+		while os.path.isdir(gdat.result_path+'/'+gdat.timestr+'_'+str(i)):
+			i += 1
+		
+		timestr = gdat.timestr+'_'+str(i)
+		new_dir_name = gdat.result_path+'/'+timestr
+		
 	frame_dir_name = new_dir_name+'/frames'
+	
 	if not os.path.isdir(frame_dir_name):
 		os.makedirs(frame_dir_name)
-	return frame_dir_name, new_dir_name
+	
+
+	print('timestr:', timestr)
+	return frame_dir_name, new_dir_name, timestr
 
 ''' neighbours function is used in merge proposal, where you have some source and you want to choose a nearby source with some probability to merge'''
 def neighbours(x,y,neigh,i,generate=False):
@@ -152,7 +165,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	# filepath = result_path + timestr
 	# gdat.float_background = None
 
-	roc = cross_match_roc(filetype='.npy')
+	#roc = cross_match_roc(filetype='.npy')
 	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
 
 	for i, band in enumerate(gdat.bands):
@@ -181,7 +194,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	fd_conv_fac = None # if units are MJy/sr this changes to a number, otherwise default flux density units are mJy/beam
 	nsrcs = chain['n']
-
 	xsrcs = chain['x']
 	ysrcs = chain['y']
 	fsrcs = chain['f']
@@ -279,9 +291,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
 			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
-
-			f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+title_band_dict[bands[b]])
-			f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+			if gdat.nsamp > 50:
+				f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+title_band_dict[bands[b]])
+				f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
@@ -309,7 +321,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 					# print('template amplitudes are ', template_amplitudes[:,t,b], file=gdat.flog)
 					# print('template_amplitudes[:,b,t] has shape', template_amplitudes[:,t,b].shape, file=gdat.flog)
 
-					if gdat.template_order[t]=='dust':
+					if gdat.template_order[t]=='dust' or gdat.template_order[t]=='planck':
 						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], ylabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
 						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
 					
@@ -318,16 +330,58 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 						f_temp_median_and_variance.savefig(template_dir+'/'+gdat.template_order[t]+'_template_median_std_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 					else:
-						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
-						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+						mock_truth = None
+						if gdat.template_order[t]=='sze':
+							temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
+							mock_truth = None
+							if gdat.inject_sz_frac is not None:
+								mock_truth = temp_mock_amps_dict[gdat.band_dict[bands[b]]]*gdat.inject_sz_frac
+								print('mock truth is ', mock_truth)
 
 
+						# integrate_sz_prof = True
+						# if integrate_sz_prof:
+						if gdat.integrate_sz_prof:
 
-					f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
-					f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+							pixel_sizes = dict({'S':6, 'M':8, 'L':12}) # arcseconds
 
-					f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
-					f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+							npix = dat.template_array[b][t].shape[0]*dat.template_array[b][t].shape[1]
+							geom_fac = (np.pi*pixel_sizes[gdat.band_dict[bands[b]]]/(180.*3600.))**2
+							print('geometric factor is ', geom_fac)
+
+							print('integrating sz profiles..')
+
+							template_flux_densities = np.array([np.sum(amp*dat.template_array[b][t]) for amp in template_amplitudes[burn_in:, t, b]])
+
+							print('template_flux densities:', template_flux_densities)
+
+							if fd_conv_fac is not None:
+								template_flux_densities /= fd_conv_fac
+
+							template_flux_densities *= geom_fac
+
+							template_flux_densities *= 1e6 # MJy to Jy
+							
+							if b > 0:
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+						
+								f_temp_amp_post = plot_posterior_template_amplitude(template_flux_densities, mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel_unit='[Jy]') # newt
+
+
+						else:
+							if b > 0:
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+							
+								
+								f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,	template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+
+
+					if gdat.template_order != 'sze' or b > 0:
+						f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+						f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+					if gdat.nsamp > 50:
+						f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
+						f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
@@ -351,7 +405,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	print('proposal types:', proposal_types)
 	print('accept_stats is ', accept_stats)
-	f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types)
+	f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types, smooth_fac=10)
 	f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
@@ -609,7 +663,7 @@ class Model:
 		self.moveweights = np.array([80., 40., 40., 0., 0.]) # template
 
 		self.n_templates = gdat.n_templates # template
-		self.temp_amplitude_sigs = dict({'sze':0.0005, 'dust':0.1}) # newt sz template normalized to unity, dust template in units of Jy/beam
+		self.temp_amplitude_sigs = dict({'sze':0.0005, 'dust':0.1, 'planck':0.05}) # newt sz template normalized to unity, dust template in units of Jy/beam
 		# self.temp_amplitude_sigs = np.array([0.001 for x in range(self.n_templates)]) # template newt 0.002 to 0.001
 		
 		# self.template_amplitudes = np.array(self.gdat.template_amplitudes) # template shape nbands x n_templates
@@ -636,7 +690,6 @@ class Model:
 			# print('key:', key)
 			# for b, band in enumerate(gdat.bands):
 
-				# print('band at 561 is ', band, gdat.band_dict[band], val[gdat.band_dict[band]])
 				
 				# self.template_amplitudes[nt][b] = val[gdat.band_dict[band]]
 			# nt += 1
@@ -1265,6 +1318,7 @@ class Model:
 
 		proposal.dback[bkg_idx] = dback
 
+		# maybe I should not be placing a prior on the background level.. TODO
 		bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_mus[bkg_idx])**2/(2*bkg_prior_sig**2)
 		bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_mus[bkg_idx])**2/(2*bkg_prior_sig**2)
 
@@ -1277,31 +1331,42 @@ class Model:
 	def perturb_template_amplitude(self):
 
 		proposal = Proposal(self.gdat)
+		proposal.dtemplate = np.zeros((self.gdat.n_templates, self.gdat.nbands)) # newt
 
-		template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
-
+		#template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
+		template_idx = 0 # for this test we are only perturbing the SZ amplitudes, not the dust
 		temp_band_idxs = self.gdat.template_band_idxs[template_idx]
 
-		# print('chosen temp_band_idxs on this proposal:', temp_band_idxs)
-		band_weights = []
-		for idx in temp_band_idxs:
-			if np.isnan(idx):
-				band_weights.append(0.)
-			else:
-				band_weights.append(1.)
-
-		band_weights /= np.sum(band_weights)
-
-		band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
-
 		d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[self.gdat.template_order[template_idx]])
-		
-		proposal.dtemplate = np.zeros((self.gdat.n_templates, self.gdat.nbands)) # newt
-		proposal.dtemplate[template_idx, band_idx] = d_amp # newt
+
+
+		if self.gdat.delta_cp_bool and self.gdat.template_order[template_idx] != 'sze':
+			if self.gdat.template_order[template_idx] == 'planck' or self.gdat.template_order[template_idx]=='dust':
+				proposal.dtemplate[template_idx,:] = d_amp
+
+		else:
+			# print('chosen temp_band_idxs on this proposal:', temp_band_idxs)
+			band_weights = []
+			for idx in temp_band_idxs:
+				if np.isnan(idx):
+					band_weights.append(0.)
+				else:
+					band_weights.append(1.)
+
+			# uncomment to institute DELTA FN PRIOR SZE @ 250 micron
+			if self.gdat.template_order[template_idx] == 'sze':
+				# print('setting weight to zero')
+				band_weights[0] = 0.
+
+			band_weights /= np.sum(band_weights)
+
+			band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
+
+			proposal.dtemplate[template_idx, band_idx] = d_amp # newt
 
 		# update: now using a non-negativity prior on SZ amplitudes (might be good for dust as well at some point).
 		# the lines below are implementing a step function prior where the ln(prior) = -np.inf when the amplitude is negative
-		if self.gdat.template_order[template_idx] == 'sze':
+		if self.gdat.template_order[template_idx] == 'sze' and self.gdat.sz_positivity_prior:
 			
 			old_temp_amp = self.template_amplitudes[template_idx,band_idx] +self.dtemplate[template_idx, band_idx]
 			new_temp_amp = old_temp_amp+proposal.dtemplate[template_idx,band_idx]
@@ -1875,31 +1940,40 @@ class lion():
 
 
 	def __init__(self, 
+			
+			# --------------------------------- IMAGE BANDS/SIZING --------------------------------
+
 			# resizes images to largest square dimension modulo nregion
 			auto_resize = True, \
 			# don't use 'down' configuration yet, not implemented consistently in all data parsing routines
 			round_up_or_down = 'up',\
-
 			#specify these if you want to fix the dimension of incoming image
 			width = 0, \
 			height = 0, \
-			
 			# these set x/y coordinate of lower left corner if cropping image
 			x0 = 0, \
 			y0 = 0, \
-
 			bolocam_mask = False, \
+			use_mask = True, \
 
 			#indices of bands used in fit, where 0->250um, 1->350um and 2->500um.
 			band0 = 0, \
 			band1 = None, \
 			band2 = None, \
+
+			# Full width half maximum for the PSF of the instrument/observation. Currently assumed to be Gaussian, but other 
+			# PCAT implementations have used a PSF template, so perhaps a more detailed PSF model could be added as another FITS header
+			psf_pixel_fwhm = 3.0, \
+			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
+			noise_thresholds=None, \
 			
+			# ---------------------------------- BACKGROUND PARAMS --------------------------------
+
 			# bias is used now for the initial background level for each band
-			bias =[0.005], \
-			# mean offset can be used if one wants to subtract some initial level from the input map
+			bias = None, \
+			# mean offset can be used if one wants to subtract some initial level from the input map, but setting the bias to the value 
+			# is functionally the same
 			mean_offsets = None, \
-			
 			# boolean determining whether to use background proposals
 			float_background = False, \
 			# bkg_sig_fac scales the width of the background proposal distribution
@@ -1912,154 +1986,147 @@ class lion():
 			# useful to have this slightly greater than zero so the chain can do a little burn in first.
 			bkg_sample_delay = 50, \
 
+			# ---------------------------------- TEMPLATE PARAMS ----------------------------------------
+
 			# this determines when templates start getting fit
 			temp_sample_delay = 100, \
-
 			# boolean determining whether to float emission template amplitudes, e.g. for SZ or lensing templates
 			float_templates = False, \
 			# names of templates to use in fit, I think there will be a separate template folder where the names specify which files to read in
 			template_names = None, \
 			# initial amplitudes for specified templates
-			
 			init_template_amplitude_dicts = None, \
-			
 			# if template file name is not None then it will grab the template from this path and replace PSW with appropriate band
 			template_filename = None, \
-
 			# same idea here as bkg_moveweight
 			template_moveweight = 20., \
+			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values at 250/350/500 micron
+			# inject_sz_frac = 0.0, \
+			inject_sz_frac = None, \
+			# if true, prior is renormalized with zero probability for amplitudes less than zero
+			sz_positivity_prior = False, \
+			# if True, look for dust template in input data structure and inject directly to map once resized
+			# with the dust, there is also a step that zero centers the template, since we are primarily concerned with the differential perturbation
+			# to the image 
+			inject_dust = False, \
 
-			# Full width half maximum for the PSF of the instrument/observation
-			psf_pixel_fwhm = 3.0, \
+			# boolean which when True results in a delta function color prior for dust templates 
+			delta_cp_bool = False, \
+
+
+			# --------------------------------- DATA CONFIGURATION ----------------------------------------
 
 			# use if loading data from object and not from saved fits files in directories
 			map_object = None, \
-
 			# Configure these for individual directory structure
 			base_path = '/Users/richardfeder/Documents/multiband_pcat/', \
 			result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results',\
 			data_path = None, \
-			
 			# the tail name can be configured when reading files from a specific dataset if the name space changes.
 			# the default tail name should be for PSW, as this is picked up in a later routine and modified to the appropriate band.
 			tail_name = 'PSW_sim2300', \
-
 			# file_path can be provided if only one image is desired with a specific path not consistent with the larger directory structure
 			file_path = None, \
-			
 			# name of cluster being analyzed. If there is no map object, the location of files is assumed to be "data_repo/dataname/dataname_tailname.fits"
 			dataname = 'a0370', \
-
 			# mock dataset name
 			mock_name = None, \
-			
 			# filepath for previous catalog if using as an initial state. loads in .npy files
 			load_state_timestr = None,\
-			
 			# set flag to True if you want posterior plots/catalog samples/etc from run saved
 			save = True, \
 
+			# ---------------------------------- SAMPLER PARAMS ------------------------------------------
+
 			# number of thinned samples
 			nsamp = 500, \
-
 			# factor by which the chain is thinned
 			nloop = 1000, \
-
 			# scalar factor in regularization prior, scales dlogL penalty when adding/subtracting a source
 			alph = 1.0, \
-
 			# scale for merge proposal i.e. how far you look for neighbors to merge
 			kickrange = 1.0, \
-
 			# used in subregion model evaluation
 			margin = 10, \
-
 			# maximum number of sources allowed in the code, might change depending on the image
 			max_nsrc = 2000, \
-
 			# nominal number of sources expected in a given image, helps set sample step sizes during MCMC
 			nominal_nsrc = 1000, \
-
 			# splits up image into subregions to do proposals within
 			nregion = 5, \
-
 			# used when splitting sources and determining colors of resulting objects
 			split_col_sig = 0.2, \
-
 			# set linear_flux to true in order to get color priors in terms of linear flux density ratios
 			linear_flux = False, \
-
 			# number counts power law slope for sources
 			truealpha = 3.0, \
-
 			# minimum flux allowed in fit for SPIRE sources (Jy)
 			trueminf = 0.003, \
 
+			# ----------------------------------- DIAGNOSTICS/POSTERIOR ANALYSIS -------------------------------------
+			
 			# interactive backend should be loaded before importing pyplot
 			visual = False, \
-
 			# used for visual mode
 			weighted_residual = False, \
-
+			# can have fully deterministic trials by specifying a random initial seed 
+			init_seed = None, \
 			# to show raw number counts set to True
 			raw_counts = False, \
-
 			# verbosity during program execution
 			verbtype = 0, \
-
 			# number of residual samples to average for final product
 			residual_samples = 100, \
-
 			# set to True to automatically make posterior/diagnostic plots after the run 
 			make_post_plots = False, \
-
 			# used for computing posteriors
 			burn_in_frac = 0.6, 
-
 			# save posterior plots
 			bool_plot_save = True, \
-
 			# return median model image from last 'residual_samples' samples 
 			return_median_model = False, \
+			# if PCAT run is part of larger ensemble of test realizations, a file with the associated run IDs (time strings) can be specified
+			# and updated with the current run ID.
+			timestr_list_file = None, \
+			# print script output to log file for debugging
+			print_log=False, \
+			# this parameter can be set to true when validating the input data products are correct
+			show_input_maps=False, \
+			# when we have different SZ models to test from Bolocam, setting this to True will report integrated SZ contribution in Jy,
+			# rather than the peak normalized amplitude.
+			integrate_sz_prof=False, \
 
+			# ----------------------------------- COMPUTATIONAL ROUTINE OPTIONS -------------------------------
+			
 			# set to True if using CBLAS library
 			cblas=False, \
-
 			# set to True if using OpenBLAS library for non-Intel processors
-			openblas=False, \
-
-			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
-			noise_thresholds=None, \
-
-			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values at 250/350/500 micron
-			inject_sz_frac = 0.0, \
-
-			inject_dust = False, \
-
-			timestr_list_file = None, \
-
-			print_log=False, \
-
-			# this parameter can be set to true when validating the input data products are correct
-			show_input_maps=False):
+			openblas=False):
 
 
 		for attr, valu in locals().items():
 			if '__' not in attr and attr != 'gdat' and attr != 'map_object':
 				setattr(self.gdat, attr, valu)
 
-		if self.gdat.mean_offsets is None:
-			self.gdat.mean_offsets = np.zeros_like(self.gdat.bias)
+		#if specified, use seed for random initialization
+		if self.gdat.init_seed is not None:
+			np.random.seed(self.gdat.init_seed)
 
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.lam_dict = dict({'S':250, 'M':350, 'L':500})
 
+		#self.gdat.timestr = '20200921-182006'
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
+		
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
 		self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
 
-		template_band_idxs = dict({'sze':[0, 1, 2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2]})
+		if self.gdat.mean_offsets is None:
+			self.gdat.mean_offsets = np.zeros_like(np.array(self.gdat.bands))
+			# self.gdat.mean_offsets = np.zeros_like(self.gdat.bias)
+
+		template_band_idxs = dict({'sze':[0, 1, 2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2], 'planck':[0,1,2]})
 
 		self.gdat.template_order = []
 		
@@ -2089,9 +2156,21 @@ class lion():
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
 		self.data.load_in_data(self.gdat, map_object=map_object, show_input_maps=self.gdat.show_input_maps)
 
+		if self.gdat.bias is None:
+			print('computing median within each image and setting as initial background')
+			self.gdat.bias = np.zeros((self.gdat.nbands,))
+			for b, band in enumerate(self.gdat.bands):
+
+				median_val = np.median(self.data.data_array[b])
+				print('median value is ', median_val)
+				self.gdat.bias[b] = median_val - 0.003 # subtract by 3 mJy/beam since background level is biased high by sources
+
+			print('BIASES are now ', self.gdat.bias)
+
 		if self.gdat.save:
 			#create directory for results, save config file from run
-			frame_dir, newdir = create_directories(self.gdat)
+			frame_dir, newdir, timestr = create_directories(self.gdat)
+			self.gdat.timestr = timestr
 			self.gdat.frame_dir = frame_dir
 			self.gdat.newdir = newdir
 			save_params(newdir, self.gdat)
@@ -2115,7 +2194,8 @@ class lion():
 			if sys.version_info[0] == 2:
 				libmmult = npct.load_library('pcat-lion', '.')
 			else:
-				libmmult = npct.load_library('pcat-lion.so', '.')
+				libmmult = npct.load_library('pcat-lion', '.')
+				#libmmult = npct.load_library('pcat-lion.so', '.')
 
 		elif self.gdat.openblas:
 			print('Using OpenBLAS routines... :-/ ', file=self.gdat.flog)
@@ -2128,7 +2208,7 @@ class lion():
 
 		else:
 			print('Using slower BLAS routines.. :-( ', file=self.gdat.flog)
-			libmmult = ctypes.cdll['blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
+			libmmult = ctypes.cdll['./blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
 			# libmmult = npct.load_library('blas', '.')
 
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
@@ -2158,7 +2238,7 @@ class lion():
 			
 			# once ready to sample, recompute proposal weights
 			elif j==self.gdat.bkg_sample_delay:
-				print('Starting to sample background/templates now', file=self.gdat.flog)
+				print('Starting to sample background now', file=self.gdat.flog)
 				# if j>0:
 					# model.moveweights *= sumweights
 
@@ -2172,7 +2252,7 @@ class lion():
 				print('moveweights:', model.moveweights, file=self.gdat.flog)
 
 			if j==self.gdat.temp_sample_delay:
-				print('starting to sample templates')
+				print('Starting to sample templates now', file=self.gdat.flog)
 
 
 
@@ -2196,13 +2276,7 @@ class lion():
 			# save final catalog state
 			np.savez(self.gdat.result_path + '/'+str(self.gdat.timestr)+'/final_state.npz', cat=model.stars, bkg=model.bkg, templates=model.template_amplitudes)
 
-		if self.gdat.make_post_plots:
-			result_plots(gdat = self.gdat)
 
-		dt_total = time.time() - start_time
-		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)
-		print('Time String:', str(self.gdat.timestr), file=self.gdat.flog)
-		
 		if self.gdat.timestr_list_file is not None:
 			if path.exists(self.gdat.timestr_list_file):
 				timestr_list = list(np.load(self.gdat.timestr_list_file)['timestr_list'])
@@ -2210,7 +2284,19 @@ class lion():
 			else:
 				timestr_list = [self.gdat.timestr]
 			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
-		
+
+
+		if self.gdat.make_post_plots:
+			result_plots(gdat = self.gdat)
+
+		dt_total = time.time() - start_time
+		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)
+
+		print('Time String:', str(self.gdat.timestr), file=self.gdat.flog)
+
+		with open(self.gdat.newdir+'/time_elapsed.txt', 'w') as filet:
+			filet.write('time elapsed: '+str(np.round(dt_total,3))+'\n')
+			
 		if self.gdat.print_log:
 			self.gdat.flog.close()
 
