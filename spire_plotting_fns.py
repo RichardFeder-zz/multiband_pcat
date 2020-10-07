@@ -376,7 +376,7 @@ def plot_template_median_std(template, template_samples, band='250 micron', temp
 
 # fourier comps
 
-def plot_fc_median_std(fourier_coeffs, imsz, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None):
+def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None):
 	
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
@@ -392,29 +392,59 @@ def plot_fc_median_std(fourier_coeffs, imsz, fourier_templates=None, title=True,
 
 	for i, fourier_coeff_state in enumerate(fourier_coeffs):
 		all_temps[i] = generate_template(fourier_coeff_state, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
+		if bkg_samples is not None:
+			all_temps[i] += bkg_samples[i]
 
 	mean_fc_temp = np.median(all_temps, axis=0)
 	std_fc_temp = np.std(all_temps, axis=0)
 
-	f = plt.figure(figsize=(10, 5))
-	if title:
-		plt.suptitle('Fourier component model')
-	
-	plt.subplot(1,2,1)
-	plt.title('Median'+xlabel_unit)
-	plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_fc_temp, 95)/convert_to_MJy_sr_fac)
-	plt.colorbar()
-	plt.subplot(1,2,2)
-	plt.title('Standard deviation'+xlabel_unit)
-	plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
-	plt.colorbar()
+	if ref_img is not None:
+		f = plt.figure(figsize=(10, 10))
+		if title:
+			plt.suptitle('Best fit Fourier component model', y=1.02)
 
+		plt.subplot(2,2,1)
+		plt.title('Data')
+		plt.imshow(ref_img, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
+		cb = plt.colorbar(orientation='horizontal')
+		cb.set_label(xlabel_unit)
+		plt.subplot(2,2,2)
+		plt.title('Median background model')
+		plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
+		cb = plt.colorbar(orientation='horizontal')
+		cb.set_label(xlabel_unit)		
+		plt.subplot(2,2,3)
+		plt.title('Data - median background model')
+		# plt.imshow(ref_img - mean_fc_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5), vmax=0.01)
+		plt.imshow(ref_img - mean_fc_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5), vmax=np.percentile(ref_img-mean_fc_temp, 95))
+		cb = plt.colorbar(orientation='horizontal')
+		cb.set_label(xlabel_unit)
+		plt.subplot(2,2,4)
+		plt.title('Std. dev. of background model')
+		plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
+		cb = plt.colorbar(orientation='horizontal')
+		cb.set_label(xlabel_unit, fontsize='small')
+
+	else:
+
+
+
+		plt.subplot(1,2,1)
+		plt.title('Median'+xlabel_unit)
+		plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_fc_temp, 95)/convert_to_MJy_sr_fac)
+		plt.colorbar()
+		plt.subplot(1,2,2)
+		plt.title('Standard deviation'+xlabel_unit)
+		plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
+		plt.colorbar()
+
+	plt.tight_layout()
 	if show:
 		plt.show()
 	
 	return f
 
-def plot_last_fc_map(fourier_coeffs, imsz, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None, titlefontsize=18):
+def plot_last_fc_map(fourier_coeffs, imsz, ref_img=None, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None, titlefontsize=18):
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
 		xlabel_unit = ' [Jy/beam]'
@@ -428,11 +458,24 @@ def plot_last_fc_map(fourier_coeffs, imsz, fourier_templates=None, title=True, s
 		fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms)
 	last_temp = generate_template(fourier_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
 
-	f = plt.figure()
-	plt.title('Last fourier model realization', fontsize=titlefontsize)
-	plt.imshow(last_temp/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower')
-	plt.colorbar()
+	if ref_img is not None:
+		f = plt.figure(figsize=(10, 5))
+		plt.subplot(1,2,1)
+		plt.title('Data', fontsize=titlefontsize)
+		plt.imshow(ref_img, cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95), origin='lower')
+		plt.colorbar()
+		plt.subplot(1,2,2)
+		plt.title('Last fourier model realization', fontsize=titlefontsize)
+		plt.imshow(last_temp/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower', vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
+		plt.colorbar()
 
+	else:
+		f = plt.figure()
+		plt.title('Last fourier model realization', fontsize=titlefontsize)
+		plt.imshow(last_temp/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower')
+		plt.colorbar()
+
+	plt.tight_layout()
 	if show:
 		plt.show()
 

@@ -312,10 +312,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	# 	# median and variance of fourier component model posterior
 
-		f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0])
+		f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0], ref_img=dat.data_array[0], bkg_samples=bkgs[burn_in:,0])
 		f_fc_median_std.savefig(fc_dir+'/fourier_comp_model_median_std.'+plttype, bbox_inches='tight', dpi=dpi)
 
-		f_fc_last = plot_last_fc_map(fourier_coeffs[-1], gdat.imszs[0])
+		f_fc_last = plot_last_fc_map(fourier_coeffs[-1], gdat.imszs[0],ref_img=dat.data_array[0])
 		f_fc_last.savefig(fc_dir+'/last_sample_fourier_comp_model.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
@@ -435,13 +435,18 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	# ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
 	
 
+	# fourier comps
+	proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
+
 	if gdat.float_background:
 		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split', 'Background']
 
-		if gdat.float_templates:
-			proposal_types.append('Templates')
-	else:
-		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
+	if gdat.float_templates:
+		proposal_types.append('Templates')
+	if gdat.float_fourier_comps:
+		proposal_types.append('Fourier comps')
+	# else:
+		# proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split']
 
 	print('proposal types:', proposal_types)
 	print('accept_stats is ', accept_stats)
