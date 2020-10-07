@@ -8,10 +8,8 @@ import networkx as nx
 from matplotlib.collections import PatchCollection
 import matplotlib.patches as patches
 from PIL import Image
-#import imageio
 
-
-
+from fourier_bkg_modl import *
 
 def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
 
@@ -51,8 +49,8 @@ def plot_atcr(listsamp, title):
 
 
 def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', 'residual0','residual1','residual2','residual2zoom'], \
-							zoom0lims=[[90, 140], [70, 120]], zoom1lims=[[70, 110], [70, 110]], zoom2lims=[[50, 70], [50, 70]], \
-							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None):
+							zoom0lims=[[0, 50], [70, 120]], zoom1lims=[[70, 110], [70, 110]], zoom2lims=[[50, 70], [50, 70]], \
+							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None, fourier_bkg=None, frame_dir_path=None):
 
 	
 	if panel0 is not None:
@@ -69,7 +67,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 		panels[5] = panel5
 
 	plt.gcf().clear()
-	plt.figure(1, figsize=(9, 4))
+	plt.figure(1, figsize=(15, 10))
 	plt.clf()
 
 	for i in range(6):
@@ -77,7 +75,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 		plt.subplot(2,3,i+1)
 
 		if 'data0' in panels[i]:
-			plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[0], 5.), vmax=np.percentile(obj.dat.data_array[0], 99.9))
+			plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[0], 5.), vmax=np.percentile(obj.dat.data_array[0], 95.0))
 			plt.colorbar()
 			plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
 			if panels[i]=='data0zoom':
@@ -92,7 +90,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 		elif 'data1' in panels[i]:
 			xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 0)
 
-			plt.imshow(obj.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[1], 5.), vmax=np.percentile(obj.dat.data_array[1], 99.9))
+			plt.imshow(obj.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[1], 5.), vmax=np.percentile(obj.dat.data_array[1], 95.0))
 			plt.colorbar()
 			plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
 
@@ -103,12 +101,12 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 			else:
 				plt.title('Data (second band)')
 				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[1][1]-0.5)	
+				plt.ylim(-0.5, obj.imszs[1][1]-0.5) 
 
 		elif 'data2' in panels[i]:
 			xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 1)
 
-			plt.imshow(obj.dat.data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[2], 5.), vmax=np.percentile(obj.dat.data_array[2], 99.9))
+			plt.imshow(obj.dat.data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[2], 5.), vmax=np.percentile(obj.dat.data_array[2], 95.0))
 			plt.colorbar()
 			plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
 			
@@ -119,10 +117,10 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 			else:
 				plt.title('Data (third band)')
 				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[2][1]-0.5)	
+				plt.ylim(-0.5, obj.imszs[2][1]-0.5) 
 
 		elif 'model0' in panels[i]:
-			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[0], 5.), vmax=np.percentile(models[0], 99.9))
+			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[0], 5.), vmax=np.percentile(models[0], 95.0))
 			plt.colorbar()
 
 			if panels[i]=='model0zoom':
@@ -136,7 +134,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 
 		elif 'model1' in panels[i]:
-			plt.imshow(models[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[1], 5.), vmax=np.percentile(models[1], 99.9))
+			plt.imshow(models[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[1], 5.), vmax=np.percentile(models[1], 95.0))
 			plt.colorbar()
 
 			if panels[i]=='model1zoom':
@@ -149,7 +147,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.ylim(-0.5, obj.imszs[1][1]-0.5)
 
 		elif 'model2' in panels[i]:
-			plt.imshow(models[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[2], 5.), vmax=np.percentile(models[2], 99.9))
+			plt.imshow(models[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[2], 5.), vmax=np.percentile(models[2], 95.0))
 			plt.colorbar()
 
 			if panels[i]=='model2zoom':
@@ -160,6 +158,14 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.title('Model (third band)')
 				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
 				plt.ylim(-0.5, obj.imszs[2][1]-0.5)
+
+		elif 'fourier_bkg' in panels[i]:
+			plt.imshow(fourier_bkg, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(fourier_bkg , 5), vmax=np.percentile(fourier_bkg, 95))
+			plt.colorbar()
+		
+			plt.title('Sum of fourier components')
+			plt.xlim(-0.5, obj.imsz0[0]-0.5)
+			plt.ylim(-0.5, obj.imsz0[1]-0.5)
 
 
 		elif 'residual0' in panels[i]:
@@ -173,7 +179,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.title('Residual (first band, zoomed in)')
 				plt.xlim(zoom0lims[0][0], zoom0lims[0][1])
 				plt.ylim(zoom0lims[1][0], zoom0lims[1][1])
-			else:			
+			else:           
 				plt.title('Residual (first band)')
 				plt.xlim(-0.5, obj.imsz0[0]-0.5)
 				plt.ylim(-0.5, obj.imsz0[1]-0.5)
@@ -192,7 +198,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 			else:
 				plt.title('Residual (second band)')
 				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[1][1]-0.5)	
+				plt.ylim(-0.5, obj.imszs[1][1]-0.5) 
 
 
 		elif 'residual2' in panels[i]:
@@ -209,7 +215,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 			else:
 				plt.title('Residual (third band)')
 				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[2][1]-0.5)	
+				plt.ylim(-0.5, obj.imszs[2][1]-0.5) 
 
 
 		elif panels[i]=='dNdS':
@@ -236,6 +242,9 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 
 	# plt.tight_layout()
+	if frame_dir_path is not None:
+		# plt.tight_layout()
+		plt.savefig(frame_dir_path, bbox_inches='tight', dpi=200)
 	plt.draw()
 	plt.pause(1e-5)
 
@@ -274,6 +283,7 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 		plt.show()
 
 	return f
+
 
 def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False, convert_to_MJy_sr_fac=None, smooth_fac=None):
 
@@ -364,6 +374,194 @@ def plot_template_median_std(template, template_samples, band='250 micron', temp
 		plt.show()
 	return f
 
+# fourier comps
+
+def plot_fc_median_std(fourier_coeffs, imsz, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None):
+	
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		xlabel_unit = ' [Jy/beam]'
+	else:
+		xlabel_unit = ' [MJy/sr]'
+
+	n_terms = fourier_coeffs.shape[-2]
+
+	all_temps = np.zeros((fourier_coeffs.shape[0], imsz[0], imsz[1]))
+	if fourier_templates is None:
+		fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms)
+
+	for i, fourier_coeff_state in enumerate(fourier_coeffs):
+		all_temps[i] = generate_template(fourier_coeff_state, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
+
+	mean_fc_temp = np.median(all_temps, axis=0)
+	std_fc_temp = np.std(all_temps, axis=0)
+
+	f = plt.figure(figsize=(10, 5))
+	if title:
+		plt.suptitle('Fourier component model')
+	
+	plt.subplot(1,2,1)
+	plt.title('Median'+xlabel_unit)
+	plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_fc_temp, 95)/convert_to_MJy_sr_fac)
+	plt.colorbar()
+	plt.subplot(1,2,2)
+	plt.title('Standard deviation'+xlabel_unit)
+	plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
+	plt.colorbar()
+
+	if show:
+		plt.show()
+	
+	return f
+
+def plot_last_fc_map(fourier_coeffs, imsz, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None, titlefontsize=18):
+	if convert_to_MJy_sr_fac is None:
+		convert_to_MJy_sr_fac = 1.
+		xlabel_unit = ' [Jy/beam]'
+	else:
+		xlabel_unit = ' [MJy/sr]'
+
+	n_terms = fourier_coeffs.shape[-2]
+
+
+	if fourier_templates is None:
+		fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms)
+	last_temp = generate_template(fourier_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
+
+	f = plt.figure()
+	plt.title('Last fourier model realization', fontsize=titlefontsize)
+	plt.imshow(last_temp/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower')
+	plt.colorbar()
+
+	if show:
+		plt.show()
+
+	return f
+
+
+def plot_fourier_coeffs_covariance_matrix(fourier_coeffs, show=False):
+
+
+	perkmode_data_matrix = np.mean(fourier_coeffs, axis=3)
+	data_matrix = np.array([perkmode_data_matrix[i].ravel() for i in range(perkmode_data_matrix.shape[0])]).transpose()
+	fc_covariance_matrix = np.cov(data_matrix)
+	fc_corrcoef_matrix = np.corrcoef(data_matrix)
+	f = plt.figure(figsize=(10,5))
+	plt.subplot(1,2,1)
+	plt.title('Covariance')
+	plt.imshow(fc_covariance_matrix, vmin=np.percentile(fc_covariance_matrix, 5), vmax=np.percentile(fc_covariance_matrix, 95))
+	plt.colorbar()
+	plt.subplot(1,2,2)
+	plt.title('Correlation coefficient')
+	plt.imshow(fc_corrcoef_matrix, vmin=np.percentile(fc_corrcoef_matrix, 5), vmax=np.percentile(fc_corrcoef_matrix, 95))
+	plt.colorbar()
+
+	if show:
+		plt.show()
+
+
+	return f
+
+def plot_fourier_coeffs_sample_chains(fourier_coeffs, show=False):
+	
+	norm = matplotlib.colors.Normalize(vmin=0, vmax=np.sqrt(2)*fourier_coeffs.shape[1])
+	colormap = matplotlib.cm.ScalarMappable(norm=norm, cmap='jet')
+
+	ravel_ks = [np.sqrt(i**2+j**2) for i in range(fourier_coeffs.shape[1]) for j in range(fourier_coeffs.shape[2])]
+
+	colormap.set_array(ravel_ks/(np.sqrt(2)*fourier_coeffs.shape[1]))
+
+	f, axes = plt.subplots(nrows=2, ncols=2, figsize=(10, 8))
+	ax1, ax2, ax3, ax4 = axes.flatten()
+	xvals = np.arange(fourier_coeffs.shape[0])
+
+	for i in range(fourier_coeffs.shape[1]):
+		for j in range(fourier_coeffs.shape[2]):
+			ax1.plot(xvals, fourier_coeffs[:,i,j,0], alpha=0.5, linewidth=2, color=plt.cm.jet(np.sqrt(i**2+j**2)/(np.sqrt(2)*fourier_coeffs.shape[1])))
+	ax1.set_xlabel('Thinned (post burn-in) samples')
+	ax1.set_ylabel('$B_{ij,1}$', fontsize=18)
+
+	for i in range(fourier_coeffs.shape[1]):
+		for j in range(fourier_coeffs.shape[2]):
+			ax2.plot(xvals, fourier_coeffs[:,i,j,1], alpha=0.5, linewidth=2, color=plt.cm.jet(np.sqrt(i**2+j**2)/(np.sqrt(2)*fourier_coeffs.shape[1])))
+	ax2.set_xlabel('Thinned (post burn-in) samples')
+	ax2.set_ylabel('$B_{ij,2}$', fontsize=18)
+
+	for i in range(fourier_coeffs.shape[1]):
+		for j in range(fourier_coeffs.shape[2]):
+			ax3.plot(xvals, fourier_coeffs[:,i,j,2], alpha=0.5, linewidth=2, color=plt.cm.jet(np.sqrt(i**2+j**2)/(np.sqrt(2)*fourier_coeffs.shape[1])))
+	ax3.set_xlabel('Thinned (post burn-in) samples')
+	ax3.set_ylabel('$B_{ij,3}$', fontsize=18)
+
+	for i in range(fourier_coeffs.shape[1]):
+		for j in range(fourier_coeffs.shape[2]):
+			ax4.plot(xvals, fourier_coeffs[:,i,j,3], alpha=0.5, linewidth=2, color=plt.cm.jet(np.sqrt(i**2+j**2)/(np.sqrt(2)*fourier_coeffs.shape[1])))
+	ax4.set_xlabel('Thinned (post burn-in) samples')
+	ax4.set_ylabel('$B_{ij,4}$', fontsize=18)
+
+	f.colorbar(colormap, orientation='vertical', ax=ax1).set_label('$|k|$', fontsize=14)
+	f.colorbar(colormap, orientation='vertical', ax=ax2).set_label('$|k|$', fontsize=14)
+	f.colorbar(colormap, orientation='vertical', ax=ax3).set_label('$|k|$', fontsize=14)
+	f.colorbar(colormap, orientation='vertical', ax=ax4).set_label('$|k|$', fontsize=14)
+
+
+	plt.tight_layout()
+
+	if show:
+		plt.show()
+
+
+	return f
+
+
+
+def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
+
+	n_terms = fourier_coeffs.shape[1]
+	mesha, meshb = np.meshgrid(np.arange(1, n_terms+1) , np.arange(1, n_terms+1))
+	kmags = np.sqrt(mesha**2+meshb**2)
+	ps_bins = np.logspace(0, np.log10(n_terms+2), 6)
+
+	twod_power_spectrum_realiz = []
+	oned_ps_realiz = []
+	kbin_masks = []
+	for i in range(len(ps_bins)-1):
+		kbinmask = (kmags >= ps_bins[i])*(kmags < ps_bins[i+1])
+		kbin_masks.append(kbinmask)
+
+	for i, fourier_coeff_state in enumerate(fourier_coeffs):
+		av_2d_ps = np.mean(fourier_coeff_state**2, axis=2)
+		oned_ps_realiz.append(np.array([np.mean(av_2d_ps[mask]) for mask in kbin_masks]))
+		twod_power_spectrum_realiz.append(av_2d_ps)
+
+	power_spectrum_realiz = np.array(twod_power_spectrum_realiz)
+	oned_ps_realiz = np.array(oned_ps_realiz)
+
+
+	f = plt.figure(figsize=(10, 5))
+	plt.subplot(1,2,1)
+	plt.imshow(np.median(power_spectrum_realiz, axis=0))
+	plt.colorbar()
+	plt.subplot(1,2,2)
+	fov_in_rad = N*(pixsize/3600.)*(np.pi/180.)
+
+	plt.errorbar(2*np.pi/(fov_in_rad/np.sqrt(ps_bins[1:]*ps_bins[:-1])), np.median(oned_ps_realiz,axis=0), yerr=np.std(oned_ps_realiz, axis=0))
+	plt.xlabel('$2\\pi/\\theta$ [rad$^{-1}$]', fontsize=16)
+	plt.ylabel('$C_{\\ell}$', fontsize=16)
+	plt.yscale('log')
+	plt.xscale('log')
+	plt.tight_layout()
+	if show:
+		plt.show()
+
+	return f
+
+
+# def plot_fourier_coeff_posteriors(fourier_coeffs):
+# 	f = plt.figure()
+
+# 	return f
+
 
 def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None):
 	
@@ -376,7 +574,7 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 	f = plt.figure()
 	if title:
 		plt.title('Uniform background level - '+str(band))
-        
+		
 	if len(bkg_samples)>50:
 		binz = scotts_rule_bins(bkg_samples/convert_to_MJy_sr_fac)
 	else:
@@ -389,7 +587,7 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 	if show:
 		plt.show()
 
-	return f	
+	return f    
 
 def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None, \
 									mock_truth=None, xlabel_unit=None):
@@ -780,116 +978,116 @@ def plot_src_number_trace(nsrc_fov, show=False, title=False):
 
 
 def plot_grap(verbtype=0):
-        
-    figr, axis = plt.subplots(figsize=(6, 6))
+		
+	figr, axis = plt.subplots(figsize=(6, 6))
 
-    grap = nx.DiGraph()   
-    grap.add_edges_from([('muS', 'svec'), ('sigS', 'svec'), ('alpha', 'f0'), ('beta', 'nsrc')])
-    grap.add_edges_from([('back', 'modl'), ('xvec', 'modl'), ('f0', 'modl'), ('svec', 'modl'), ('PSF', 'modl'), ('ASZ', 'modl')])
-    grap.add_edges_from([('modl', 'data')])
-    listcolr = ['black' for i in range(7)]
-    
-    labl = {}
+	grap = nx.DiGraph()   
+	grap.add_edges_from([('muS', 'svec'), ('sigS', 'svec'), ('alpha', 'f0'), ('beta', 'nsrc')])
+	grap.add_edges_from([('back', 'modl'), ('xvec', 'modl'), ('f0', 'modl'), ('svec', 'modl'), ('PSF', 'modl'), ('ASZ', 'modl')])
+	grap.add_edges_from([('modl', 'data')])
+	listcolr = ['black' for i in range(7)]
+	
+	labl = {}
 
-    nameelem = r'\rm{pts}'
-
-
-    labl['beta'] = r'$\beta$'
-    labl['alpha'] = r'$\alpha$'
-    labl['muS'] = r'$\vec{\mu}_S$'
-    labl['sigS'] = r'$\vec{\sigma}_S$'
-    labl['xvec'] = r'$\vec{x}$'
-    labl['f0'] = r'$F_0$'
-    labl['svec'] = r'$\vec{s}$'
-    labl['PSF'] = r'PSF'
-    labl['modl'] = r'$M_D$'
-    labl['data'] = r'$D$'
-    labl['back'] = r'$\vec{A_{sky}}$'
-    labl['nsrc'] = r'$N_{src}$'
-    labl['ASZ'] = r'$\vec{A_{SZ}}$'
-    
-    
-    posi = nx.circular_layout(grap)
-    posi['alpha'] = np.array([-0.025, 0.15])
-    posi['muS'] = np.array([0.025, 0.15])
-    posi['sigS'] = np.array([0.075, 0.15])
-    posi['beta'] = np.array([0.12, 0.15])
-
-    posi['xvec'] = np.array([-0.075, 0.05])
-    posi['f0'] = np.array([-0.025, 0.05])
-    posi['svec'] = np.array([0.025, 0.05])
-    posi['PSF'] = np.array([0.07, 0.05])
-    posi['back'] = np.array([-0.125, 0.05])
-    
-    posi['modl'] = np.array([-0.05, -0.05])
-    posi['data'] = np.array([-0.05, -0.1])
-    posi['nsrc'] = np.array([0.08, 0.01])
-    
-    posi['ASZ'] = np.array([-0.175, 0.05])
+	nameelem = r'\rm{pts}'
 
 
-    rect = patches.Rectangle((-0.10,0.105),0.2,-0.11,linewidth=2, facecolor='none', edgecolor='k')
+	labl['beta'] = r'$\beta$'
+	labl['alpha'] = r'$\alpha$'
+	labl['muS'] = r'$\vec{\mu}_S$'
+	labl['sigS'] = r'$\vec{\sigma}_S$'
+	labl['xvec'] = r'$\vec{x}$'
+	labl['f0'] = r'$F_0$'
+	labl['svec'] = r'$\vec{s}$'
+	labl['PSF'] = r'PSF'
+	labl['modl'] = r'$M_D$'
+	labl['data'] = r'$D$'
+	labl['back'] = r'$\vec{A_{sky}}$'
+	labl['nsrc'] = r'$N_{src}$'
+	labl['ASZ'] = r'$\vec{A_{SZ}}$'
+	
+	
+	posi = nx.circular_layout(grap)
+	posi['alpha'] = np.array([-0.025, 0.15])
+	posi['muS'] = np.array([0.025, 0.15])
+	posi['sigS'] = np.array([0.075, 0.15])
+	posi['beta'] = np.array([0.12, 0.15])
 
-    axis.add_patch(rect)
+	posi['xvec'] = np.array([-0.075, 0.05])
+	posi['f0'] = np.array([-0.025, 0.05])
+	posi['svec'] = np.array([0.025, 0.05])
+	posi['PSF'] = np.array([0.07, 0.05])
+	posi['back'] = np.array([-0.125, 0.05])
+	
+	posi['modl'] = np.array([-0.05, -0.05])
+	posi['data'] = np.array([-0.05, -0.1])
+	posi['nsrc'] = np.array([0.08, 0.01])
+	
+	posi['ASZ'] = np.array([-0.175, 0.05])
 
-    size = 1000
-    nx.draw(grap, posi, labels=labl, ax=axis, edgelist=grap.edges())
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['nsrc'], node_color='white', node_size=500)
 
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['modl'], node_color='xkcd:sky blue', node_size=1000)
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['beta'], node_shape='d', node_color='y', node_size=size)
-    
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['data'],  node_color='grey', node_shape='s', node_size=size)
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['xvec', 'f0', 'svec'], node_color='orange', node_size=size)
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['PSF'], node_shape='d', node_color='orange', node_size=size)
-    
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['back'], node_color='orange', node_size=size)
-    
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['ASZ'], node_color='violet', node_size=size)
+	rect = patches.Rectangle((-0.10,0.105),0.2,-0.11,linewidth=2, facecolor='none', edgecolor='k')
 
-    nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['alpha', 'muS', 'sigS'], node_shape='d', node_color='y', node_size=size)
+	axis.add_patch(rect)
 
-    
-    plt.tight_layout()
-    plt.show()
-    
-    return figr
+	size = 1000
+	nx.draw(grap, posi, labels=labl, ax=axis, edgelist=grap.edges())
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['nsrc'], node_color='white', node_size=500)
+
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['modl'], node_color='xkcd:sky blue', node_size=1000)
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['beta'], node_shape='d', node_color='y', node_size=size)
+	
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['data'],  node_color='grey', node_shape='s', node_size=size)
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['xvec', 'f0', 'svec'], node_color='orange', node_size=size)
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['PSF'], node_shape='d', node_color='orange', node_size=size)
+	
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['back'], node_color='orange', node_size=size)
+	
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['ASZ'], node_color='violet', node_size=size)
+
+	nx.draw_networkx_nodes(grap, posi, ax=axis, labels=labl, nodelist=['alpha', 'muS', 'sigS'], node_shape='d', node_color='y', node_size=size)
+
+	
+	plt.tight_layout()
+	plt.show()
+	
+	return figr
 
 def grab_atcr(timestr, paramstr='template_amplitudes', band=0, result_dir=None, nsamp=500, template_idx=0, return_fig=True):
-    
-    band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
-    lam_dict = dict({0:250, 1:350, 2:500})
+	
+	band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+	lam_dict = dict({0:250, 1:350, 2:500})
 
-    if result_dir is None:
-        result_dir = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
-        print('Result directory assumed to be '+result_dir)
-        
-    chain = np.load(result_dir+str(timestr)+'/chain.npz')
-    if paramstr=='template_amplitudes':
-        listsamp = chain[paramstr][-nsamp:, band, template_idx]
-    else:
-        listsamp = chain[paramstr][-nsamp:, band]
-        
-    f = plot_atcr(listsamp, title=paramstr+', '+band_dict[band])
+	if result_dir is None:
+		result_dir = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
+		print('Result directory assumed to be '+result_dir)
+		
+	chain = np.load(result_dir+str(timestr)+'/chain.npz')
+	if paramstr=='template_amplitudes':
+		listsamp = chain[paramstr][-nsamp:, band, template_idx]
+	else:
+		listsamp = chain[paramstr][-nsamp:, band]
+		
+	f = plot_atcr(listsamp, title=paramstr+', '+band_dict[band])
 
-    if return_fig:
-    	return f
+	if return_fig:
+		return f
 
 
 #def convert_png_to_gif(n_image, filename_list=None, head_name='median_residual_and_smoothed_band', gifdir='figures/frame_dir', name='multiz', fps=2):
 #    images = []
-    
+	
 #    if filename_list is not None:
 #        for i in range(len(filename_list)):
 #            a = Image.open(filename_list[i])
 #            images.append(a)
-            
+			
 #    else:
 #        for i in range(n_image):
 #            a = Image.open(gifdir+'/'+head_name+str(i)+'.png')
 #            images.append(a)
-    
+	
 #    imageio.mimsave(gifdir+'/'+name+'.gif', np.array(images), fps=fps)
-    
+	
 
 
