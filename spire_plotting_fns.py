@@ -49,8 +49,8 @@ def plot_atcr(listsamp, title):
 
 
 def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', 'residual0','residual1','residual2','residual2zoom'], \
-							zoom0lims=[[0, 50], [70, 120]], zoom1lims=[[70, 110], [70, 110]], zoom2lims=[[50, 70], [50, 70]], \
-							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None, fourier_bkg=None, frame_dir_path=None):
+							zoomlims=[[[0, 40], [0, 40]],[[70, 110], [70, 110]], [[50, 70], [50, 70]]], \
+							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None, fourier_bkg=None, frame_dir_path=None, smooth_fac=4):
 
 	
 	if panel0 is not None:
@@ -74,148 +74,80 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 		plt.subplot(2,3,i+1)
 
-		if 'data0' in panels[i]:
-			plt.imshow(obj.dat.data_array[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[0], 5.), vmax=np.percentile(obj.dat.data_array[0], 95.0))
-			plt.colorbar()
-			plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
-			if panels[i]=='data0zoom':
-				plt.title('Data (first band, zoomed in)')
-				plt.xlim(zoom0lims[0][0], zoom0lims[0][1])
-				plt.ylim(zoom0lims[1][0], zoom0lims[1][1])
-			else:
-				plt.title('Data (first band)')
-				plt.xlim(-0.5, obj.imsz0[0]-0.5)
-				plt.ylim(-0.5, obj.imsz0[1]-0.5)
+		band_idx = int(panels[i][-1])
 
-		elif 'data1' in panels[i]:
-			xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 0)
 
-			plt.imshow(obj.dat.data_array[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[1], 5.), vmax=np.percentile(obj.dat.data_array[1], 95.0))
-			plt.colorbar()
-			plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
+		if 'data' in panels[i]:
 
-			if panels[i]=='data1zoom':
-				plt.title('Data (second band, zoomed in)')
-				plt.xlim(zoom1lims[0][0], zoom1lims[0][1])
-				plt.ylim(zoom1lims[1][0], zoom1lims[1][1])
-			else:
-				plt.title('Data (second band)')
-				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[1][1]-0.5) 
-
-		elif 'data2' in panels[i]:
-			xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], 1)
-
-			plt.imshow(obj.dat.data_array[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[2], 5.), vmax=np.percentile(obj.dat.data_array[2], 95.0))
-			plt.colorbar()
-			plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
-			
-			if panels[i]=='data2zoom':
-				plt.title('Data (third band, zoomed in)')
-				plt.xlim(zoom2lims[0][0], zoom2lims[0][1])
-				plt.ylim(zoom2lims[1][0], zoom2lims[1][1])
-			else:
-				plt.title('Data (third band)')
-				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[2][1]-0.5) 
-
-		elif 'model0' in panels[i]:
-			plt.imshow(models[0], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[0], 5.), vmax=np.percentile(models[0], 95.0))
+			plt.imshow(obj.dat.data_array[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[band_idx], 5.), vmax=np.percentile(obj.dat.data_array[band_idx], 95.0))
 			plt.colorbar()
 
-			if panels[i]=='model0zoom':
-				plt.title('Model (first band, zoomed in)')
-				plt.xlim(zoom0lims[0][0], zoom0lims[0][1])
-				plt.ylim(zoom0lims[1][0], zoom0lims[1][1])
+			if band_idx > 0:
+				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
+				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
 			else:
-				plt.title('Model (first band)')
-				plt.xlim(-0.5, obj.imsz0[0]-0.5)
-				plt.ylim(-0.5, obj.imsz0[1]-0.5)
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+			if 'zoom' in panels[i]:
+				plt.title('Data (band '+str(band_idx)+', zoomed in)')
+				plt.xlim(zoomlims[band_idx][0][0], zoomlims[band_idx][0][1])
+				plt.ylim(zoomlims[band_idx][1][0], zoomlims[band_idx][1][1])
+			else:
+				plt.title('Data (band '+str(band_idx)+')')
+				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
 
 
-		elif 'model1' in panels[i]:
-			plt.imshow(models[1], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[1], 5.), vmax=np.percentile(models[1], 95.0))
+		elif 'model' in panels[i]:
+
+			plt.imshow(models[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[band_idx], 5.), vmax=np.percentile(models[band_idx], 95.0))
 			plt.colorbar()
 
-			if panels[i]=='model1zoom':
-				plt.title('Model (second band, zoomed in)')
-				plt.xlim(zoom1lims[0][0], zoom1lims[0][1])
-				plt.ylim(zoom1lims[1][0], zoom1lims[1][1])
+			if 'zoom' in panels[i]:
+				plt.title('Model (band '+str(band_idx)+', zoomed in)')
+				plt.xlim(zoomlims[band_idx][0][0], zoomlims[band_idx][0][1])
+				plt.ylim(zoomlims[band_idx][1][0], zoomlims[band_idx][1][1])
 			else:
-				plt.title('Model (second band)')
-				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[1][1]-0.5)
+				plt.title('Model (band '+str(band_idx)+')')
+				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
 
-		elif 'model2' in panels[i]:
-			plt.imshow(models[2], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[2], 5.), vmax=np.percentile(models[2], 95.0))
-			plt.colorbar()
-
-			if panels[i]=='model2zoom':
-				plt.title('Model (third band, zoomed in)')
-				plt.xlim(zoom2lims[0][0], zoom2lims[0][1])
-				plt.ylim(zoom2lims[1][0], zoom2lims[1][1])
-			else:
-				plt.title('Model (third band)')
-				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[2][1]-0.5)
 
 		elif 'fourier_bkg' in panels[i]:
-			plt.imshow(fourier_bkg, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(fourier_bkg , 5), vmax=np.percentile(fourier_bkg, 95))
+			fbkg = fourier_bkg[band_idx]
+
+			if band_idx > 1:
+				fbkg = gaussian_filter(fbkg, sigma=0.25*obj.imszs[0][0]/obj.n_fourier_terms)
+
+			plt.imshow(fbkg, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(fbkg , 5), vmax=np.percentile(fbkg, 95))
 			plt.colorbar()
 		
-			plt.title('Sum of fourier components')
-			plt.xlim(-0.5, obj.imsz0[0]-0.5)
-			plt.ylim(-0.5, obj.imsz0[1]-0.5)
+			plt.title('Sum of FCs (band '+str(band_idx)+')')
+			plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
+			plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
 
 
-		elif 'residual0' in panels[i]:
+		elif 'residual' in panels[i]:
+
 			if obj.gdat.weighted_residual:
-				plt.imshow(resids[0]*np.sqrt(obj.dat.weights[0]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
+				plt.imshow(resids[band_idx]*np.sqrt(obj.dat.weights[band_idx]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 			else:
-				plt.imshow(resids[0], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[0][obj.dat.weights[0] != 0.], 5), vmax=np.percentile(resids[0][obj.dat.weights[0] != 0.], 95))
+				plt.imshow(resids[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[band_idx][obj.dat.weights[band_idx] != 0.], 5), vmax=np.percentile(resids[band_idx][obj.dat.weights[band_idx] != 0.], 95))
 			plt.colorbar()
 
-			if panels[i]=='residual0zoom':
-				plt.title('Residual (first band, zoomed in)')
-				plt.xlim(zoom0lims[0][0], zoom0lims[0][1])
-				plt.ylim(zoom0lims[1][0], zoom0lims[1][1])
+			if band_idx > 0:
+				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
+				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
+			else:
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+
+			if 'zoom' in panels[i]:
+				plt.title('Residual (band '+str(band_idx)+', zoomed in)')
+				plt.xlim(zoomlims[band_idx][0][0], zoomlims[band_idx][0][1])
+				plt.ylim(zoomlims[band_idx][1][0], zoomlims[band_idx][1][1])
 			else:           
-				plt.title('Residual (first band)')
-				plt.xlim(-0.5, obj.imsz0[0]-0.5)
-				plt.ylim(-0.5, obj.imsz0[1]-0.5)
-
-		elif 'residual1' in panels[i]:
-			if obj.gdat.weighted_residual:
-				plt.imshow(resids[1]*np.sqrt(obj.dat.weights[1]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-			else:
-				plt.imshow(resids[1], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[1][obj.dat.weights[1] != 0.], 5), vmax=np.percentile(resids[1][obj.dat.weights[1] != 0.], 95))
-			plt.colorbar()
-
-			if panels[i]=='residual1zoom':
-				plt.title('Residual (second band, zoomed in)')
-				plt.xlim(zoom1lims[0][0], zoom1lims[0][1])
-				plt.ylim(zoom1lims[1][0], zoom1lims[1][1])
-			else:
-				plt.title('Residual (second band)')
-				plt.xlim(-0.5, obj.imszs[1][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[1][1]-0.5) 
-
-
-		elif 'residual2' in panels[i]:
-			if obj.gdat.weighted_residual:
-				plt.imshow(resids[2]*np.sqrt(obj.dat.weights[2]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
-			else:
-				plt.imshow(resids[2], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[2][obj.dat.weights[2] != 0.], 5), vmax=np.percentile(resids[2][obj.dat.weights[2] != 0.], 95))
-			plt.colorbar()
-
-			if panels[i]=='residual2zoom':
-				plt.title('Residual (third band, zoomed in)')
-				plt.xlim(zoom2lims[0][0], zoom2lims[0][1])
-				plt.ylim(zoom2lims[1][0], zoom2lims[1][1])
-			else:
-				plt.title('Residual (third band)')
-				plt.xlim(-0.5, obj.imszs[2][0]-0.5)
-				plt.ylim(-0.5, obj.imszs[2][1]-0.5) 
+				plt.title('Residual (band '+str(band_idx)+')')
+				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)		
 
 
 		elif panels[i]=='dNdS':
@@ -241,9 +173,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 			plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
 
 
-	# plt.tight_layout()
 	if frame_dir_path is not None:
-		# plt.tight_layout()
 		plt.savefig(frame_dir_path, bbox_inches='tight', dpi=200)
 	plt.draw()
 	plt.pause(1e-5)
@@ -405,18 +335,18 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 
 		plt.subplot(2,2,1)
 		plt.title('Data')
-		plt.imshow(ref_img, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
+		plt.imshow(ref_img/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 95)/convert_to_MJy_sr_fac)
 		cb = plt.colorbar(orientation='horizontal')
 		cb.set_label(xlabel_unit)
 		plt.subplot(2,2,2)
 		plt.title('Median background model')
-		plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
+		plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_fc_temp, 95)/convert_to_MJy_sr_fac)
 		cb = plt.colorbar(orientation='horizontal')
 		cb.set_label(xlabel_unit)		
 		plt.subplot(2,2,3)
 		plt.title('Data - median background model')
 		# plt.imshow(ref_img - mean_fc_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5), vmax=0.01)
-		plt.imshow(ref_img - mean_fc_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5), vmax=np.percentile(ref_img-mean_fc_temp, 95))
+		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img-mean_fc_temp, 95)/convert_to_MJy_sr_fac)
 		cb = plt.colorbar(orientation='horizontal')
 		cb.set_label(xlabel_unit)
 		plt.subplot(2,2,4)
@@ -1117,20 +1047,6 @@ def grab_atcr(timestr, paramstr='template_amplitudes', band=0, result_dir=None, 
 		return f
 
 
-#def convert_png_to_gif(n_image, filename_list=None, head_name='median_residual_and_smoothed_band', gifdir='figures/frame_dir', name='multiz', fps=2):
-#    images = []
-	
-#    if filename_list is not None:
-#        for i in range(len(filename_list)):
-#            a = Image.open(filename_list[i])
-#            images.append(a)
-			
-#    else:
-#        for i in range(n_image):
-#            a = Image.open(gifdir+'/'+head_name+str(i)+'.png')
-#            images.append(a)
-	
-#    imageio.mimsave(gifdir+'/'+name+'.gif', np.array(images), fps=fps)
 	
 
 
