@@ -50,7 +50,7 @@ def plot_atcr(listsamp, title):
 
 def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', 'residual0','residual1','residual2','residual2zoom'], \
 							zoomlims=[[[0, 40], [0, 40]],[[70, 110], [70, 110]], [[50, 70], [50, 70]]], \
-							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None, fourier_bkg=None, frame_dir_path=None, smooth_fac=4):
+							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None, fourier_bkg=None, sz=None, frame_dir_path=None, smooth_fac=4):
 
 	
 	if panel0 is not None:
@@ -146,6 +146,27 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.ylim(zoomlims[band_idx][1][0], zoomlims[band_idx][1][1])
 			else:           
 				plt.title('Residual (band '+str(band_idx)+')')
+				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
+				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)		
+
+		elif 'sz' in panels[i]:
+
+
+			plt.imshow(sz[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(sz[band_idx], 1), vmax=np.percentile(sz[band_idx], 99))
+			plt.colorbar()
+
+			if band_idx > 0:
+				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
+				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
+			else:
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+
+			if 'zoom' in panels[i]:
+				plt.title('SZ (band '+str(band_idx)+', zoomed in)')
+				plt.xlim(zoomlims[band_idx][0][0], zoomlims[band_idx][0][1])
+				plt.ylim(zoomlims[band_idx][1][0], zoomlims[band_idx][1][1])
+			else:           
+				plt.title('SZ (band '+str(band_idx)+')')
 				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
 				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)		
 
@@ -250,13 +271,8 @@ def plot_template_amplitude_sample_chain(template_samples, band='250 micron', te
 	else:
 		ylabel_unit = ' [MJy/sr]'
 
-
 	if template_name=='dust' or template_name == 'planck':
 		ylabel_unit = None
-
-		# ylabel_unit = ' [MJy/sr]'
-
-
 
 	if smooth_fac is not None:
 		template_samples = np.convolve(template_samples, np.ones((smooth_fac,))/smooth_fac, mode='valid')
@@ -345,7 +361,6 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 		cb.set_label(xlabel_unit)		
 		plt.subplot(2,2,3)
 		plt.title('Data - median background model')
-		# plt.imshow(ref_img - mean_fc_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5), vmax=0.01)
 		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img-mean_fc_temp, 95)/convert_to_MJy_sr_fac)
 		cb = plt.colorbar(orientation='horizontal')
 		cb.set_label(xlabel_unit)
@@ -356,8 +371,6 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 		cb.set_label(xlabel_unit, fontsize='small')
 
 	else:
-
-
 
 		plt.subplot(1,2,1)
 		plt.title('Median'+xlabel_unit)
@@ -529,7 +542,7 @@ def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
 
 	return f
 
-
+# TODO -- this will show whether the posteriors are converged on the coefficients
 # def plot_fourier_coeff_posteriors(fourier_coeffs):
 # 	f = plt.figure()
 
