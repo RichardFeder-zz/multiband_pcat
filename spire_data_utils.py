@@ -123,7 +123,7 @@ class pcat_data():
 
 	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs, self.nbins, self.psfs, self.cfs, self.biases, self.data_array, self.weights, self.masks, self.errors, \
-			self.widths, self.heights, self.fracs, self.template_array = [[] for x in range(13)]
+			self.widths, self.heights, self.fracs, self.template_array, self.injected_diffuse_comp = [[] for x in range(14)]
 		self.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
 
 	def load_in_data(self, gdat, map_object=None, tail_name=None, show_input_maps=False):
@@ -340,6 +340,8 @@ class pcat_data():
 				for t, template in enumerate(template_list):
 					if template is not None:
 
+						# template = np.fliplr(template)
+
 						resized_template = np.zeros(shape=(gdat.width, gdat.height))
 
 						# if gdat.bolocam_mask:
@@ -396,6 +398,39 @@ class pcat_data():
 						resized_template_list.append(resized_template.astype(np.float32))
 					else:
 						resized_template_list.append(None)
+
+
+				if gdat.inject_diffuse_comp and gdat.diffuse_comp_path is not None:
+
+					bands = ['S', 'M', 'L']
+					diffuse_comp = np.load(gdat.diffuse_comp_path)[bands[i]]
+
+					if show_input_maps:
+						plt.figure()
+						plt.title(diffuse_comp.shape)
+						plt.imshow(diffuse_comp)
+						plt.colorbar()
+						plt.show()
+
+					cropped_diffuse_comp = diffuse_comp[:gdat.width, :gdat.height]
+
+					if show_input_maps:
+						plt.figure()
+						plt.title(cropped_diffuse_comp.shape)
+						plt.imshow(cropped_diffuse_comp)
+						plt.colorbar()
+						plt.show()
+
+					resized_image += cropped_diffuse_comp
+
+					if show_input_maps:
+						plt.figure()
+						plt.title('resized image with cropped diffuse comp')
+						plt.imshow(resized_image)
+						plt.colorbar()
+						plt.show()
+
+					self.injected_diffuse_comp.append(cropped_diffuse_comp.astype(np.float32))
 
 
 				variance = resized_error**2

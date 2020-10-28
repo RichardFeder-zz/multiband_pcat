@@ -111,12 +111,19 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
 				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
 
+		elif 'injected_diffuse_comp' in panels[i]:
+			plt.imshow(obj.dat.injected_diffuse_comp[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.injected_diffuse_comp[band_idx], 5.), vmax=np.percentile(obj.dat.injected_diffuse_comp[band_idx], 95.))
+			plt.colorbar()
+		
+			plt.title('Injected cirrus (band '+str(band_idx)+')')
+			plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
+			plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
 
 		elif 'fourier_bkg' in panels[i]:
 			fbkg = fourier_bkg[band_idx]
 
-			if band_idx > 1:
-				fbkg = gaussian_filter(fbkg, sigma=0.25*obj.imszs[0][0]/obj.n_fourier_terms)
+			# if band_idx > 1:
+				# fbkg = gaussian_filter(fbkg, sigma=0.25*obj.imszs[0][0]/obj.n_fourier_terms)
 
 			plt.imshow(fbkg, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(fbkg , 5), vmax=np.percentile(fbkg, 95))
 			plt.colorbar()

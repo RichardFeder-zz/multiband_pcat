@@ -5,14 +5,19 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from astropy.stats import sigma_clipped_stats
 from image_eval import psf_poly_fit, image_model_eval
+from scipy.ndimage import gaussian_filter
 
-def multiband_fourier_templates(imszs, n_terms, show_templates=False):
+def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=None):
     all_templates = []
     for b in range(len(imszs)):
-        all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates))
+        if psf_fwhms is None:
+            psf_fwhm = None
+        else:
+            psf_fwhm = psf_fwhms[b]
+        all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates, psf_fwhm=psf_fwhm))
     return all_templates
 
-def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False):
+def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False, psf_fwhm=None):
         
     templates = np.zeros((n_terms, n_terms, 4, N, M))
     
@@ -37,10 +42,17 @@ def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False)
     
     for i in range(n_terms):
         for j in range(n_terms):
-            templates[i,j,0,:,:] = xtemps_sin[i]*ytemps_sin[j]
-            templates[i,j,1,:,:] = xtemps_sin[i]*ytemps_cos[j]
-            templates[i,j,2,:,:] = xtemps_cos[i]*ytemps_sin[j]
-            templates[i,j,3,:,:] = xtemps_cos[i]*ytemps_cos[j]
+
+            if psf_fwhm is not None:
+                templates[i,j,0,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
+                templates[i,j,1,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
+                templates[i,j,2,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
+                templates[i,j,3,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
+            else:
+                templates[i,j,0,:,:] = xtemps_sin[i]*ytemps_sin[j]
+                templates[i,j,1,:,:] = xtemps_sin[i]*ytemps_cos[j]
+                templates[i,j,2,:,:] = xtemps_cos[i]*ytemps_sin[j]
+                templates[i,j,3,:,:] = xtemps_cos[i]*ytemps_cos[j]
      
     if show_templates:
         for k in range(4):

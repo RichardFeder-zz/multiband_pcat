@@ -886,9 +886,6 @@ class Model:
 			if precomp_temps is not None:
 				pc_temp = precomp_temps[b]
 
-				if b > 0:
-					pc_temp = gaussian_filter(pc_temp, sigma=0.25*self.gdat.imsz0[0]/self.n_fourier_terms)
-
 				# fourier comp colors. if passing fixed fourier comp template, fc_rel_amps should be model + d_rel_amps, if perturbing
 				# relative amplitude, fc_rel_amps should be one hot vector with change in one of the bands
 				if dtemp is None:
@@ -907,8 +904,6 @@ class Model:
 
 				if idxvec is not None:
 					pc_temp = self.fourier_templates[b][idxvec[0], idxvec[1], idxvec[2]]*dfc[idxvec[0], idxvec[1], idxvec[2]]
-					if b > 0:
-						pc_temp = gaussian_filter(pc_temp, sigma=0.25*self.gdat.imsz0[0]/self.n_fourier_terms)
 
 					if dtemp is None:
 						dtemp = fc_rel_amps[b]*pc_temp
@@ -917,8 +912,6 @@ class Model:
 						dtemp += fc_rel_amps[b]*pc_temp
 				else:
 					pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
-					if b > 0:
-						pc_temp = gaussian_filter(pc_temp, sigma=0.25*self.gdat.imsz0[0]/self.n_fourier_terms)
 
 					if dtemp is None:
 						dtemp = fc_rel_amps[b]*pc_temp
@@ -1370,8 +1363,12 @@ class Model:
 
 			if self.gdat.nbands == 1:
 				if self.gdat.float_fourier_comps:
-					print('running temp has shape ', running_temp[0].shape)
-					plot_custom_multiband_frame(self, resids, models, fourier_bkg=running_temp, panels=['data0', 'model0', 'residual0', 'fourier_bkg0', 'modelzoom0', 'residualzoom0'], frame_dir_path=frame_dir_path)
+					if self.gdat.inject_diffuse_comp:
+					# print('running temp has shape ', running_temp[0].shape)
+						plot_custom_multiband_frame(self, resids, models, fourier_bkg=running_temp, panels=['data0', 'model0', 'residual0', 'fourier_bkg0', 'injected_diffuse_comp0', 'residualzoom0'], frame_dir_path=frame_dir_path)
+					else:
+						plot_custom_multiband_frame(self, resids, models, fourier_bkg=running_temp, panels=['data0', 'model0', 'residual0', 'fourier_bkg0', 'modelzoom0', 'residualzoom0'], frame_dir_path=frame_dir_path)
+
 				else:
 					plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'dNdS', 'modelzoom0', 'residualzoom0'], frame_dir_path=frame_dir_path)
 
@@ -2077,7 +2074,7 @@ class lion():
 			# resizes images to largest square dimension modulo nregion
 			auto_resize = True, \
 			# don't use 'down' configuration yet, not implemented consistently in all data parsing routines
-			round_up_or_down = 'up',\
+			round_up_or_down = 'down',\
 			#specify these if you want to fix the dimension of incoming image
 			width = 0, \
 			height = 0, \
@@ -2099,13 +2096,13 @@ class lion():
 			noise_thresholds=None, \
 
 			merge_split_sample_delay=0, \
-			merge_split_moveweight = 40., \
+			merge_split_moveweight = 60., \
 
 			movestar_sample_delay = 0, \
 			movestar_moveweight = 80., \
 
 			birth_death_sample_delay=0, \
-			birth_death_moveweight=40., \
+			birth_death_moveweight=60., \
 
 			
 			# ---------------------------------- BACKGROUND PARAMS --------------------------------
@@ -2153,6 +2150,10 @@ class lion():
 
 			# boolean which when True results in a delta function color prior for dust templates 
 			delta_cp_bool = False, \
+
+			inject_diffuse_comp = False, \
+
+			diffuse_comp_path = None, \
 
 			# ---------------------------------- FOURIER COMPONENT PARAMS ----------------------------------------
 
@@ -2243,7 +2244,7 @@ class lion():
 			# interactive backend should be loaded before importing pyplot
 			visual = False, \
 			# used for visual mode
-			weighted_residual = False, \
+			weighted_residual = True, \
 			# can have fully deterministic trials by specifying a random initial seed 
 			init_seed = None, \
 			# to show raw number counts set to True
@@ -2255,7 +2256,7 @@ class lion():
 			# set to True to automatically make posterior/diagnostic plots after the run 
 			make_post_plots = True, \
 			# used for computing posteriors
-			burn_in_frac = 0.6, 
+			burn_in_frac = 0.75, 
 			# save posterior plots
 			bool_plot_save = True, \
 			# return median model image from last 'residual_samples' samples 
@@ -2343,7 +2344,7 @@ class lion():
 				self.gdat.init_fourier_coeffs = np.zeros((self.gdat.n_fourier_terms, self.gdat.n_fourier_terms, 4))
 
 			# print('INIT FOURIER COEFFS:', self.gdat.init_fourier_coeffs)
-			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps)
+			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=[self.gdat.psf_pixel_fwhm for i in range(self.gdat.nbands)])
 			# print('SELF.GDAT.FC_TEMPLATES HAVE SHAPES', self.gdat.fc_templates[0].shape, self.gdat.fc_templates[1].shape, self.gdat.fc_templates[2].shape)
 			#things work up to here (10/5/20 11:20 pm)
 
