@@ -309,14 +309,13 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 
 	# 	# median and variance of fourier component model posterior
-		f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0], ref_img=dat.data_array[0], convert_to_MJy_sr_fac=flux_density_conversion_dict['S'])
+		f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0], ref_img=dat.data_array[0], convert_to_MJy_sr_fac=flux_density_conversion_dict['S'], psf_fwhm=3.)
 
 		# f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0], ref_img=dat.data_array[0], bkg_samples=bkgs[burn_in:,0], convert_to_MJy_sr_fac=flux_density_conversion_dict['S'])
 		f_fc_median_std.savefig(fc_dir+'/fourier_comp_model_median_std.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		f_fc_last = plot_last_fc_map(fourier_coeffs[-1], gdat.imszs[0],ref_img=dat.data_array[0])
 		f_fc_last.savefig(fc_dir+'/last_sample_fourier_comp_model.'+plttype, bbox_inches='tight', dpi=dpi)
-
 
 	# 	# covariance matrix of fourier components
 
@@ -726,6 +725,7 @@ class Model:
 		self.init_template_amplitude_dicts = self.gdat.init_template_amplitude_dicts # newt
 		self.dtemplate = np.zeros_like(self.template_amplitudes)
 		print('self.dtemplate has shape', self.dtemplate.shape)
+
 
 		for i, key in enumerate(self.gdat.template_order):
 			for b, band in enumerate(gdat.bands):
@@ -2035,7 +2035,6 @@ class Samples():
 		for b in range(self.nbands):
 			self.fsample[b][j,:] = model.stars[Model._F+b,:]
 			if self.gdat.nsamp - j < self.gdat.residual_samples+1:
-				print('resid/model shapes:', resids[b].shape, model_images[b].shape)
 				self.residuals[b][-(self.gdat.nsamp-j),:,:] = resids[b] 
 				self.model_images[b][-(self.gdat.nsamp-j),:,:] = model_images[b]
 
@@ -2115,7 +2114,7 @@ class lion():
 			# boolean determining whether to use background proposals
 			float_background = False, \
 			# bkg_sig_fac scales the width of the background proposal distribution
-			bkg_sig_fac = 20., \
+			bkg_sig_fac = 5., \
 			# bkg_moveweight sets what fraction of the MCMC proposals are dedicated to perturbing the background level, 
 			# as opposed to changing source positions/births/deaths/splits/merges
 			bkg_moveweight = 10., \
@@ -2139,7 +2138,6 @@ class lion():
 			# same idea here as bkg_moveweight
 			template_moveweight = 20., \
 			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values at 250/350/500 micron
-			# inject_sz_frac = 0.0, \
 			inject_sz_frac = None, \
 			# if true, prior is renormalized with zero probability for amplitudes less than zero
 			sz_positivity_prior = False, \
@@ -2203,6 +2201,8 @@ class lion():
 			load_state_timestr = None,\
 			# set flag to True if you want posterior plots/catalog samples/etc from run saved
 			save = True, \
+
+			image_extnames=['SIGNAL'], \
 
 			# ---------------------------------- SAMPLER PARAMS ------------------------------------------
 
@@ -2296,7 +2296,8 @@ class lion():
 		
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
-		self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
+		# self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
+		self.gdat.n_templates = len(self.gdat.template_names) # template
 
 		if self.gdat.mean_offsets is None:
 			self.gdat.mean_offsets = np.zeros_like(np.array(self.gdat.bands))
@@ -2308,20 +2309,20 @@ class lion():
 		
 		self.gdat.template_order = []
 		
-		if self.gdat.float_templates:
-			self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
-		
-			for i, temp_name in enumerate(self.gdat.template_names):
-				print('template name here is ', temp_name)
-		
-				for b, band in enumerate(self.gdat.bands):
-					
-					if band in template_band_idxs[temp_name]:
-						self.gdat.template_band_idxs[i,b] = band
-					else:
-						self.gdat.template_band_idxs[i,b] = None
+		# if self.gdat.float_templates:
+		self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
+	
+		for i, temp_name in enumerate(self.gdat.template_names):
+			print('template name here is ', temp_name)
+	
+			for b, band in enumerate(self.gdat.bands):
+				
+				if band in template_band_idxs[temp_name]:
+					self.gdat.template_band_idxs[i,b] = band
+				else:
+					self.gdat.template_band_idxs[i,b] = None
 
-				self.gdat.template_order.append(temp_name)
+			self.gdat.template_order.append(temp_name)
 
 
 		if self.gdat.data_path is None:

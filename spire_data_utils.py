@@ -33,7 +33,7 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 	return psfnew, cf, nc, nbin
 
 
-def load_in_map(gdat, band=0, astrom=None, show_input_maps=False):
+def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames=['SIGNAL']):
 
 	if gdat.file_path is None:
 		file_path = gdat.data_path+gdat.dataname+'/'+gdat.tail_name+'.fits'
@@ -54,7 +54,14 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False):
 	spire_dat = fits.open(file_path)
 	# image = np.nan_to_num(spire_dat['IMAGE'].data)
 
-	image = np.nan_to_num(spire_dat['SIGNAL'].data)
+	# by loading in the image this way, we can compose maps from several components, e.g. noiseless CIB + noise realization
+	for e, extname in enumerate(image_extnames):
+		if e==0:
+			image = np.nan_to_num(spire_dat[extname].data)
+		else:
+			image += np.nan_to_num(spire_dat[extname].data)
+
+	# image = np.nan_to_num(spire_dat['SIGNAL'].data)
 	error = np.nan_to_num(spire_dat['ERROR'].data)
 
 	if gdat.use_mask:
@@ -202,6 +209,8 @@ class pcat_data():
 
 								template = fits.open(template_file_name)[0].data
 
+								print(template.shape)
+
 								if show_input_maps:
 									plt.figure()
 									plt.title(template_file_name)
@@ -213,6 +222,13 @@ class pcat_data():
 
 							else:
 								template = fits.open(file_name)[template_name].data
+
+								if show_input_maps:
+									plt.figure()
+									plt.title('loaded directly from fits extension')
+									plt.imshow(template, origin='lower')
+									plt.colorbar()
+									plt.show()
 
 							# 	template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
 							
@@ -281,7 +297,7 @@ class pcat_data():
 
 
 						else:
-
+							print('no band in self.tempalte_bands')
 							template = None
 
 						template_list.append(template)
