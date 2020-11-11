@@ -19,8 +19,9 @@ def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=
 
 def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False, psf_fwhm=None):
         
-    templates = np.zeros((n_terms, n_terms, 4, N, M))
-    
+    templates = np.zeros((n_terms, n_terms, 2, N, M))
+    # templates = np.zeros((n_terms, n_terms, 4, N, M))
+
     x = np.arange(N)
     y = np.arange(M)
     
@@ -43,19 +44,20 @@ def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False,
     for i in range(n_terms):
         for j in range(n_terms):
 
-            if psf_fwhm is not None:
+            if psf_fwhm is not None: # if beam size given, convolve with PSF assumed to be Gaussian
                 templates[i,j,0,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
                 templates[i,j,1,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
-                templates[i,j,2,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
-                templates[i,j,3,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
+                #templates[i,j,2,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
+                #templates[i,j,3,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
             else:
                 templates[i,j,0,:,:] = xtemps_sin[i]*ytemps_sin[j]
                 templates[i,j,1,:,:] = xtemps_sin[i]*ytemps_cos[j]
-                templates[i,j,2,:,:] = xtemps_cos[i]*ytemps_sin[j]
-                templates[i,j,3,:,:] = xtemps_cos[i]*ytemps_cos[j]
+                # templates[i,j,2,:,:] = xtemps_cos[i]*ytemps_sin[j]
+                # templates[i,j,3,:,:] = xtemps_cos[i]*ytemps_cos[j]
      
     if show_templates:
-        for k in range(4):
+        # for k in range(4):
+        for k in range(2):
             counter = 1
             plt.figure(figsize=(8,8))
             for i in range(n_terms):
@@ -75,25 +77,24 @@ def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M
     if fourier_templates is None:
         fourier_templates = make_fourier_templates(N, M, n_terms)
 
-    sum_temp = np.sum([fourier_coeffs[i,j,k]*fourier_templates[i,j,k] for i in range(n_terms) for j in range(n_terms) for k in range(4)], axis=0)
+    sum_temp = np.sum([fourier_coeffs[i,j,k]*fourier_templates[i,j,k] for i in range(n_terms) for j in range(n_terms) for k in range(fourier_coeffs.shape[-1])], axis=0)
     
     return sum_temp
 
 def fit_coeffs_to_observed_comb(observed_comb, obs_noise_sig,ftemplates, true_fcoeffs = None, true_comb=None, n_terms=None, sig_dtemp=0.1, niter=100, init_nsig=1.):
     if true_fcoeffs is not None:
-        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(true_fcoeffs.shape[0], true_fcoeffs.shape[1], 4))
+        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(true_fcoeffs.shape[0], true_fcoeffs.shape[1], 2))
 
         n_terms = init_fcoeffs.shape[0]
 
     elif n_terms is not None:
-        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(n_terms, n_terms, 4))
+        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(n_terms, n_terms, 2))
 
             
     running_fcoeffs = init_fcoeffs.copy()
     
-    all_running_fcoeffs = np.zeros((niter//1000, n_terms, n_terms, 4))
+    all_running_fcoeffs = np.zeros((niter//1000, n_terms, n_terms, 2))
 
-    
     temper_schedule = np.logspace(np.log10(init_nsig), np.log10(1.), niter)
     print('temper schedule: ', temper_schedule)
     print(init_fcoeffs.shape, n_terms, ftemplates.shape)
@@ -112,7 +113,7 @@ def fit_coeffs_to_observed_comb(observed_comb, obs_noise_sig,ftemplates, true_fc
         
         sig_dtemp_it = temper_schedule[n]*sig_dtemp
         
-        idxk = np.random.randint(0, 4)
+        idxk = np.random.randint(0, 2)
         idx0, idx1 = np.random.randint(0, n_terms), np.random.randint(0, n_terms)
 
         prop_dtemp = ftemplates[idx0,idx1,idxk,:,:]*perts[n]
@@ -163,7 +164,6 @@ def fit_coeffs_to_observed_comb(observed_comb, obs_noise_sig,ftemplates, true_fc
             if true_comb is not None:
                 resid = (observed_comb - running_temp)/obs_noise_sig
                 plt.imshow(resid, vmin=np.percentile(resid, 5), vmax=np.percentile(resid, 95))
-    
                 plt.colorbar()
             plt.tight_layout()
             plt.show()
