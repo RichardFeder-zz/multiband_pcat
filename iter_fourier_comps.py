@@ -1,5 +1,5 @@
 from pcat_spire import *
-
+from diffuse_gen import *
 
 ''' this script is for testing the iterative background estimation suggested by Mike. the main idea is to 
 gradually reduce the minimum flux threshold of the cataloger while fitting fourier coefficients to observations at 
@@ -16,7 +16,6 @@ class pcat_test_suite():
 
 	# this is the band convention I use almost exclusively throughout the code when there are stray indices
 	band_dict = dict({0:'S', 1:'M', 2:'L'})
-
 	
 	def __init__(self,\
 				base_path='/Users/luminatech/Documents/multiband_pcat/',\
@@ -34,6 +33,47 @@ class pcat_test_suite():
 
 		self.sz_filename = self.base_path+'Data/spire/'+cluster_name+'_sz_templates/'+sz_tail_name+'.fits'
 
+
+	def procure_cirrus_realizations(self, nsims, cirrus_tail_name='rxj1347_cirrus_sim_idx_', dataname='new_gen3_sims', \
+					tail_name='rxj1347_PSW_sim0300'):
+
+		
+		tail_name_M = tail_name.replace('PSW', 'PMW')
+		tail_name_L = tail_name.replace('PSW', 'PLW')
+
+		planck_s = fits.open(self.base_path+'/Data/spire/'+dataname+'/'+tail_name+'.fits')['PLANCK'].data
+		planck_m = fits.open(self.base_path+'/Data/spire/'+dataname+'/'+tail_name_M+'.fits')['PLANCK'].data
+		planck_l = fits.open(self.base_path+'/Data/spire/'+dataname+'/'+tail_name_L+'.fits')['PLANCK'].data
+
+		shapes = [planck_s.shape, planck_m.shape, planck_l.shape]
+		imdims_max = [np.max(planck_s.shape), np.max(planck_m.shape), np.max(planck_l.shape)]
+		imdims_min = [np.min(planck_s.shape), np.min(planck_m.shape), np.min(planck_l.shape)]
+
+		allo = generate_spire_cirrus_realizations(nsims, planck_s, imdims=imdims_max, show=False)
+		allo = [[allo[i][b][:shapes[b][0],:shapes[b][1]] for b in range(3)] for i in range(len(allo))]
+
+		for i, al in enumerate(allo):
+			print(np.std(al[0]), np.std(al[1]), np.std(al[2]))
+			if not os.path.exists(self.base_path+'/Data/spire/cirrus_gen'):
+				os.makedirs(self.base_path+'/Data/spire/cirrus_gen')
+			np.savez(self.base_path+'/Data/spire/cirrus_gen/'+cirrus_tail_name+str(i)+'.npz', S=al[0], M=al[1], L=al[2])
+		print('we are done now!')
+
+	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
+				      template_names=['sze'], bias=[-0.006, -0.008, -0.01], use_mask=True, max_nsrc=1000, make_post_plots=True, \
+				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0):
+
+		# this assumes the SZ template is within the fits data struct 
+
+		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
+
+		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=0.7, float_background=True, \
+			  bkg_sample_delay=0, temp_sample_delay=50, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
+			  float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
+			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=5, \
+			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=40.)
+
+		ob.main()
 
 	def iter_fourier_comps(self, n_fc_terms=10, fmin_levels=[0.05, 0.02, 0.01, 0.007], final_fmin=0.007, \
 							nsamps=[50, 100, 200, 500], final_nsamp=2000, \
@@ -53,7 +93,7 @@ class pcat_test_suite():
 			template_filename = None
 		timestr = None
 
-		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.000, 'L':0.014})})
+		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
 
 		init_fc = np.zeros(shape=(n_fc_terms, n_fc_terms, 4))
 
@@ -74,7 +114,7 @@ class pcat_test_suite():
 
 			ob.main()
 
-			_, filepath, _ = load_param_dict(ob.gdat.timestr)
+			_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
 			timestr = ob.gdat.timestr
 
 		# use filepath from the last iteration to load estiamte of median background estimate
@@ -87,7 +127,7 @@ class pcat_test_suite():
 
 		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, round_up_or_down='down', \
 					bolocam_mask=False, float_background=True, burn_in_frac=0.75, bkg_sample_delay=0,\
-					temp_sample_delay=10, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps,\
+					temp_sample_delay=50, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps,\
 					float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
 					tail_name=tail_name, dataname=dataname, bias=bias, max_nsrc=max_nsrc, \
 					init_fourier_coeffs=median_fc, template_filename=template_filename, trueminf=final_fmin, nregion=5, \
@@ -103,9 +143,46 @@ class pcat_test_suite():
 # pcat_test = pcat_test_suite(cluster_name='rxj1347')
 # pcat_test.iter_fourier_comps(nsamps=[10, 10, 10, 10], final_nsamp=100, visual=True, show_input_maps=True)
 
-pcat_test = pcat_test_suite(cluster_name='rxj1347')
-pcat_test.iter_fourier_comps(dataname='new_gen3_sims', tail_name='rxj1347_PSW_sim0300', \
-							nsamps=[10, 10, 10, 10], final_nsamp=30, visual=False, show_input_maps=False, timestr_list_file='test_11_10_20.npz')
+base_path='/home/mbzsps/multiband_pcat/'
+result_path='/home/mbzsps/multiband_pcat/spire_results/'
+
+timestr_list_file='lensed_no_dust_gen3sims_rxj1347_11_10_20_timestrs.npz'
+started_idx_list_file = 'lensed_no_dust_gen3sims_rxj1347_11_10_20_simidxs.npz' 
+
+pcat_test_sim = pcat_test_suite(cluster_name='rxj1347', base_path=base_path, result_path=result_path, cblas=False, openblas=False)
+#pcat_test_sim.run_sims_with_injected_sz(dataname='new_gen3_sims', tail_name='rxj1347_PSW_sim0300', visual=False, show_input_maps=False)
+pcat_test_sim.procure_cirrus_realizations(5)
+#if __name__ == '__main__':																			     
+
+#	sim_idx = int(sys.argv[1])+int(sys.argv[2])
+#	print('sim index is ', sim_idx)
+##	if os.path.exists(started_idx_list_file):
+#		started_sim_idxs = list(np.load(started_idx_list_file)['sim_idxs'])
+#		while sim_idx in started_sim_idxs:
+#		      sim_idx += 1
+#		print('sim idx is now', sim_idx)
+#		started_sim_idxs.append(sim_idx)
+#		np.savez(started_idx_list_file, sim_idxs=started_sim_idxs)
+#	else:
+#		np.savez(started_idx_list_file, sim_idxs=[sim_idx])
+		      
+
+#	print('sim indeeeex is ', sim_idx)																   
+#	pcat_test = pcat_test_suite(cluster_name='rxj1347', base_path=base_path, result_path=result_path, cblas=False, openblas=False)
+#	pcat_test.iter_fourier_comps(dataname='new_gen3_sims', tail_name='rxj1347_PSW_sim0'+str(sim_idx), \
+#							nsamps=[50, 100, 200, 500], final_nsamp=2000, visual=False, show_input_maps=False, timestr_list_file=timestr_list_file)
+
+
+
+#        run_pcat(sim_idx=sim_idx_0+sim_idx)                                                                                                                                          
+#        run_pcat_dust_and_sz_test(sim_idx=sim_idx_0+sim_idx, inject_dust=True, inject_sz_frac=1.0)                                                                                   
+
+
+
+
+#pcat_test = pcat_test_suite(cluster_name='rxj1347', base_path=base_path, result_path=result_path, cblas=False, openblas=False)
+#pcat_test.iter_fourier_comps(dataname='new_gen3_sims', tail_name='rxj1347_PSW_sim0300', \
+#							nsamps=[10, 10, 10, 10], final_nsamp=30, visual=False, show_input_maps=False, timestr_list_file='test_11_10_20.npz')
 
 
 
