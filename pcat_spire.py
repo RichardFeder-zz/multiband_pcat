@@ -114,8 +114,10 @@ def create_directories(gdat):
 	print('timestr:', timestr)
 	return frame_dir_name, new_dir_name, timestr
 
-''' neighbours function is used in merge proposal, where you have some source and you want to choose a nearby source with some probability to merge'''
 def neighbours(x,y,neigh,i,generate=False):
+	''' Neighbours function is used in merge proposal, where you have some source and you want to choose a nearby
+	    source with some probability to merge. '''
+
 	neighx = np.abs(x - x[i])
 	neighy = np.abs(y - y[i])
 	adjacency = np.exp(-(neighx*neighx + neighy*neighy)/(2.*neigh*neigh))
@@ -291,6 +293,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
 			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+			
 			if gdat.nsamp > 50:
 				f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+title_band_dict[bands[b]])
 				f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
@@ -300,7 +303,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 
 	# ------------------------- FOURIER COMPONENTS ----------------------
-	# fourier comps
 	if gdat.float_fourier_comps:
 		fc_dir = gdat.filepath+'/fourier_comps'
 
@@ -396,17 +398,14 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 							template_flux_densities *= 1e6 # MJy to Jy
 							
 							if gdat.template_moveweight > 0:
-								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) 
 						
-								f_temp_amp_post = plot_posterior_template_amplitude(template_flux_densities, mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel_unit='[Jy]') # newt
-
+								f_temp_amp_post = plot_posterior_template_amplitude(template_flux_densities, mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel_unit='[Jy]') 
 
 						else:
 							if gdat.template_moveweight > 0:
-								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
-							
-								
-								f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,	template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) # newt
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac)
+								f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,	template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac)
 
 
 					if gdat.template_order != 'sze' or b > 0: # test specific
@@ -494,8 +493,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			lit_number_counts[i,:] = dNdS_S_twop5/n_steradian/dSz
 
 
-		f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
-		f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
+		# f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
+		# f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=title_band_dict[bands[b]])
 		f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
@@ -517,11 +516,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				else:
 					ymax = 0.1
 
-
 				f_flux_color = plot_flux_color_posterior(np.array(fov_sources[sub_b]), np.array(fov_sources[sub_b])/np.array(fov_sources[b]), [title_band_dict[sub_b], title_band_dict[sub_b]+' / '+title_band_dict[b]], xmin=1e-2, xmax=40, ymin=0.005, ymax=ymax)
 				f_flux_color.savefig(flux_color_dir+'/posterior_flux_color_diagram_'+gdat.band_dict[sub_b]+'_'+gdat.band_dict[b]+'_nonlogx.'+plttype, bbox_inches='tight', dpi=dpi)
-
-
 
 			f_color_post = plot_color_posterior(fsrcs, b-1, b, lam_dict, mock_truth_fluxes=cat_fluxes)
 			f_color_post.savefig(flux_color_dir +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
@@ -536,7 +532,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 		f_color_color3 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[0]), np.array(fov_sources[0])/np.array(fov_sources[1]), [title_band_dict[2]+' / '+title_band_dict[0], title_band_dict[0]+' / '+title_band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
 		f_color_color3.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[0]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
-
 
 
 	# ------------------- SOURCE NUMBER ---------------------------
@@ -579,7 +574,7 @@ class Proposal:
 		self.dtemplate = None
 
 		if gdat.float_fourier_comps: # fourier comps
-			self.dfc = np.zeros((gdat.n_fourier_terms, gdat.n_fourier_terms, 4))
+			self.dfc = np.zeros((gdat.n_fourier_terms, gdat.n_fourier_terms, 2))
 			self.dfc_rel_amps = np.zeros(gdat.nbands, dtype=np.float32)
 			self.fc_rel_amp_bool = False
 
@@ -718,7 +713,7 @@ class Model:
 		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.0002}) # newt sz template normalized to unity, dust template in units of Jy/beam
 		
 		# this is for perturbing the relative amplitudes of a fixed fourier comp model across bands
-		self.fourier_amp_sig = 0.02 
+		self.fourier_amp_sig = 0.0005
 
 
 		self.template_amplitudes = np.zeros((self.n_templates, gdat.nbands))
@@ -730,8 +725,6 @@ class Model:
 		for i, key in enumerate(self.gdat.template_order):
 			for b, band in enumerate(gdat.bands):
 				self.template_amplitudes[i][b] = self.init_template_amplitude_dicts[key][gdat.band_dict[band]]
-
-		# self.template_amplitudes = np.array(self.template_amplitudes)
 		
 		print('self.template_amplitudes has shape', self.template_amplitudes.shape)
 		print(self.template_amplitudes)
@@ -740,12 +733,12 @@ class Model:
 		if self.gdat.float_fourier_comps:
 			self.fourier_coeffs = self.gdat.init_fourier_coeffs.copy()
 			self.fourier_templates = self.gdat.fc_templates
-
 			self.n_fourier_terms = self.gdat.n_fourier_terms
-			self.dfc = np.zeros((self.n_fourier_terms, self.n_fourier_terms, 4))
+			self.dfc = np.zeros((self.n_fourier_terms, self.n_fourier_terms, 2))
 			self.dfc_rel_amps = np.zeros((gdat.nbands))
 			self.fc_rel_amps = self.gdat.fc_rel_amps
-
+		else:
+			self.fc_rel_amps = None
 		
 		if self.gdat.nsrc_init is not None:
 			self.n = self.gdat.nsrc_init
@@ -778,8 +771,6 @@ class Model:
 		self.bkg_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 		self.bkg_mus = self.bkg.copy()
 
-		print('bkg_sigs is ', self.bkg_sigs, 'bkg_mus is ', self.bkg_mus, file=gdat.flog)
-
 		self.dback = np.zeros_like(self.bkg)
 		
 		for b in range(self.nbands-1):
@@ -793,8 +784,6 @@ class Model:
 				self.color_mus.append(self.mus[col_string])
 				self.color_sigs.append(self.sigs[col_string])
 			
-			print('col string is ', col_string, file=gdat.flog)
-
 		if gdat.load_state_timestr is None:
 			for b in range(gdat.nbands):
 
@@ -809,34 +798,66 @@ class Model:
 					else:
 						self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
 		else:
+			# if loading in a previous catalog, make sure the bands of the catalog are in order
 			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...', file=gdat.flog)
 			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
 			
 			catload = np.load(catpath)
+
+			gdat_previous, _, _ = load_param_dict(gdat.load_state_timestr, result_path=gdat.result_path)
+
+			previous_cat = np.load(catpath)['cat']
+
+			self.n = np.count_nonzero(previous_cat[self._F,:])
+
+
 			if self.gdat.float_background:
-				self.bkg = catload['bkg']
+				for b in range(gdat_previous.nbands):
+					self.bkg[b] = catload['bkg'][b]
 			
 			if self.gdat.float_templates:
-				self.template_amplitudes=catload['templates']
-			
+				print('self template amplitudes is ', self.template_amplitudes)
+				if gdat_previous.nbands == gdat.nbands:
+					self.template_amplitudes=catload['templates']
+				else:
+					for t in range(self.n_templates):
+						for b in range(gdat_previous.nbands):
+							self.template_amplitudes[t, b] = catload['templates'][t,b]
+
 			if self.gdat.float_fourier_comps:
 				self.gdat.fourier_coeffs = catload['fourier_coeffs']
+
+			if gdat_previous.nbands == gdat.nbands:
+				print('same number of bands, set catalogs equal to each other')
+				self.stars = previous_cat
+			else:
+				print('were gonna have to draw some colors babyy')
+				self.stars[self._X,:] = previous_cat[self._X,:]
+				self.stars[self._Y,:] = previous_cat[self._Y,:]
+				for b in range(gdat.nbands):
+					if gdat_previous.nbands > b:
+						self.stars[self._F+b,:] = previous_cat[self._F+b,:]
+					else:
+						print('drawing colors on band ', b)
+						new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
+						self.stars[self._F+b,0:self.n] = self.stars[self._F,0:self.n]*10**(0.4*new_colors)
+
 
 			print('self.bkg is ', self.bkg, file=gdat.flog)
 			print('self.template amplitudes is ', self.template_amplitudes, file=gdat.flog)
 
-			self.stars = np.load(catpath)['cat']
-			self.n = np.count_nonzero(self.stars[self._F,:])
 
 	def normalize_weights(self, weights):
+		''' This gets used when updating proposal weights during burn-in.'''
 		normalized_weights = weights / np.sum(weights)
 
 		return normalized_weights
-
-	''' this function prints out some information at the end of each thinned sample, 
-	namely acceptance fractions for the different proposals and some time performance statistics as well. '''
    
-	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):    
+	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):  
+		''' 
+		This function prints out some information at the end of each thinned sample, 
+		namely acceptance fractions for the different proposals and some time performance statistics as well. 
+		'''  
 		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
 		print('Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2), file=self.gdat.flog)
 		dts *= 1000
@@ -865,6 +886,8 @@ class Model:
 
 
 	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None, rtype=None, dfc=None, idxvec=None, precomp_temps=None, fc_rel_amps=None):
+		''' Wrapper for multiband likelihood evaluation given model parameters.'''
+
 		dmodels = []
 		dt_transf = 0
 
@@ -893,11 +916,6 @@ class Model:
 				else:
 					dtemp += fc_rel_amps[b]*pc_temp
 
-				# plt.figure()
-				# plt.title('precomp temps[b]')
-				# plt.imshow(dtemp)
-				# plt.colorbar()
-				# plt.show()
 
 			# fourier comp colors
 			elif dfc is not None: # fourier comps
@@ -911,7 +929,8 @@ class Model:
 					else:
 						dtemp += fc_rel_amps[b]*pc_temp
 				else:
-					pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
+					# pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
+					pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(2)], axis=0)
 
 					if dtemp is None:
 						dtemp = fc_rel_amps[b]*pc_temp
@@ -945,32 +964,13 @@ class Model:
 				diff2s = diff2
 
 
-			# if dtemp is not None and rtype==5:
-
-			# 	plt.figure()
-			# 	plt.subplot(1,2,1)
-			# 	plt.title('dtemp')
-			# 	plt.imshow(dtemp)
-			# 	plt.colorbar()
-			# 	plt.subplot(1,2,2)
-			# 	plt.title('dmodel')
-			# 	plt.imshow(dmodel)
-			# 	plt.colorbar()
-			# 	plt.show()
-				# print('dtemp is not None, diff2 is', diff2)
-			# else:
-				# print('dtemp is None, so diff2 should be zero:', diff2)
-			# dmodels.append(dmodel.transpose())
-			# dmodel[weights[0]==0.] = 0.
-			# print('DMODEL has shape', dmodel.shape)
-
 			dmodels.append(dmodel)
 
 		return dmodels, diff2s, dt_transf 
 
 
-	''' run_sampler() completes nloop samples, so the function is called nsamp times'''
 	def run_sampler(self, sample_idx):
+		''' run_sampler() completes nloop samples, so the function is called nsamp times'''
 		
 		t0 = time.time()
 		nmov = np.zeros(self.nloop)
@@ -1043,7 +1043,8 @@ class Model:
 			lazy_temps = []
 			for b in range(self.nbands):
 				# fcomp color
-				lazy_temps.append(np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0))
+				lazy_temps.append(np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(2)], axis=0))
+				# lazy_temps.append(np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0))
 			
 			running_temp = np.array(lazy_temps).copy()
 
@@ -1364,7 +1365,6 @@ class Model:
 			if self.gdat.nbands == 1:
 				if self.gdat.float_fourier_comps:
 					if self.gdat.inject_diffuse_comp:
-					# print('running temp has shape ', running_temp[0].shape)
 						plot_custom_multiband_frame(self, resids, models, fourier_bkg=running_temp, panels=['data0', 'model0', 'residual0', 'fourier_bkg0', 'injected_diffuse_comp0', 'residualzoom0'], frame_dir_path=frame_dir_path)
 					else:
 						plot_custom_multiband_frame(self, resids, models, fourier_bkg=running_temp, panels=['data0', 'model0', 'residual0', 'fourier_bkg0', 'modelzoom0', 'residualzoom0'], frame_dir_path=frame_dir_path)
@@ -1407,6 +1407,7 @@ class Model:
 
 
 	def perturb_background(self, bkg_prior_sig=0.01):
+
 		proposal = Proposal(self.gdat)
 		# I want this proposal to return the original dback + the proposed change. If the proposal gets approved later on
 		# then model.dback will be set to the updated state
@@ -1433,7 +1434,7 @@ class Model:
 		if np.random.uniform() < self.gdat.dfc_prob:
 
 			# choose a component
-			proposal.idx0, proposal.idx1, proposal.idxk = np.random.randint(0, self.n_fourier_terms), np.random.randint(0, self.n_fourier_terms), np.random.randint(0, 4)
+			proposal.idx0, proposal.idx1, proposal.idxk = np.random.randint(0, self.n_fourier_terms), np.random.randint(0, self.n_fourier_terms), np.random.randint(0, 2)
 			coeff_pert = np.random.normal(0, self.temp_amplitude_sigs['fc'])
 			proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
 
@@ -1442,6 +1443,7 @@ class Model:
 			# prior is needed
 
 		else:
+
 			proposal.fc_rel_amp_bool=True
 			band_weights = []
 
@@ -1509,20 +1511,6 @@ class Model:
 
 		proposal.change_template_amplitude()
 
-
-		# need to put in a color prior for the cirrus, maybe have general factor that gets applied but defaults
-		# to flat prior
-
-		# if band_idx > 0 and self.gdat.template_order[template_idx] == 'dust': # newtcp
-		# 	orig_dust_color = self.template_amplitudes[band_idx] / self.template_amplitudes[0]
-		# 	new_dust_color = (self.template_amplitudes[band_idx]+d_amp)/self.template_amplitudes[0]
-		# 	color_factor -= (new_dust_color - self.temp_cp_mus[template_idx][band_idx])**2/(2*self.temp_cp_sigs[template_idx][band_idx]**2)
-		# 	color_factor += (orig_dust_color - self.temp_cp_mus[template_idx][band_idx])**2/(2*self.temp_cp_sigs[template_idx][band_idx]**2)
-
-		# 	print('color factor is ', color_factor)
-		# 	proposal.set_factor(color_factor)
-
-
 		return proposal
 
 
@@ -1540,7 +1528,6 @@ class Model:
 		pff = ff + dff
 		pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
 		return pf
-
 
 	def move_stars(self): 
 		idx_move = self.idx_parity_stars()
@@ -1799,7 +1786,6 @@ class Model:
 
 			goodmove = (nms > 0)*((np.array(fracs) > 0).all())
 
-
 			if goodmove:
 				proposal.add_move_stars(idx_move, stars0, starsp)
 				proposal.add_birth_stars(starsb)
@@ -2004,7 +1990,9 @@ class Samples():
 		
 		self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands))
 		self.template_amplitudes = np.zeros((gdat.nsamp, gdat.n_templates, gdat.nbands)) # template # newt
-		self.fourier_coeffs = np.zeros((gdat.nsamp, gdat.n_fourier_terms, gdat.n_fourier_terms, 4)) # fourier comps
+		# self.fourier_coeffs = np.zeros((gdat.nsamp, gdat.n_fourier_terms, gdat.n_fourier_terms, 4)) # fourier comps
+		self.fourier_coeffs = np.zeros((gdat.nsamp, gdat.n_fourier_terms, gdat.n_fourier_terms, 2)) # fourier comps
+
 		self.fc_rel_amps = np.zeros((gdat.nsamp, gdat.nbands)) # fourier comp colors
 
 		self.colorsample = [[] for x in range(gdat.nbands-1)]
@@ -2103,7 +2091,7 @@ class lion():
 			birth_death_sample_delay=0, \
 			birth_death_moveweight=60., \
 
-			
+	
 			# ---------------------------------- BACKGROUND PARAMS --------------------------------
 
 			# bias is used now for the initial background level for each band
@@ -2136,7 +2124,7 @@ class lion():
 			# if template file name is not None then it will grab the template from this path and replace PSW with appropriate band
 			template_filename = None, \
 			# same idea here as bkg_moveweight
-			template_moveweight = 20., \
+			template_moveweight = 40., \
 			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values at 250/350/500 micron
 			inject_sz_frac = None, \
 			# if true, prior is renormalized with zero probability for amplitudes less than zero
@@ -2296,8 +2284,11 @@ class lion():
 		
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
-		# self.gdat.n_templates = len(self.gdat.template_names) if self.gdat.float_templates else 0 # template
-		self.gdat.n_templates = len(self.gdat.template_names) # template
+
+		if self.gdat.template_names is None:
+			self.gdat.n_templates=0 
+		else:
+			self.gdat.n_templates=len(self.gdat.template_names)
 
 		if self.gdat.mean_offsets is None:
 			self.gdat.mean_offsets = np.zeros_like(np.array(self.gdat.bands))
@@ -2309,20 +2300,20 @@ class lion():
 		
 		self.gdat.template_order = []
 		
-		# if self.gdat.float_templates:
 		self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
 	
-		for i, temp_name in enumerate(self.gdat.template_names):
-			print('template name here is ', temp_name)
-	
-			for b, band in enumerate(self.gdat.bands):
-				
-				if band in template_band_idxs[temp_name]:
-					self.gdat.template_band_idxs[i,b] = band
-				else:
-					self.gdat.template_band_idxs[i,b] = None
+		if self.gdat.template_names is not None:
+			for i, temp_name in enumerate(self.gdat.template_names):
+				print('template name here is ', temp_name)
+		
+				for b, band in enumerate(self.gdat.bands):
+					
+					if band in template_band_idxs[temp_name]:
+						self.gdat.template_band_idxs[i,b] = band
+					else:
+						self.gdat.template_band_idxs[i,b] = None
 
-			self.gdat.template_order.append(temp_name)
+				self.gdat.template_order.append(temp_name)
 
 
 		if self.gdat.data_path is None:
@@ -2342,12 +2333,9 @@ class lion():
 					self.gdat.n_fourier_terms = self.gdat.init_fourier_coeffs.shape[0]
 
 			else:
-				self.gdat.init_fourier_coeffs = np.zeros((self.gdat.n_fourier_terms, self.gdat.n_fourier_terms, 4))
+				self.gdat.init_fourier_coeffs = np.zeros((self.gdat.n_fourier_terms, self.gdat.n_fourier_terms, 2))
 
-			# print('INIT FOURIER COEFFS:', self.gdat.init_fourier_coeffs)
 			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=[self.gdat.psf_pixel_fwhm for i in range(self.gdat.nbands)])
-			# print('SELF.GDAT.FC_TEMPLATES HAVE SHAPES', self.gdat.fc_templates[0].shape, self.gdat.fc_templates[1].shape, self.gdat.fc_templates[2].shape)
-			#things work up to here (10/5/20 11:20 pm)
 
 			# fourier comp colors
 			self.gdat.fourier_band_idxs = [None for b in range(self.gdat.nbands)]
@@ -2420,7 +2408,6 @@ class lion():
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
 
 		start_time = time.time()
-
 		samps = Samples(self.gdat)
 		model = Model(self.gdat, self.data, libmmult)
 		# initial sum of weights used when reweighting after the weights have been normalized to 1
@@ -2450,6 +2437,7 @@ class lion():
 				print('starting move star proposals')
 				model.moveweights[0] = self.gdat.movestar_moveweight
 				print('moveweights:', model.moveweights, file=self.gdat.flog)
+
 			if j==self.gdat.birth_death_sample_delay:
 				print('starting merge split')
 				model.moveweights[1] = self.gdat.birth_death_moveweight
@@ -2461,29 +2449,21 @@ class lion():
 				print('moveweights:', model.moveweights, file=self.gdat.flog)
 
 			if j==self.gdat.bkg_sample_delay:
-
 				if self.gdat.float_background:
 					print('Starting to sample background now', file=self.gdat.flog)
-
 					model.moveweights[3] = self.gdat.bkg_moveweight
-
 				print('moveweights:', model.moveweights, file=self.gdat.flog)
 
 			if j==self.gdat.temp_sample_delay:
-
 				if self.gdat.float_templates:
 					print('Starting to sample templates now', file=self.gdat.flog)
-
 					model.moveweights[4] = self.gdat.template_moveweight
-
 					print('moveweights:', model.moveweights, file=self.gdat.flog)
 
 			if j==self.gdat.fc_sample_delay:
-
 				if self.gdat.float_fourier_comps:
 					print('Starting to sample fourier components now', file=self.gdat.flog)
 					model.moveweights[5] = self.gdat.fourier_comp_moveweight
-
 					print('moveweights:', model.moveweights, file=self.gdat.flog)
 
 
@@ -2500,7 +2480,6 @@ class lion():
 			# save final catalog state
 			np.savez(self.gdat.result_path + '/'+str(self.gdat.timestr)+'/final_state.npz', cat=model.stars, bkg=model.bkg, templates=model.template_amplitudes, fourier_coeffs=model.fourier_coeffs)
 
-
 		if self.gdat.timestr_list_file is not None:
 			if path.exists(self.gdat.timestr_list_file):
 				timestr_list = list(np.load(self.gdat.timestr_list_file)['timestr_list'])
@@ -2512,8 +2491,6 @@ class lion():
 
 		if self.gdat.make_post_plots:
 			result_plots(gdat = self.gdat)
-
-
 
 		dt_total = time.time() - start_time
 		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)

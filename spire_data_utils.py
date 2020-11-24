@@ -13,6 +13,32 @@ class objectview(object):
 		self.__dict__ = d
 
 def get_gaussian_psf_template_3_5_20(pixel_fwhm = 3., nbin=5):
+	''' 
+	Computes Gaussian PSF kernel for fast model evaluation with lion
+
+	Parameters
+	----------
+	pixel_fwhm : float
+		Full width at half-maximum (FWHM) of PSF in units of pixels.
+		Default is 3 (for SPIRE analysis).
+
+	nbin : int
+		Upsampling factor for sub-pixel interpolation method in lion
+		Default is 5.
+
+	Returns
+	-------
+
+	psfnew : '~numpy.ndarray'
+		Sum normalized PSF template up sampled by factor nbin in both x and y
+
+	cf : '~numpy.ndarray'
+		Coefficients of polynomial fit to upsampled PSF. These are used by lion
+
+	nbin : int
+		Upsampling factor, same as before.. 
+
+	'''
 	nc = nbin**2
 	psfnew = Gaussian2DKernel((pixel_fwhm/2.355)*nbin, x_size=125, y_size=125).array.astype(np.float32)
 	cf = psf_poly_fit(psfnew, nbin=nbin)
@@ -35,6 +61,52 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 
 def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames=['SIGNAL']):
 
+	''' 
+	This function does some of the initial data parsing needed in constructing the pcat_data object.
+
+	Parameters
+	----------
+
+	gdat : global object
+		This is a super object which is used throughout different parts of PCAT. 
+		Contains data configuration information
+
+	band : int, optional
+		Index of bandpass. Convention is 0->250um, 1->350um and 2->500um.
+		Default is 0.
+
+	astrom : object of type 'fast_astrom', optional
+		astrometry object that can be loaded along with other data products
+		Default is 'None'.
+
+	show_input_maps : bool, optional
+
+		Default is 'False'.
+
+	image_extnames : list of strings, optional
+		If list of extensions is specified, observed data will be combination of extension images.
+		For example, one can test mock unlensed data with noise ['UNLENSED', 'NOISE'] 
+		or mock lensed data with noise ['LENSED', 'NOISE']. Default is ['SIGNAL'].
+
+	Returns
+	-------
+
+	image : '~numpy.ndarray'
+		Numpy array containing observed data for PCAT's Bayesian analysis. Can be composed of
+		several mock components, or it can be real observed data.
+
+	error : '~numpy.ndarray'
+		Numpy array containing noise model estimates over field to be analyzed. Masked pixels will have
+		NaN values, which get modified to zeros in this script.
+
+	mask : '~numpy.ndarray'
+		Numpy array which contains mask used on data. 
+		Masked regions are cropped out/down-weighted when preparing data for PCAT.
+
+	file_path : str
+		File path for map that is loaded in.
+
+	'''
 	if gdat.file_path is None:
 		file_path = gdat.data_path+gdat.dataname+'/'+gdat.tail_name+'.fits'
 	else:
@@ -48,8 +120,8 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 		print('file_path:', file_path)
 
 	if astrom is not None:
-		print('loading from ', gdat.band_dict[band])
-		astrom.load_wcs_header_and_dim(file_path)
+		print('ATTENTION loading from ', gdat.band_dict[band])
+		astrom.load_wcs_header_and_dim(file_path, round_up_or_down=gdat.round_up_or_down)
 
 	spire_dat = fits.open(file_path)
 	# image = np.nan_to_num(spire_dat['IMAGE'].data)
@@ -103,6 +175,31 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 
 def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'):
 	
+	''' 
+	Loads dictionary of configuration parameters from prior run of PCAT.
+
+	Parameters
+	----------
+
+	timestr : string
+		time string associated with desired PCAT run.
+
+	result_path : string, optional
+		file location of PCAT run results.
+		Default is '/Users/luminatech/Documents/multiband_pcat/spire_results/'.
+
+	Returns
+	-------
+
+	opt : object containing parameter dictionary
+
+	filepath : string
+		file path of parameter file
+
+	result_path : string
+		file location of PCAT run results. not sure why its here
+
+	'''
 	filepath = result_path + timestr
 	filen = open(filepath+'/params.txt','rb')
 	pdict = pickle.load(filen)
@@ -134,6 +231,10 @@ class pcat_data():
 		self.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
 
 	def load_in_data(self, gdat, map_object=None, tail_name=None, show_input_maps=False):
+
+		'''
+		This function does the heavy lifting for parsing input data products and setting up variables in pcat_data class. At some point, template section should be cleaned up.
+		'''
 
 		gdat.imszs, gdat.regsizes, gdat.margins, gdat.bounds = [[] for x in range(4)]
 
@@ -168,10 +269,9 @@ class pcat_data():
 					print('bounds for band ', i, 'are ', bounds)
 
 				if bounds is not None:
-					if gdat.round_up_or_down == 'up':
-						big_dim = np.maximum(find_nearest_upper_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_nearest_upper_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
-					else:
-						big_dim = np.maximum(find_lowest_mod(bounds[0,1]-bounds[0,0], gdat.nregion), find_lowest_mod(bounds[1,1]-bounds[1,0], gdat.nregion))
+
+					big_dim = np.maximum(find_nearest_mod(bounds[0,1]-bounds[0,0], gdat.nregion, mode=gdat.round_up_or_down),\
+											 find_nearest_mod(bounds[1,1]-bounds[1,0], gdat.nregion, mode=gdat.round_up_or_down))
 
 					self.fast_astrom.dims[i] = (big_dim, big_dim)
 
@@ -197,8 +297,6 @@ class pcat_data():
 							if gdat.verbtype > 1:
 								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name], gdat.lam_dict[gdat.band_dict[band]])
 
-
-
 							if gdat.template_filename is not None and template_name=='sze':
 								print('we want to load in a template!!')
 								
@@ -218,8 +316,6 @@ class pcat_data():
 									plt.colorbar()
 									plt.show()
 
-
-
 							else:
 								template = fits.open(file_name)[template_name].data
 
@@ -230,19 +326,6 @@ class pcat_data():
 									plt.colorbar()
 									plt.show()
 
-							# 	template_file_name = file_name.replace('.fits', '_'+template_name+'.fits')
-							
-							# print('template file name is ', template_file_name)
-
-							# if template_name=='planck':
-							# 	print('file name here is ', file_name)
-							# 	# template = fits.open(file_name)[template_name +'_500'].data # temporary
-							# 	template = fits.open(file_name)[template_name +'_'+str(gdat.lam_dict[gdat.band_dict[band]])].data
-							# else:
-							# 	template = fits.open(file_name)[template_name].data
-							
-							# template = fits.open(file_name)[template_name].data
-
 							if show_input_maps:
 								plt.figure()
 								plt.title(template_name)
@@ -250,30 +333,6 @@ class pcat_data():
 								plt.colorbar()
 								plt.show()
 
-							# if template_name=='sze':
-							# 	template = fits.open(template_file_name)[0].data
-							# elif template_name=='dust':
-							# 	template = fits.open(file_name)[5].data
-							# 	# template = np.load(template_file_name)['iris_map']
-
-
-							# if gdat.inject_dust and template_name=='planck':
-							# 	print('we are putting in dust now')
-
-							# 	image += template
-
-							# 	if show_input_maps:
-							# 		plt.figure()
-							# 		plt.subplot(1,2,1)
-							# 		plt.title('injected dust')
-							# 		plt.imshow(template, origin='lower')
-							# 		plt.colorbar()
-							# 		plt.subplot(1,2,2)
-							# 		plt.title('image + dust')
-							# 		plt.imshow(image, origin='lower')
-							# 		plt.colorbar()
-							# 		plt.tight_layout()
-							# 		plt.show()
 
 							if gdat.inject_sz_frac is not None and template_name=='sze':
 								print('injecting SZ frac of ', gdat.inject_sz_frac)
@@ -318,27 +377,16 @@ class pcat_data():
 			
 			if gdat.auto_resize:
 
-				# if gdat.bolocam_mask:
-
 				error = error[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
 				image = image[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
 				smaller_dim = np.min(image.shape)
 				larger_dim = np.max(image.shape)
 
-				# else:
-
-				# 	smaller_dim = np.min([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0]) # option to include lower left corner
-				# 	larger_dim = np.max([image.shape[0]-gdat.x0, image.shape[1]-gdat.y0])
-
 				if gdat.verbtype > 1:
 					print('smaller dim is', smaller_dim)
 					print('larger dim is ', larger_dim)
-				
-				if gdat.round_up_or_down=='up':
-					gdat.width = find_nearest_upper_mod(larger_dim, gdat.nregion)
-				else:
-					gdat.width = find_lowest_mod(smaller_dim, gdat.nregion)
-				
+
+				gdat.width = find_nearest_mod(larger_dim, gdat.nregion, mode=gdat.round_up_or_down)
 				gdat.height = gdat.width
 				image_size = (gdat.width, gdat.height)
 

@@ -8,6 +8,33 @@ from image_eval import psf_poly_fit, image_model_eval
 from scipy.ndimage import gaussian_filter
 
 def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=None):
+    '''
+    Given a list of image and beam sizes, produces multiband fourier templates for background modeling.
+
+    Parameters
+    ----------
+
+    imszs : list of lists
+        List containing image dimensions for each of the three observations
+
+    n_terms : int
+        Order of Fourier expansion for templates. the number of templates (currently) scales as 2*n_terms^2
+
+    show_templates : bool, optional
+        if True, plots the array of templates. Default is False.
+
+    psf_fwhms : list, optional
+        List of beam sizes across observations. If left unspecified, all PSFs assumed to have 3 pixel FWHM. 
+        Default is 'None'.
+    
+    Returns
+    -------
+
+    all_templates : list of `numpy.ndarray's
+        The set of Fourier templates for each observation.
+
+    '''
+
     all_templates = []
     for b in range(len(imszs)):
         if psf_fwhms is None:
@@ -17,10 +44,41 @@ def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=
         all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates, psf_fwhm=psf_fwhm))
     return all_templates
 
-def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False, psf_fwhm=None):
+def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None):
         
+    '''
+    
+    Given image dimensions and order of the series expansion, generates a set of 2D fourier templates.
+
+    Parameters
+    ----------
+
+    N : int
+        length of image
+   
+    M : int
+        width of image
+    
+    n_terms : int
+        Order of Fourier expansion for templates. the number of templates (currently) scales as 2*n_terms^2
+    
+    show_templates : bool, optional
+        if True, plots the array of templates. Default is False.
+    
+    psf_fwhm : float, optional
+        Observation PSF full width at half maximum (FWHM). This can be used to pre-convolve templates for background modeling 
+        Default is 'None'.
+
+    Returns
+    -------
+    
+    templates : `numpy.ndarray' of shape (n_terms, n_terms, 2, N, M)
+        Contains 2D Fourier templates for truncated series
+
+
+    '''
+
     templates = np.zeros((n_terms, n_terms, 2, N, M))
-    # templates = np.zeros((n_terms, n_terms, 4, N, M))
 
     x = np.arange(N)
     y = np.arange(M)
@@ -29,17 +87,15 @@ def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False,
         
     xtemps_cos = np.zeros((n_terms, N, M))
     ytemps_cos = np.zeros((n_terms, N, M))
-    
     xtemps_sin = np.zeros((n_terms, N, M))
     ytemps_sin = np.zeros((n_terms, N, M))
     
     
     for n in range(n_terms):
-        xtemps_sin[n] = np.sin((n+1)*np.pi*meshx/(N*extradimfac))
-        ytemps_sin[n] = np.sin((n+1)*np.pi*meshy/(M*extradimfac))
-        
-        xtemps_cos[n] = np.cos((n+1)*np.pi*meshx/(N*extradimfac))
-        ytemps_cos[n] = np.cos((n+1)*np.pi*meshy/(M*extradimfac))
+        xtemps_sin[n] = np.sin((n+1)*np.pi*meshx/N)
+        ytemps_sin[n] = np.sin((n+1)*np.pi*meshy/M)
+        xtemps_cos[n] = np.cos((n+1)*np.pi*meshx/N)
+        ytemps_cos[n] = np.cos((n+1)*np.pi*meshy/M)
     
     for i in range(n_terms):
         for j in range(n_terms):
@@ -47,16 +103,13 @@ def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False,
             if psf_fwhm is not None: # if beam size given, convolve with PSF assumed to be Gaussian
                 templates[i,j,0,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
                 templates[i,j,1,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
-                #templates[i,j,2,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
-                #templates[i,j,3,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
+
             else:
                 templates[i,j,0,:,:] = xtemps_sin[i]*ytemps_sin[j]
                 templates[i,j,1,:,:] = xtemps_sin[i]*ytemps_cos[j]
-                # templates[i,j,2,:,:] = xtemps_cos[i]*ytemps_sin[j]
-                # templates[i,j,3,:,:] = xtemps_cos[i]*ytemps_cos[j]
+
      
     if show_templates:
-        # for k in range(4):
         for k in range(2):
             counter = 1
             plt.figure(figsize=(8,8))
@@ -72,10 +125,45 @@ def make_fourier_templates(N, M, n_terms, extradimfac=1.0, show_templates=False,
     return templates
 
 
-def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M=None):
-    # making n_terms explicit as an input in case we want flexibility of calling it for different numbers of terms
+def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M=None, psf_fwhm=None):
+
+    '''
+    Given a set of coefficients and Fourier templates, computes their dot product.
+
+    Parameters
+    ----------
+
+    fourier_coeffs : `~numpy.ndarray' of shape (n_terms, n_terms, 2)
+        Coefficients of truncated Fourier expansion.
+
+    n_terms : int
+        Order of Fourier expansion to compute sum over. This is left explicit as an input
+        in case one wants the flexibility of calling it for different numbers of terms, even
+        if the underlying truncated series has more terms.
+
+    fourier_templates : `~numpy.ndarray' of shape (n_terms, n_terms, 2, N, M), optional
+        Contains 2D Fourier templates for truncated series. If left unspecified, a set of Fourier templates is generated
+        on the fly. Default is 'None'.
+
+    N : int, optional
+        length of image. Default is 'None'.
+   
+    M : int
+        width of image. Default is 'None.'
+
+    psf_fwhm : float, optional
+        Observation PSF full width at half maximum (FWHM). This can be used to pre-convolve templates for background modeling 
+        Default is 'None'.
+
+    Returns
+    -------
+
+    sum_temp : `~numpy.ndarray' of shape (N, M)
+        The summed template.
+
+    '''
     if fourier_templates is None:
-        fourier_templates = make_fourier_templates(N, M, n_terms)
+        fourier_templates = make_fourier_templates(N, M, n_terms, psf_fwhm=psf_fwhm)
 
     sum_temp = np.sum([fourier_coeffs[i,j,k]*fourier_templates[i,j,k] for i in range(n_terms) for j in range(n_terms) for k in range(fourier_coeffs.shape[-1])], axis=0)
     

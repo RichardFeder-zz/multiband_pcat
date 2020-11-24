@@ -2,14 +2,33 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage import gaussian_filter
-# import scipy as sp
 from scipy.fftpack import fft, ifft
 import networkx as nx
 from matplotlib.collections import PatchCollection
 import matplotlib.patches as patches
 from PIL import Image
+import sys
+from pcat_spire import *
+
+if sys.version_info[0] == 3:
+	from celluloid import Camera
 
 from fourier_bkg_modl import *
+
+
+def convert_pngs_to_gif(filenames, gifdir='/Users/richardfeder/Documents/multiband_pcat/', name='', duration=1000, loop=0):
+
+	# Create the frames
+	frames = []
+	for i in range(len(filenames)):
+		new_frame = Image.open(gifdir+filenames[i])
+		frames.append(new_frame)
+
+	# Save into a GIF file that loops forever
+	frames[0].save(gifdir+name+'.gif', format='GIF',
+				   append_images=frames[1:],
+				   save_all=True,
+				   duration=duration, loop=loop)
 
 def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
 
@@ -209,16 +228,82 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 
 def scotts_rule_bins(samples):
+	'''
+	Computes binning for a collection of samples using Scott's rule, which minimizes the integrated MSE of the density estimate.
+
+	Parameters
+	----------
+
+	samples : 'list' or '~numpy.ndarray' of shape (Nsamples,)
+
+	Returns
+	-------
+
+	bins : `~numpy.ndarray' of shape (Nsamples,)
+		bin edges
+
+	'''
 	n = len(samples)
-	print('n:', n)
 	bin_width = 3.5*np.std(samples)/n**(1./3.)
-	print(bin_width)
 	k = np.ceil((np.max(samples)-np.min(samples))/bin_width)
-	print('number of bins:', k)
-
-
 	bins = np.linspace(np.min(samples), np.max(samples), k)
 	return bins
+
+
+def make_pcat_sample_gif(timestr, im_path, gif_path=None, cat_xy=True, resids=True, color_color=True, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/', \
+						gif_fpr = 5):
+
+	chain = np.load('spire_results/'+timestr+'/chain.npz')
+	residz = chain['residuals0']
+	gdat, filepath, result_path = load_param_dict(timestr, result_path='spire_results/')
+
+
+	n_panels = np.sum(np.array([cat_xy, resids, color_color]).astype(np.int))
+	print('n_panels = ', n_panels)
+
+	im = fits.open(im_path)['SIGNAL'].data
+
+	im = im[gdat.bounds[0][0,0]:gdat.bounds[0][0,1], gdat.bounds[0][1,0]:gdat.bounds[0][1,1]]
+
+	fig = plt.figure(figsize=(6*n_panels,7))
+	camera = Camera(fig)
+
+
+	for k in np.arange(0, len(residz), 10):
+		tick = 1
+
+		if cat_xy:
+			plt.subplot(1,n_panels, tick)
+			plt.imshow(im-np.median(im), vmin=-0.007, vmax=0.01, cmap='Greys')
+			plt.scatter(chain['x'][-200+k,:], chain['y'][-200+k,:], s=1.5e4*chain['f'][0,-200+k,:], marker='+', color='r')
+			plt.text(15, -2, 'Nsamp = '+str(chain['x'].shape[0]-200+k)+', Nsrc='+str(chain['n'][-200+k]), fontsize=20)
+			tick += 1
+
+		if resids:
+			plt.subplot(1,n_panels, tick)
+			plt.imshow(residz[-200+k,:,:], cmap='Greys', vmax=0.008, vmin=-0.005, origin='lower')
+			tick += 1
+
+		if color_color:
+			ax3 = plt.subplot(1,n_panels, tick)
+			asp = np.diff(ax3.get_xlim())[0] / np.diff(ax3.get_ylim())[0]
+			ax3.set_aspect(asp)
+			plt.scatter(chain['f'][1,-200+k,:]/chain['f'][0,-200+k,:], chain['f'][2,-200+k,:]/chain['f'][1,-200+k,:], s=1.5e4*chain['f'][0,-200+k,:], marker='x', c='k')
+			plt.ylim(-0.5, 10.5)
+			plt.xlim(-0.5, 10.5)
+
+			plt.xlabel('$S_{350}/S_{250}$', fontsize=18)
+			plt.ylabel('$S_{500}/S_{350}$', fontsize=18)
+
+
+		plt.tight_layout()
+		camera.snap()
+
+	an = camera.animate()
+	if gif_path is None:
+		gif_path = 'pcat_sample_gif_'+timestr+'.gif'
+	an.save(gif_path, writer='PillowWriter', fps=gif_fpr)
+
 
 def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False, convert_to_MJy_sr_fac=None):
 
@@ -329,7 +414,7 @@ def plot_template_median_std(template, template_samples, band='250 micron', temp
 
 # fourier comps
 
-def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None):
+def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None, psf_fwhm=None):
 	
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
@@ -341,7 +426,7 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 
 	all_temps = np.zeros((fourier_coeffs.shape[0], imsz[0], imsz[1]))
 	if fourier_templates is None:
-		fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms)
+		fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm)
 
 	for i, fourier_coeff_state in enumerate(fourier_coeffs):
 		all_temps[i] = generate_template(fourier_coeff_state, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
@@ -368,7 +453,8 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 		cb.set_label(xlabel_unit)		
 		plt.subplot(2,2,3)
 		plt.title('Data - median background model')
-		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img-mean_fc_temp, 95)/convert_to_MJy_sr_fac)
+		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 95)/convert_to_MJy_sr_fac)
+		# plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img-mean_fc_temp, 95)/convert_to_MJy_sr_fac)
 		cb = plt.colorbar(orientation='horizontal')
 		cb.set_label(xlabel_unit)
 		plt.subplot(2,2,4)
@@ -778,8 +864,6 @@ def plot_residual_map(resid, mode='median', band='S', titlefontsize=14, smooth=T
 
 	# TODO - overplot reference catalog on image
 
-
-
 	if minmax_smooth is None:
 		minmax_smooth = [-0.005, 0.005]
 		minmax = [-0.005, 0.005]
@@ -971,6 +1055,10 @@ def plot_src_number_trace(nsrc_fov, show=False, title=False):
 
 
 def plot_grap(verbtype=0):
+
+	'''
+	Makes plot of probabilistic graphical model for SPIRE
+	'''
 		
 	figr, axis = plt.subplots(figsize=(6, 6))
 

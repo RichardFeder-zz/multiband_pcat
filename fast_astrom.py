@@ -3,62 +3,71 @@ from astropy.io import fits
 import numpy as np
 # from spire_data_utils import *
 
+def find_nearest_mod(number, mod_number, mode='up'):
+    '''
+    Finds the nearest integer modulo "mod_number". This is used for padding/trimming images appropriate 
+    to PCAT's multi-region MCMC approach.
 
+    Parameters
+    ----------
 
-def find_lowest_mod(number, mod_number):
-    while number > 0:
-        if np.mod(number, mod_number) == 0:
-            return number
-        else:
-            number -= 1
-    return False
+    number : 'int'
+        Number to be rounded up/down
+    mod_number : 'int'
+        Base of modulus
+    mode : 'string', optional
+        Determines whether number is rounded up or down to nearest modulus. 
+        Default is 'up'.
 
-def find_nearest_upper_mod(number, mod_number):
-    while number < 10000:
-        if np.mod(number, mod_number) == 0:
-            return number
-        else:
-            number += 1
-    return False
+    Returns
+    -------
+
+    Integer rounded up or down, depending on "mode".
+
+    '''
+    if mode=='up':
+        return int(mod_number*np.ceil(float(number)/float(mod_number)))
+    elif mode=='down':
+        return int(mod_number*np.floor(float(number)/float(mod_number)))
+
 
 class wcs_astrometry():
-    ''' This class will contain the WCS header and other information necessary to construct arrays for fast 
+    ''' 
+    This class will contain the WCS header and other information necessary to construct arrays for fast 
     astrometric transformations. 
     
-    Variables:
+    Parameters
+    ----------
         
-        all_fast_arrays (list of nd.arrays): contains all astrometry arrays across bands
-            e.g. len(all_fast_arrays)= n_bands - 1
+    all_fast_arrays : list of nd.arrays
+        contains all astrometry arrays across bands e.g. len(all_fast_arrays)= n_bands - 1
             
-        dims (list of tuples): contains image dimensions for all observations
+    dims : list of tuples
+        contains image dimensions for all observations
         
-        wcs_objs (list of astropy.WCS objects): obtained from observation WCS headers
+    wcs_objs : list of astropy.WCS objects
+        obtained from observation WCS headers
         
-        filenames (list): observation names obtained when loading in FITS files
+    filenames : list
+        observation names obtained when loading in FITS files
         
         
-    Input:
-        - 
-        -
     
-    Functions:
+    Functions
+    ---------
         
-        fit_astrom_arrays(): This function computes the mapping for lattices of points from one observation to 
+    fit_astrom_arrays(): This function computes the mapping for lattices of points from one observation to 
           another, using first differencing to get derivatives for subpixel perturbations.
         
-        load_wcs_header(fits): Yes
+    load_wcs_header(fits): Yes
         
-        load_fast_astrom_arrays(fast_arrays): this loads in the arrays to the wcs_astrometry object to be 
+    load_fast_astrom_arrays(fast_arrays): this loads in the arrays to the wcs_astrometry object to be 
           used for 1st order approximation to astrometry
         
-        pixel_to_pixel(coords, idx0, idx1): this will take coordinates in one observation (idx0) and convert them to 
+    pixel_to_pixel(coords, idx0, idx1): this will take coordinates in one observation (idx0) and convert them to 
           the observation indicated by idx1. Will throw error if arrays to do so do not exist in class object
           
         
-    Outputs:
-        - 
-        - np.array([x', y', dy'/dx, dy'/dy, dx'/dx, dx'/dy])
-        - 
     '''
     
     all_fast_arrays = []
@@ -67,8 +76,6 @@ class wcs_astrometry():
     dims = []
     verbosity = 0
     
-    # base_path = '/Users/richardfeder/Documents/multiband_pcat/Data/spire/'
-
     
     def __init__(self, auto_resize=False, nregion=1, base_path='/Users/richardfeder/Documents/multiband_pcat/Data/spire/'):
         self.wcs_objs = []
@@ -86,7 +93,42 @@ class wcs_astrometry():
         self.base_path = basepath
         
     def load_wcs_header_and_dim(self, filename=None, head=None, hdu_idx=None, round_up_or_down='up'):
+        
+        ''' 
+        Loads in WCS header information into the wcs_astrometry class
+
+        Parameters
+        ----------
+
+        filename : str, optional
+            path to file containing desired WCS header
+            Default is 'None'.
+
+        head : WCS header, optional
+            Can be passed in directly rather than extracted from filename
+            Default is 'None'.
+
+        hdu_idx : int, optional
+            Integer index specifying the HDU card with the desired WCS header. If not provided, the first two HDU
+            cards will be checked.
+            Default is 'None'.
+
+        round_up_or_down : str, optional
+            regions evaluated are either rounded 'up' or 'down' to be divisible by self.nregions.
+            Default is 'up'.
+
+        Returns
+        -------
+
+        Nothing! You've been a fooled
+
+        '''
+
         if head is None:
+            if filename is None:
+                print('No file or header provided')
+                return
+
             self.filenames.append(filename)
             
             f = fits.open(filename)
@@ -105,10 +147,7 @@ class wcs_astrometry():
                 head = f[hdu_idx].header
                 big_dim = np.maximum(head['NAXIS1'], head['NAXIS2'])
 
-            if round_up_or_down =='up':
-                big_pad_dim = find_nearest_upper_mod(big_dim, self.nregion)
-            else:
-                big_pad_dim = find_lowest_mod(big_dim, self.nregion)
+            big_pad_dim = find_nearest_mod(big_dim, self.nregion, mode=round_up_or_down)
 
             dim = (big_pad_dim, big_pad_dim)
         else:
@@ -124,6 +163,25 @@ class wcs_astrometry():
         self.wcs_objs.append(wcs_obj)
         
     def obs_to_obs(self, idx0, idx1, x, y):
+        '''
+        Transforms set of pixel coordinates from one observation to another
+
+        Parameters
+        ----------
+
+        idx0, idx1 : ints
+            Indices of initial (idx0) and transformed (idx1) coordinates
+
+        x, y : floats or '~numpy.ndarrays'
+            x and y pixel coordinates of initial observation
+
+        Returns
+        -------
+
+        x1, y1 : floats or '~numpy.ndarrays'
+            x- and y-transformed pixel coordinates 
+
+        '''
         ra, dec = self.wcs_objs[idx0].all_pix2world(x, y, 0)
         x1, y1 = self.wcs_objs[idx1].all_world2pix(ra, dec, 0)
         return x1, y1
@@ -150,9 +208,28 @@ class wcs_astrometry():
         return dxp, dyp
            
     def fit_astrom_arrays(self, idx0, idx1, bounds0=None, bounds1=None):
-        print('idx0:', idx0)
-        print(self.dims)
-        
+        '''
+        Precomputes set of astrometry arrays used to quickly compute coordinate shifts across bands. 
+
+        Parameters
+        ----------
+
+        idx0, idx1 : ints
+            Indices for initial (idx0) and transformed (idx1) bands
+
+        bounds0, bounds1 : '~numpy.ndarrays' of shape (2,2), optional
+            Can be used to specify image bounds over which to compute fast astrometry arrays. 
+            If left unspecified, astrometry arrays computed over full range of initial observation.
+            Default is 'None'.
+
+        Returns
+        -------
+
+        self.all_fast_arrays : list of '~numpy.ndarrays' of shape (6, self.dims)
+            Contains all sets of astrometry arrays (first order integer approximations + numerical partial derivatives)
+
+
+        '''
 
         if bounds0 is not None:
             # if a rectangular mask is provided, then we only need to pre-compute the astrometry arrays over the masked region
@@ -192,7 +269,26 @@ class wcs_astrometry():
         self.all_fast_arrays.append(fast_arrays)
         
     def transform_q(self, x, y, idx):
-        
+        '''
+        Transforms a set of initial coordinates using precomputed fast astrometry arrays.
+
+        Parameters
+        ----------
+
+        x, y : floats or '~numpy.ndarrays' of shape (Nsrc,)
+            Input pixel coordinates
+
+        idx : int
+            Index of transformed observation which has its astrometry precomputed with fit_astrom_arrays
+
+        Returns
+        -------
+
+        xnew, ynew : floats or '~numpy.ndarrays' of shape (Nsrc,)
+            The transformed set of coordinates.
+
+        '''
+
         assert len(x)==len(y)
         xtrans, ytrans, dxpdx, dypdx, dxpdy, dypdy = self.all_fast_arrays[idx]
         xints, dxs = self.get_pint_dp(x)
