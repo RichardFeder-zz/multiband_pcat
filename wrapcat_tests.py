@@ -185,7 +185,8 @@ class pcat_test_suite():
 
 	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
-				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None):
+				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
+				      image_extnames=['SIGNAL']):
 
 		# this assumes the SZ template is within the fits data struct 
 
@@ -196,7 +197,7 @@ class pcat_test_suite():
 			  float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
 			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=5, \
 			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=40., \
-			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
+			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames)
 
 		ob.main()
 
@@ -277,7 +278,11 @@ result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'
 
 sim_idx = 303
 pcat_test = pcat_test_suite(cluster_name='rxj1347', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
-pcat_test.run_sims_with_injected_sz(dataname='v3_sides_sims_corrected', tail_name='rxj1347_PSW_sim0'+str(sim_idx), visual=True, show_input_maps=False)
+figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0'+str(sim_idx), dataname='sims_12_2_20', ngrid=10, return_validation_figs=True)
+figs[0].savefig('test0.pdf')
+figs[1].savefig('test1.pdf')
+
+# pcat_test.run_sims_with_injected_sz(dataname='sims_12_2_20', image_extnames=['SIG_PRE_LENSE', 'NOISE'], tail_name='rxj1347_PSW_sim0'+str(sim_idx), visual=True, show_input_maps=True)
 
 
 

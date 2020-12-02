@@ -739,6 +739,7 @@ class Model:
 			self.fc_rel_amps = self.gdat.fc_rel_amps
 		else:
 			self.fc_rel_amps = None
+			self.fourier_coeffs = None
 		
 		if self.gdat.nsrc_init is not None:
 			self.n = self.gdat.nsrc_init

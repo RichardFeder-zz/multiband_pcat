@@ -132,7 +132,10 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 			image = np.nan_to_num(spire_dat[extname].data)
 		else:
 			image += np.nan_to_num(spire_dat[extname].data)
-
+		plt.figure()
+		plt.title(extname)
+		plt.imshow(image, origin='lower')
+		plt.show()
 	# image = np.nan_to_num(spire_dat['SIGNAL'].data)
 	error = np.nan_to_num(spire_dat['ERROR'].data)
 
@@ -258,7 +261,7 @@ class pcat_data():
 
 			elif gdat.mock_name is None:
 
-				image, error, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps)
+				image, error, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps, image_extnames=gdat.image_extnames)
 
 				# bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
 				bounds = get_rect_mask_bounds(mask)

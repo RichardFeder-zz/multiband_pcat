@@ -54,8 +54,8 @@ def generate_diffuse_realization(N, M, power_law_idx=-2.7):
 	return ell_map, ps, diffuse_realiz.real
 
 def generate_spire_cirrus_realizations(n_realizations, planck_template, imdims, power_law_idx=-2.6, psf_fwhms=[3., 3., 3.],\
-                                       show=False, vmin=-0.003, vmax=0.003):
-    
+									   show=False, vmin=-0.003, vmax=0.003):
+	
 	'''
 	Given a power spectrum and multiband specifications, this function generates an arbitrary number of galactic cirrus FIR realizations.
 
@@ -90,27 +90,27 @@ def generate_spire_cirrus_realizations(n_realizations, planck_template, imdims, 
 		Figures showing cirrus realizations. Only returned if 'show' set to True.
 
 	'''
-    all_realizations = []
-    fs = []
-    for k in range(n_realizations):
-        
-        multiband_dust_realiz = multiband_diffuse_realization(imdims, power_law_idx=power_law_idx)
+	all_realizations = []
+	fs = []
+	for k in range(n_realizations):
+		
+		multiband_dust_realiz = multiband_diffuse_realization(imdims, power_law_idx=power_law_idx)
 
-        norms = get_spire_diffuse_norms(planck_template)
+		norms = get_spire_diffuse_norms(planck_template)
 
-        smoothed_ts = psf_smooth_templates(multiband_dust_realiz, psf_sigmas=np.array(psf_fwhms)/2.355)
+		smoothed_ts = psf_smooth_templates(multiband_dust_realiz, psf_sigmas=np.array(psf_fwhms)/2.355)
 
-        final_ts = [norms[i]*smoothed_ts[i] for i in range(len(imdims))]
-        
-        if show:
-            f = show_diffuse_temps(final_ts, titles=['250 micron [Jy/beam]', '350 micron [Jy/beam]', '500 micron [Jy/beam]'], vmin=vmin, vmax=vmax)
-            fs.append(f)
-        all_realizations.append(final_ts)
-        
-    if show:
-        return all_realizations, fs
-    else:
-        return all_realizations
+		final_ts = [norms[i]*smoothed_ts[i] for i in range(len(imdims))]
+		
+		if show:
+			f = show_diffuse_temps(final_ts, titles=['250 micron [Jy/beam]', '350 micron [Jy/beam]', '500 micron [Jy/beam]'], vmin=vmin, vmax=vmax)
+			fs.append(f)
+		all_realizations.append(final_ts)
+		
+	if show:
+		return all_realizations, fs
+	else:
+		return all_realizations
 
 def get_spire_diffuse_norms(planck_template, bands=[250., 350., 500.], rms_scale_fac=2.2):
 
@@ -213,18 +213,18 @@ def psf_smooth_templates(templates, psf_sigmas=[1.27, 1.27, 1.27]):
 	return smoothed_ts
 
 def show_diffuse_temps(templates, titles=None, return_fig=True, vmin=-0.003, vmax=0.003):
-    f = plt.figure(figsize=(4*len(templates), 4))
-    for i, temp in enumerate(templates):
-        plt.subplot(1,len(templates), i+1)
-        if titles is not None:
-            plt.title(titles[i])
-        plt.imshow(templates[i], vmin=vmin, vmax=vmax)
-        plt.colorbar()
-    plt.tight_layout()
-    plt.show()
+	f = plt.figure(figsize=(4*len(templates), 4))
+	for i, temp in enumerate(templates):
+		plt.subplot(1,len(templates), i+1)
+		if titles is not None:
+			plt.title(titles[i])
+		plt.imshow(templates[i], vmin=vmin, vmax=vmax)
+		plt.colorbar()
+	plt.tight_layout()
+	plt.show()
 
-    if return_fig:
-        return f
+	if return_fig:
+		return f
 
 
 
