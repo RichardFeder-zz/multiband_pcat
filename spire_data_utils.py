@@ -112,6 +112,8 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	else:
 		file_path = gdat.file_path
 
+	print("gdat show input maps is ", gdat.show_input_maps)
+
 	file_path = file_path.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
 
 
@@ -126,29 +128,60 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	spire_dat = fits.open(file_path)
 	# image = np.nan_to_num(spire_dat['IMAGE'].data)
 
-	# by loading in the image this way, we can compose maps from several components, e.g. noiseless CIB + noise realization
+	#by loading in the image this way, we can compose maps from several components, e.g. noiseless CIB + noise realization
 	for e, extname in enumerate(image_extnames):
 		if e==0:
 			image = np.nan_to_num(spire_dat[extname].data)
 		else:
 			image += np.nan_to_num(spire_dat[extname].data)
-		plt.figure()
-		plt.title(extname)
-		plt.imshow(image, origin='lower')
-		plt.show()
+		if gdat.show_input_maps:
+			plt.figure()
+			plt.title(extname)
+			plt.imshow(image, origin='lower')
+			plt.colorbar()
+			plt.show()
 	# image = np.nan_to_num(spire_dat['SIGNAL'].data)
 	error = np.nan_to_num(spire_dat['ERROR'].data)
 
+	# main functionality is following eight lines
 	if gdat.use_mask:
+
 		if gdat.bolocam_mask:
 			mask = fits.open(gdat.data_path+'bolocam_mask_P'+str(gdat.band_dict[band])+'W.fits')[0].data
+		
+		elif gdat.mask_file is not None:
+			mask_fpath = gdat.mask_file.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
+
+			mask = fits.open(mask_fpath)[0].data
 		else:
 			mask = spire_dat['MASK'].data
 	else:
 		mask = np.ones_like(image)
 
+	# this is for gen_2_sims, which don't have same FITS structure as new sims
 	# image = np.nan_to_num(spire_dat[1].data)
 	# error = np.nan_to_num(spire_dat[2].data)
+
+	# if gdat.add_noise:
+
+	# 	noise_realization = np.zeros_like(error)
+	# 	for rowidx in range(error.shape[0]):
+	# 		for colidx in range(error.shape[1]):
+	# 			if not np.isnan(error[rowidx,colidx]):
+	# 				noise_realization[rowidx,colidx] = np.random.normal(0, error[rowidx,colidx])
+
+	# 	if show_input_maps:
+	# 		plt.figure()
+	# 		plt.imshow(noise_realization, vmin=np.nanpercentile(noise_realization, 5), vmax=np.nanpercentile(noise_realization, 95))
+	# 		plt.title('noise raelization')
+	# 		plt.colorbar()
+	# 		plt.show()
+
+	# 	image += noise_realization
+	# mask = fits.open(gdat.base_path+'/data/spire/GOODSN/GOODSN_P'+str(gdat.band_dict[band])+'W_mask.fits')[0].data
+	# mask = fits.open(gdat.base_path+'/data/spire/gps_0/gps_0_P'+str(gdat.band_dict[band])+'W_mask.fits')[0].data
+
+	# mask = fits.open(gdat.base_path+'/data/spire/rxj1347_831/rxj1347_P'+str(gdat.band_dict[band])+'W_nr_1_ext.fits')['MASK'].data
 	# exposure = spire_dat[3].data
 	# mask = spire_dat[3].data
 	
@@ -204,6 +237,7 @@ def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_
 
 	'''
 	filepath = result_path + timestr
+	# Python version thing here
 	filen = open(filepath+'/params.txt','rb')
 	pdict = pickle.load(filen)
 	opt = objectview(pdict)
@@ -252,11 +286,14 @@ class pcat_data():
 
 				exposure = obj['exp'].data
 				mask = obj['mask']
-				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize']# gives it in arcseconds and neet to convert to pixels
+				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize'] # gives it in arcseconds and neet to convert to pixels
 				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'], round_up_or_down=gdat.round_up_or_down)
 				gdat.dataname = obj['name']
 				if i > 0:
 					self.fast_astrom.fit_astrom_arrays(0, i)
+
+				bounds = get_rect_mask_bounds(mask)
+
 
 
 			elif gdat.mock_name is None:
@@ -299,6 +336,9 @@ class pcat_data():
 
 							if gdat.verbtype > 1:
 								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name], gdat.lam_dict[gdat.band_dict[band]])
+
+							# if template_name=='sze':
+							# 	template = fits.open(gdat.base_path+'/data/spire/rxj1347_sz_templates/rxj1347_P'+str(gdat.band_dict[band])+'W_nr_sze.fits')[0].data
 
 							if gdat.template_filename is not None and template_name=='sze':
 								print('we want to load in a template!!')

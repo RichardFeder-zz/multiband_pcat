@@ -15,6 +15,10 @@ if sys.version_info[0] == 3:
 
 from fourier_bkg_modl import *
 
+def add_directory(dirpath):
+	if not os.path.isdir(dirpath):
+		os.makedirs(dirpath)
+	return dirpath
 
 def convert_pngs_to_gif(filenames, gifdir='/Users/richardfeder/Documents/multiband_pcat/', name='', duration=1000, loop=0):
 
@@ -105,7 +109,10 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
 				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
 			else:
-				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*20, color='r', alpha=0.3)
+
+				# plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
 			if 'zoom' in panels[i]:
 				plt.title('Data (band '+str(band_idx)+', zoomed in)')
 				plt.xlim(zoomlims[band_idx][0][0], zoomlims[band_idx][0][1])
@@ -143,6 +150,9 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 			# if band_idx > 1:
 				# fbkg = gaussian_filter(fbkg, sigma=0.25*obj.imszs[0][0]/obj.n_fourier_terms)
+			# np.sqrt(obj.dat.weights[band_idx])
+
+			fbkg[obj.dat.weights[band_idx]==0] = 0.
 
 			plt.imshow(fbkg, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(fbkg , 5), vmax=np.percentile(fbkg, 95))
 			plt.colorbar()
@@ -162,9 +172,9 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 			if band_idx > 0:
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
-				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
+				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*20, color='r')
 			else:
-				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*20, color='r', alpha=0.3)
 
 			if 'zoom' in panels[i]:
 				plt.title('Residual (band '+str(band_idx)+', zoomed in)')
@@ -197,27 +207,30 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)		
 
 
-		elif panels[i]=='dNdS':
+		elif 'dNdS' in panels[i]:
 
-			logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
+			if obj.n > 0:
+				logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
 
-			if obj.gdat.raw_counts:
-				plt.plot(logSv+3, dNdS, marker='.')
-				plt.ylabel('dN/dS')
-				plt.ylim(5e-1, 3e3)
+				if obj.gdat.raw_counts:
+					plt.plot(logSv+3, dNdS, marker='.')
+					plt.ylabel('dN/dS')
+					plt.ylim(5e-1, 3e3)
 
-			else:
-				n_steradian = ndeg/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
-				n_steradian *= obj.gdat.frac # a number of pixels in the image are not actually observing anything
-				dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
-				plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
-				plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-				plt.ylim(1e0, 1e5)
+				else:
+					n_steradian = ndeg/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+					n_steradian *= obj.gdat.frac # a number of pixels in the image are not actually observing anything
+					dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+					plt.plot(logSv+3, dNdS_S_twop5/n_steradian/dSz, marker='.')
+					plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
+					plt.ylim(1e0, 1e5)
 
-			plt.yscale('log')
-			plt.legend()
-			plt.xlabel('log($S_{\\nu}$) (mJy)')
-			plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
+				plt.yscale('log')
+				plt.legend()
+				plt.xlabel('log($S_{\\nu}$) (mJy)')
+				plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
+
+
 
 
 	if frame_dir_path is not None:
@@ -246,54 +259,135 @@ def scotts_rule_bins(samples):
 	n = len(samples)
 	bin_width = 3.5*np.std(samples)/n**(1./3.)
 	k = np.ceil((np.max(samples)-np.min(samples))/bin_width)
-	bins = np.linspace(np.min(samples), np.max(samples), k)
+	bins = np.linspace(np.min(samples), np.max(samples), int(k))
 	return bins
 
 
-def make_pcat_sample_gif(timestr, im_path, gif_path=None, cat_xy=True, resids=True, color_color=True, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/', \
+def make_pcat_sample_gif(timestr, im_path, image_extension='SIGNAL', gif_path=None, cat_xy=True, resids=True, color_color=True, number_cts=True, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/', \
 						gif_fpr = 5):
 
 	chain = np.load('spire_results/'+timestr+'/chain.npz')
 	residz = chain['residuals0']
-	gdat, filepath, result_path = load_param_dict(timestr, result_path='spire_results/')
+	if number_cts:
+		fsrcs = chain['f']
+		nsrcs = chain['n']
+
+	# gdat, filepath, result_path = load_param_dict(timestr, result_path='spire_results/')
 
 
-	n_panels = np.sum(np.array([cat_xy, resids, color_color]).astype(np.int))
-	print('n_panels = ', n_panels)
+	n_panels = np.sum(np.array([cat_xy, resids, color_color, number_cts]).astype(np.int))
+	print('n_panels is ', n_panels)
+	mask = fits.open('data/spire/GOODSN/GOODSN_PSW_mask.fits')[0].data
+	bounds = get_rect_mask_bounds(mask)
 
-	im = fits.open(im_path)['SIGNAL'].data
+	im = fits.open(im_path)[image_extension].data
 
-	im = im[gdat.bounds[0][0,0]:gdat.bounds[0][0,1], gdat.bounds[0][1,0]:gdat.bounds[0][1,1]]
+	im = im[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+
+	# im = im[gdat.bounds[0][0,0]:gdat.bounds[0][0,1], gdat.bounds[0][1,0]:gdat.bounds[0][1,1]]
+
+	minshap = min(np.array(residz).shape[1], np.array(residz).shape[2])
+
+	print(minshap)
+
+	im = im[:minshap, :minshap].copy()
 
 	fig = plt.figure(figsize=(6*n_panels,7))
 	camera = Camera(fig)
 
+	nresid = int(len(residz))
+	# print('nresid is ', nresid)
 
 	for k in np.arange(0, len(residz), 10):
 		tick = 1
 
 		if cat_xy:
-			plt.subplot(1,n_panels, tick)
+			ax1 = plt.subplot(1,n_panels, tick)
 			plt.imshow(im-np.median(im), vmin=-0.007, vmax=0.01, cmap='Greys')
-			plt.scatter(chain['x'][-200+k,:], chain['y'][-200+k,:], s=1.5e4*chain['f'][0,-200+k,:], marker='+', color='r')
-			plt.text(15, -2, 'Nsamp = '+str(chain['x'].shape[0]-200+k)+', Nsrc='+str(chain['n'][-200+k]), fontsize=20)
+			plt.scatter(chain['x'][-nresid+k,:], chain['y'][-nresid+k,:], s=4e3*chain['f'][0,-nresid+k,:], marker='+', color='r')
+			plt.text(25, -2, 'Nsamp = '+str(chain['x'].shape[0]-nresid+k)+', Nsrc='+str(chain['n'][-nresid+k]), fontsize=20)
+			# ax1.set_title('Nsamp = '+str(chain['x'].shape[0]-300+k)+', Nsrc='+str(chain['n'][-300+k]), fontsize=20)
+
+			# plt.xlim(0, min(im.shape[0], im.shape[1]))
+			# plt.ylim(0, min(im.shape[0], im.shape[1]))
+
 			tick += 1
 
 		if resids:
-			plt.subplot(1,n_panels, tick)
-			plt.imshow(residz[-200+k,:,:], cmap='Greys', vmax=0.008, vmin=-0.005, origin='lower')
+			ax2 = plt.subplot(1,n_panels, tick)
+			ax2.set_title('Data - Model', fontsize=20)
+			plt.imshow(residz[-nresid+k,:,:], cmap='Greys', vmax=0.008, vmin=-0.005)
 			tick += 1
 
 		if color_color:
 			ax3 = plt.subplot(1,n_panels, tick)
 			asp = np.diff(ax3.get_xlim())[0] / np.diff(ax3.get_ylim())[0]
 			ax3.set_aspect(asp)
-			plt.scatter(chain['f'][1,-200+k,:]/chain['f'][0,-200+k,:], chain['f'][2,-200+k,:]/chain['f'][1,-200+k,:], s=1.5e4*chain['f'][0,-200+k,:], marker='x', c='k')
+			plt.scatter(chain['f'][1,-nresid+k,:]/chain['f'][0,-nresid+k,:], chain['f'][2,-nresid+k,:]/chain['f'][1,-nresid+k,:], s=1.5e4*chain['f'][0,-nresid+k,:], marker='x', c='k')
 			plt.ylim(-0.5, 10.5)
 			plt.xlim(-0.5, 10.5)
 
 			plt.xlabel('$S_{350}/S_{250}$', fontsize=18)
 			plt.ylabel('$S_{500}/S_{350}$', fontsize=18)
+
+		if number_cts:
+			nbins = 20
+			binz = np.linspace(np.log10(0.005)+3.-1., 3., nbins)
+
+			fsrcs_in_fov = np.array([fsrcs[0][-nresid+k][i] for i in range(nsrcs[-nresid+k])])
+
+			hist = np.histogram(np.log10(fsrcs_in_fov)+3, bins=binz)
+			logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
+			binz_Sz = 10**(binz-3)
+			dSz = binz_Sz[1:]-binz_Sz[:-1]
+			dNdS = hist[0]
+			npix = im.shape[0]
+
+			pixel_sizes_nc = dict({0:6, 1:8, 2:12}) # arcseconds
+
+			nsidedeg = npix*6./3600.
+			n_steradian = nsidedeg**2/(180./np.pi)**2
+			
+			dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+			mean_number_cts = dNdS_S_twop5/n_steradian/dSz
+
+			ax3 = plt.subplot(1,n_panels, tick)
+			ax3.set_title('Number counts - 250 micron', fontsize=20)
+			plt.xlabel('$S_{\\nu}$ [mJy]', fontsize=16)
+			plt.ylabel('log dN/dS.$S^{2.5}$ [$Jy^{1.5}/sr$]', fontsize=16)
+
+
+			import pandas as pd
+			
+			ncounts_bethermin = pd.read_csv('~/Downloads/Bethermin_et_al_PSW.csv', header=None)
+			plt.plot(np.array(ncounts_bethermin[0]), np.array(ncounts_bethermin[1]), marker='.', markersize=10, label='Bethermin et al. (2012a)', color='cyan')
+
+			ncounts_oliver = pd.read_csv('~/Downloads/Oliver_et_al_PSW.csv', header=None)
+			plt.plot(np.array(ncounts_oliver[0]), np.array(ncounts_oliver[1]), marker='3', markersize=10, label='Oliver et al. (2010)', color='b')
+
+			ncounts_Glenn = pd.read_csv('~/Downloads/Glenn_et_al_PSW.csv', header=None)
+			plt.plot(np.array(ncounts_Glenn[0]), np.array(ncounts_Glenn[1]), marker='+', markersize=10, label='Glenn et al. (2010)', color='limegreen')
+
+			ncounts_SIDES_srcextract = pd.read_csv('~/Downloads/SIDES_srcextract_PSW.csv', header=None)
+			plt.plot(np.array(ncounts_SIDES_srcextract[0]), np.array(ncounts_SIDES_srcextract[1]), marker='^', markersize=10, label='SIDES Source Extraction (2017)', color='r')
+
+			ncounts_XIDp_srcextract = pd.read_csv('~/Downloads/Wang_2019_XIDplus_PSW.csv', header=None)
+			plt.plot(np.array(ncounts_XIDp_srcextract[0]), np.array(ncounts_XIDp_srcextract[1]), marker='4', markersize=10, label='XID+ (Wang et al. 2019)', color='y')
+
+			ncounts_SIDES_model = pd.read_csv('~/Downloads/SIDES_PSW.csv', header=None)
+			plt.plot(np.array(ncounts_SIDES_model[0]), np.array(ncounts_SIDES_model[1]), marker='o', markersize=5, label='SIDES empirical model', color='royalblue')
+
+
+			plt.plot(10**(logSv+3), np.log10(mean_number_cts), marker='x', markersize=10,  color='k', linewidth=2, label='PCAT')
+
+
+			plt.xscale('log')
+			if k==0:
+				print('making legend')
+				plt.legend(fontsize=14)
+			plt.ylim(1.8, 5)
+			plt.xlim(0.5, 200)
+
 
 
 		plt.tight_layout()
@@ -480,7 +574,7 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 	
 	return f
 
-def plot_last_fc_map(fourier_coeffs, imsz, ref_img=None, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None, titlefontsize=18):
+def plot_last_fc_map(fourier_coeffs, imsz, ref_img=None, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None, titlefontsize=16):
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
 		xlabel_unit = ' [Jy/beam]'
@@ -491,19 +585,30 @@ def plot_last_fc_map(fourier_coeffs, imsz, ref_img=None, fourier_templates=None,
 
 
 	if fourier_templates is None:
-		fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms)
-	last_temp = generate_template(fourier_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
+		fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=3.)
+	last_temp_bc = generate_template(fourier_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
+
+
+	fourier_templates_unconv = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=None)
+	last_temp = generate_template(fourier_coeffs, n_terms, fourier_templates=fourier_templates_unconv, N=imsz[0], M=imsz[1])	
 
 	if ref_img is not None:
-		f = plt.figure(figsize=(10, 5))
-		plt.subplot(1,2,1)
+		f = plt.figure(figsize=(15, 5))
+		plt.subplot(1,3,1)
 		plt.title('Data', fontsize=titlefontsize)
 		plt.imshow(ref_img, cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95), origin='lower')
-		plt.colorbar()
-		plt.subplot(1,2,2)
-		plt.title('Last fourier model realization', fontsize=titlefontsize)
+		cbar = plt.colorbar(orientation='horizontal')
+		cbar.set_label('[Jy/beam]', fontsize=16)
+		plt.subplot(1,3,2)
+		plt.title('Last Fourier model realization (+PSF)', fontsize=titlefontsize)
+		plt.imshow(last_temp_bc/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower', vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
+		cbar = plt.colorbar(orientation='horizontal')
+		cbar.set_label('[Jy/beam]', fontsize=16)
+		plt.subplot(1,3,3)
+		plt.title('Last Fourier model realization', fontsize=titlefontsize)
 		plt.imshow(last_temp/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower', vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
-		plt.colorbar()
+		cbar = plt.colorbar(orientation='horizontal')
+		cbar.set_label('[Jy/beam]', fontsize=16)
 
 	else:
 		f = plt.figure()
@@ -619,7 +724,7 @@ def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
 
 	f = plt.figure(figsize=(10, 5))
 	plt.subplot(1,2,1)
-	plt.imshow(np.median(power_spectrum_realiz, axis=0))
+	plt.imshow(np.abs(np.median(power_spectrum_realiz, axis=0)), norm=matplotlib.colors.LogNorm())
 	plt.colorbar()
 	plt.subplot(1,2,2)
 	fov_in_rad = N*(pixsize/3600.)*(np.pi/180.)
@@ -714,11 +819,14 @@ def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=
 		plt.title('Posterior Flux Density Distribution - ' +str(band))
 
 	plt.errorbar(logSv+3, mean_number_cts, yerr=np.array([np.abs(mean_number_cts-lower), np.abs(upper - mean_number_cts)]),fmt='.', label='Posterior')
-	
+	# plt.xscale('log')
 	plt.legend()
 	plt.yscale('log', nonposy='clip')
-	plt.xlabel('log10(Flux density) - ' + str(band))
+
+	plt.xlabel('$S_{\\nu}$ - ' + str(band) + ' [mJy]')
 	plt.ylim(5e-1, 5e2)
+	# plt.ylim(1.8, 5)
+	# plt.xlim(0.5, 300)
 
 	if show:
 		plt.show()
@@ -726,23 +834,69 @@ def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=
 	return f
 
 
-def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, band='250 micron', title=True, show=False):
+def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, nsamp=None, band='250 micron', title=True, show=False):
 
-	mean_number_cts = np.mean(lit_number_counts, axis=0)
+	mean_number_cts = np.median(lit_number_counts, axis=0)
 	lower = np.percentile(lit_number_counts, 16, axis=0)
 	upper = np.percentile(lit_number_counts, 84, axis=0)
-	f = plt.figure()
+	f = plt.figure(figsize=(7,6))
 	if title:
-		plt.title('Posterior Flux Density Distribution - ' +str(band))
+		plt.title('Posterior Flux Density Distribution \n ' +str(band), fontsize=20)
 
-	plt.errorbar(logSv+3, mean_number_cts, yerr=np.array([np.abs(mean_number_cts-lower), np.abs(upper - mean_number_cts)]), marker='.', label='Posterior')
+	print('mean number counts:' , mean_number_cts)
+	print('lower is ', lower)
+	yerrs = np.array([np.log10(mean_number_cts)-np.log10(lower), np.log10(upper) - np.log10(mean_number_cts)])
+
+	pl_key = dict({'250 micron':'PSW', '350 micron':'PMW', '500 micron':'PLW'})
+
+
+	import pandas as pd
 	
-	plt.yscale('log')
+	ncounts_bethermin = pd.read_csv('~/Downloads/Bethermin_et_al_'+pl_key[band]+'.csv', header=None)
+	plt.plot(np.array(ncounts_bethermin[0]), np.array(ncounts_bethermin[1]), marker='.', markersize=10, label='Bethermin et al. (2012a)', color='cyan')
+
+	ncounts_oliver = pd.read_csv('~/Downloads/Oliver_et_al_'+pl_key[band]+'.csv', header=None)
+	plt.plot(np.array(ncounts_oliver[0]), np.array(ncounts_oliver[1]), marker='3', markersize=10, label='Oliver et al. (2010)', color='b')
+
+	ncounts_Glenn = pd.read_csv('~/Downloads/Glenn_et_al_'+pl_key[band]+'.csv', header=None)
+	plt.plot(np.array(ncounts_Glenn[0]), np.array(ncounts_Glenn[1]), marker='+', markersize=10, label='Glenn et al. (2010)', color='limegreen')
+
+	ncounts_SIDES_srcextract = pd.read_csv('~/Downloads/SIDES_srcextract_'+pl_key[band]+'.csv', header=None)
+	plt.plot(np.array(ncounts_SIDES_srcextract[0]), np.array(ncounts_SIDES_srcextract[1]), marker='^', markersize=10, label='SIDES Source Extraction (2017)', color='r')
+
+	# if pl_key[band]=='PSW':
+	ncounts_XIDp_srcextract = pd.read_csv('~/Downloads/Wang_2019_XIDplus_'+pl_key[band]+'.csv', header=None)
+	plt.plot(np.array(ncounts_XIDp_srcextract[0]), np.array(ncounts_XIDp_srcextract[1]), marker='4', markersize=10, label='XID+ (Wang et al. 2019)', color='y')
+
+	ncounts_SIDES_model = pd.read_csv('~/Downloads/SIDES_'+pl_key[band]+'.csv', header=None)
+	plt.plot(np.array(ncounts_SIDES_model[0]), np.array(ncounts_SIDES_model[1]), marker='o', markersize=5, label='SIDES empirical model', color='royalblue')
+
+
+
+	plt.text(0.7, 4.6, 'PRELIMINARY', fontsize=20)
+
+	print('yerrs is ', yerrs)
+	yerrs[np.isinf(yerrs)] = 0
+	print('yerrs is nowww', yerrs)
+	if nsamp is not None:
+		print('nsamp is ', nsamp, ', computing standard error')
+		yerrs /= np.sqrt(nsamp)
+		print('yerrs standard err is ', yerrs)
+	plt.errorbar(10**(logSv+3), np.log10(mean_number_cts), yerr=yerrs, marker='x', markersize=10, capsize=5, label='PCAT posterior $\\mathcal{P}(S_{\\nu}|D)$ (uncorrected)', color='k', linewidth=2)
+
+	# plt.yscale('log')
 	plt.legend()
-	plt.xlabel('log($S_{\\nu}$) (mJy)')
-	plt.ylabel('dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)')
-	plt.ylim(1e-1, 1e5)
-	plt.xlim(np.log10(trueminf)+3.-0.5-1.0, 2.5)
+	plt.xlabel('$S_{\\nu}$ [mJy]', fontsize=16)
+	plt.ylabel('log dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)', fontsize=16)
+	# plt.ylim(1e-1, 1e5)
+	# plt.xlim(np.log10(trueminf)+3.-0.5-1.0, 2.5)
+
+
+	plt.ylim(1.8, 5)
+	plt.xlim(0.5, 300)
+	plt.xscale('log')
+
+
 	plt.tight_layout()
 
 	if show:
@@ -988,12 +1142,15 @@ def plot_comp_resources(timestats, nsamp, labels=['Proposal', 'Likelihood', 'Imp
 	
 	return f
 
-def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birth/Death', 'Merge/Split', 'Templates'], show=False, smooth_fac=None):
+def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birth/Death', 'Merge/Split', 'Templates', 'Fourier Comps'], show=False, smooth_fac=None, bad_idxs=None):
 
 	f = plt.figure()
 	
 	samp_range = np.arange(accept_stats.shape[0])
 	for x in range(len(proposal_types)):
+		if bad_idxs is not None:
+			if x in bad_idxs:
+				continue
 		print(accept_stats[0,x])
 		accept_stats[:,x][np.isnan(accept_stats[:,x])] = 0.
 
@@ -1153,6 +1310,420 @@ def grab_atcr(timestr, paramstr='template_amplitudes', band=0, result_dir=None, 
 
 	if return_fig:
 		return f
+
+
+
+def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, \
+				plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4, dpi=150, flux_density_unit='MJy/sr', \
+				accept_fraction_plots=True, chi2_plots=True, dc_background_plots=True, fourier_comp_plots=True, \
+				template_plots=True, flux_dist_plots=True, flux_color_plots=False, flux_color_color_plots=False, \
+				comp_resources_plot=True, source_number_plots=True, residual_plots=True):
+
+	
+	title_band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+	lam_dict = dict({0:250, 1:350, 2:500})
+	
+	if gdat is None:
+		gdat, filepath, result_path = load_param_dict(timestr)
+		gdat.burn_in_frac = burn_in_frac
+		gdat.boolplotshow = boolplotshow
+		gdat.boolplotsave = boolplotsave
+		gdat.filepath = filepath
+		gdat.result_path = result_path
+		gdat.timestr = timestr
+
+	else:
+		gdat.filepath = gdat.result_path + gdat.timestr
+
+	gdat.show_input_maps=False
+	# result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
+	# filepath = result_path + timestr
+	# gdat.float_background = None
+
+	#roc = cross_match_roc(filetype='.npy')
+	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
+
+	for i, band in enumerate(gdat.bands):
+
+		if gdat.mock_name is not None:
+
+			if cattype=='SIDES':
+				ref_path = datapath+'sides_cat_P'+gdat.band_dict[band]+'W_20.npy'
+				roc.load_cat(path=ref_path)
+				if i==0:
+					cat_fluxes = np.zeros(shape=(gdat.nbands, len(roc.mock_cat['flux'])))
+				cat_fluxes[i,:] = roc.mock_cat['flux']
+		else:
+			cat_fluxes=None
+
+
+	dat = pcat_data(gdat.auto_resize, nregion=gdat.nregion)
+	dat.load_in_data(gdat)
+
+	chain = np.load(gdat.filepath+'/chain.npz')
+
+	flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
+
+	fd_conv_fac = None # if units are MJy/sr this changes to a number, otherwise default flux density units are mJy/beam
+	nsrcs = chain['n']
+	xsrcs = chain['x']
+	ysrcs = chain['y']
+	fsrcs = chain['f']
+	chi2 = chain['chi2']
+	timestats = chain['times']
+	accept_stats = chain['accept']
+	diff2s = chain['diff2s']
+
+	burn_in = int(gdat.nsamp*burn_in_frac)
+	bands = gdat.bands
+	print('Bands are ', bands)
+
+	if gdat.float_background is not None:
+		bkgs = chain['bkg']
+
+	if gdat.float_templates is not None:
+		template_amplitudes = chain['template_amplitudes']
+
+	if gdat.float_fourier_comps is not None: # fourier comps
+		fourier_coeffs = chain['fourier_coeffs']
+
+	# ------------------- mean residual ---------------------------
+
+	if residual_plots:
+
+		for b in range(gdat.nbands):
+			residz = chain['residuals'+str(b)]
+
+			median_resid = np.median(residz, axis=0)
+
+			print('Median residual has shape '+str(median_resid.shape))
+			smoothed_resid = gaussian_filter(median_resid, sigma=3)
+
+			minpct = np.percentile(median_resid[dat.weights[b] != 0.], 5.)
+			maxpct = np.percentile(median_resid[dat.weights[b] != 0.], 95.)
+
+			# minpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 5.)
+			# maxpct_smooth = np.percentile(smoothed_resid[dat.weights[b] != 0.], 99.)
+			maxpct_smooth = 0.002
+			minpct_smooth = -0.002
+
+			if b==0:
+				resid_map_dir = add_directory(gdat.filepath+'/residual_maps')
+				onept_dir = add_directory(gdat.filepath+'/residual_1pt')
+
+			if flux_density_unit=='MJy/sr':
+				fd_conv_fac = flux_density_conversion_dict[gdat.band_dict[bands[b]]]
+				print('fd conv fac is ', fd_conv_fac)
+			
+
+			f_last = plot_residual_map(residz[-1], mode='last', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
+			f_last.savefig(resid_map_dir +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
+			f_median = plot_residual_map(median_resid, mode='median', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=fd_conv_fac)
+			f_median.savefig(resid_map_dir +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
+
+			noise_mod = dat.errors[b]
+
+			f_1pt_resid = plot_residual_1pt_function(median_resid_rav, mode='median', noise_model=noise_mod, band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
+			f_1pt_resid.savefig(onept_dir +'/median_residual_1pt_function_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			plt.close()	
+
+	# -------------------- CHI2 ------------------------------------
+
+	if chi2_plots:
+		sample_number = np.arange(burn_in, gdat.nsamp)
+		full_sample = range(gdat.nsamp)
+
+		chi2_dir = add_directory(gdat.filepath+'/chi2')
+
+		
+		for b in range(gdat.nbands):
+
+			fchi = plot_chi_squared(chi2[:,b], sample_number, band=title_band_dict[bands[b]], show=False)
+			fchi.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			plt.close()
+
+	# ------------------------- BACKGROUND AMPLITUDE ---------------------
+	if gdat.float_background and dc_background_plots:
+
+		bkg_dir = add_directory(gdat.filepath+'/bkg')
+
+		for b in range(gdat.nbands):
+
+			if flux_density_unit=='MJy/sr':
+				fd_conv_fac = flux_density_conversion_dict[gdat.band_dict[bands[b]]]
+				print('fd conv fac is ', fd_conv_fac)
+
+			f_bkg_chain = plot_bkg_sample_chain(bkgs[:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+			f_bkg_chain.savefig(bkg_dir+'/bkg_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+			
+			if gdat.nsamp > 50:
+				f_bkg_atcr = plot_atcr(bkgs[burn_in:, b], title='Background level, '+title_band_dict[bands[b]])
+				f_bkg_atcr.savefig(bkg_dir+'/bkg_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
+			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
+	# ------------------------- FOURIER COMPONENTS ----------------------
+	if gdat.float_fourier_comps and fourier_comp_plots:
+
+		fc_dir = add_directory(gdat.filepath+'/fourier_comps')
+
+		# median and variance of fourier component model posterior
+		print('Computing Fourier component posterior..')
+		# f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0], ref_img=dat.data_array[0], convert_to_MJy_sr_fac=flux_density_conversion_dict['S'], psf_fwhm=3.)
+		# f_fc_median_std.savefig(fc_dir+'/fourier_comp_model_median_std.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		f_fc_last = plot_last_fc_map(fourier_coeffs[-1], gdat.imszs[0],ref_img=dat.data_array[0])
+		f_fc_last.savefig(fc_dir+'/last_sample_fourier_comp_model.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		# covariance matrix of fourier components
+
+		f_fc_covariance = plot_fourier_coeffs_covariance_matrix(fourier_coeffs[burn_in:])
+		f_fc_covariance.savefig(fc_dir+'/fourier_coeffs_covariance_matrix.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		# sample chain for fourier coeffs
+
+		f_fc_amp_chain = plot_fourier_coeffs_sample_chains(fourier_coeffs)
+		f_fc_amp_chain.savefig(fc_dir+'/fourier_coeffs_sample_chains.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		# posterior power spectrum of fourier component model
+		f_fc_ps = plot_posterior_fc_power_spectrum(fourier_coeffs[burn_in:], gdat.imszs[0][0])
+		f_fc_ps.savefig(fc_dir+'/posterior_bkg_power_spectrum.'+plttype, bbox_inches='tight', dpi=dpi)
+
+	
+	# ------------------------- TEMPLATE AMPLITUDES ---------------------
+
+	if gdat.float_templates and template_plots:
+
+		template_dir = add_directory(gdat.filepath+'/templates')
+
+		for t in range(gdat.n_templates):
+			print('looking at template with name ', gdat.template_order[t])
+			for b in range(gdat.nbands):
+
+				if flux_density_unit=='MJy/sr':
+					fd_conv_fac = flux_density_conversion_dict[gdat.band_dict[bands[b]]]
+					print('fd conv fac is ', fd_conv_fac)
+
+				if not np.isnan(gdat.template_band_idxs[t,b]):
+
+					if gdat.template_order[t]=='dust' or gdat.template_order[t]=='planck':
+						f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], ylabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
+						f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel='Relative amplitude', convert_to_MJy_sr_fac=None) # newt
+					
+						f_temp_median_and_variance = plot_template_median_std(dat.template_array[b][t], template_amplitudes[burn_in:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=fd_conv_fac)
+						
+						f_temp_median_and_variance.savefig(template_dir+'/'+gdat.template_order[t]+'_template_median_std_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+					else:
+						mock_truth = None
+						if gdat.template_order[t]=='sze':
+							temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
+							mock_truth = None
+							if gdat.inject_sz_frac is not None:
+								mock_truth = temp_mock_amps_dict[gdat.band_dict[bands[b]]]*gdat.inject_sz_frac
+								print('mock truth is ', mock_truth)
+
+
+						if gdat.integrate_sz_prof:
+
+							pixel_sizes = dict({'S':6, 'M':8, 'L':12}) # arcseconds
+
+							npix = dat.template_array[b][t].shape[0]*dat.template_array[b][t].shape[1]
+							geom_fac = (np.pi*pixel_sizes[gdat.band_dict[bands[b]]]/(180.*3600.))**2
+							print('geometric factor is ', geom_fac)
+							print('integrating sz profiles..')
+
+							template_flux_densities = np.array([np.sum(amp*dat.template_array[b][t]) for amp in template_amplitudes[burn_in:, t, b]])
+
+							print('template_flux densities:', template_flux_densities)
+
+							if fd_conv_fac is not None:
+								template_flux_densities /= fd_conv_fac
+
+							template_flux_densities *= geom_fac
+
+							template_flux_densities *= 1e6 # MJy to Jy
+							
+							if gdat.template_moveweight > 0:
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac) 
+						
+								f_temp_amp_post = plot_posterior_template_amplitude(template_flux_densities, mock_truth=mock_truth,  template_name=gdat.template_order[t], band=title_band_dict[bands[b]], xlabel_unit='[Jy]') 
+
+						else:
+							if gdat.template_moveweight > 0:
+								f_temp_amp_chain = plot_template_amplitude_sample_chain(template_amplitudes[:, t, b], template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac)
+								f_temp_amp_post = plot_posterior_template_amplitude(template_amplitudes[burn_in:, t, b],mock_truth=mock_truth,	template_name=gdat.template_order[t], band=title_band_dict[bands[b]], convert_to_MJy_sr_fac=fd_conv_fac)
+
+
+					if gdat.template_order != 'sze' or b > 0: # test specific
+						f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+						f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+					if gdat.nsamp > 50:
+						f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
+						f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
+	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
+
+	if comp_resources_plot:
+		labels = ['Proposal', 'Likelihood', 'Implement']
+
+		f_comp = plot_comp_resources(timestats, gdat.nsamp, labels=labels)
+		f_comp.savefig(gdat.filepath+ '/time_resource_statistics.'+plttype, bbox_inches='tight', dpi=dpi)
+		plt.close()
+
+	# ------------------------------ ACCEPTANCE FRACTION -----------------------------------------
+	
+	if accept_fraction_plots:	
+
+		proposal_types = ['All', 'Move', 'Birth/Death', 'Merge/Split', 'Background', 'Templates', 'Fourier comps']
+
+		bad_idxs = []
+		if not gdat.float_background:
+			bad_idxs.append(4)
+		if not gdat.float_templates:
+			bad_idxs.append(5)
+		if not gdat.float_fourier_comps:
+			bad_idxs.append(6)
+
+		print('proposal types:', proposal_types)
+		print('accept_stats is ', accept_stats)
+		f_proposal_acceptance = plot_acceptance_fractions(accept_stats, proposal_types=proposal_types, smooth_fac=10, bad_idxs=bad_idxs)
+		f_proposal_acceptance.savefig(gdat.filepath+'/acceptance_fraction.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
+	# -------------------------------- ITERATE OVER BANDS -------------------------------------
+
+
+	nsrc_fov = []
+	color_lin_post_bins = np.linspace(0.0, 5.0, 30)
+
+	flux_color_dir = add_directory(gdat.filepath+'/fluxes_and_colors')
+
+	pairs = []
+
+	fov_sources = [[] for x in range(gdat.nbands)]
+
+	for b in range(gdat.nbands):
+
+		color_lin_post = []
+
+		residz = chain['residuals'+str(b)]
+
+		median_resid = np.median(residz, axis=0)
+
+		nbins = 20
+		lit_number_counts = np.zeros((gdat.nsamp - burn_in, nbins-1)).astype(np.float32)
+		raw_number_counts = np.zeros((gdat.nsamp - burn_in, nbins-1)).astype(np.float32)
+
+		binz = np.linspace(np.log10(gdat.trueminf)+3.-1., 3., nbins)
+
+		weight = dat.weights[b]
+		
+
+		if flux_dist_plots:
+			for i, j in enumerate(np.arange(burn_in, gdat.nsamp)):
+		
+				fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0.])
+
+				fov_sources[b].extend(fsrcs_in_fov)
+
+				if b==0:
+					nsrc_fov.append(len(fsrcs_in_fov))
+
+				hist = np.histogram(np.log10(fsrcs_in_fov)+3, bins=binz)
+				logSv = 0.5*(hist[1][1:]+hist[1][:-1])-3
+				binz_Sz = 10**(binz-3)
+				dSz = binz_Sz[1:]-binz_Sz[:-1]
+				dNdS = hist[0]
+				raw_number_counts[i,:] = hist[0]
+				print('gdat.frac is ', gdat.frac)
+				npix = median_resid.shape[0]
+				assert npix==median_resid.shape[1]
+
+				pixel_sizes_nc = dict({0:6, 1:8, 2:12}) # arcseconds
+
+				nsidedeg = npix*pixel_sizes_nc[b]/3600.
+				print(npix, nsidedeg**2)
+				n_steradian = nsidedeg**2/(180./np.pi)**2
+				
+				#n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+				n_steradian *= gdat.frac # a number of pixels in the image are not actually observing anything
+				dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
+				lit_number_counts[i,:] = dNdS_S_twop5/n_steradian/dSz
+
+			# f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
+			# # f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, nsamp=gdat.nsamp-burn_in, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
+			# f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=title_band_dict[bands[b]])
+			f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
+
+		if b > 0 and flux_color_plots:
+
+			for sub_b in range(b):
+				print('sub_b, b = ', sub_b, b)
+				pairs.append([sub_b, b])
+
+				print('fov srclengths are', len(fov_sources[sub_b]), len(fov_sources[b]))
+
+				color_lin_post.append(fsrcs[sub_b].ravel()/fsrcs[b].ravel())
+
+				if sub_b==1 and b==2:
+					ymax = 0.4
+				else:
+					ymax = 0.1
+
+				# f_flux_color = plot_flux_color_posterior(np.array(fov_sources[sub_b]), np.array(fov_sources[sub_b])/np.array(fov_sources[b]), [title_band_dict[sub_b], title_band_dict[sub_b]+' / '+title_band_dict[b]], xmin=1e-2, xmax=40, ymin=0.005, ymax=ymax)
+				# f_flux_color.savefig(flux_color_dir+'/posterior_flux_color_diagram_'+gdat.band_dict[sub_b]+'_'+gdat.band_dict[b]+'_nonlogx.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			f_color_post = plot_color_posterior(fsrcs, b-1, b, lam_dict, mock_truth_fluxes=cat_fluxes)
+			f_color_post.savefig(flux_color_dir +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+	if gdat.nbands == 3 and flux_color_color_plots:
+
+		f_color_color = plot_flux_color_posterior(np.array(fov_sources[0])/np.array(fov_sources[1]), np.array(fov_sources[1])/np.array(fov_sources[2]), [title_band_dict[0]+' / '+title_band_dict[1], title_band_dict[1]+' / '+title_band_dict[2]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[1]+'-'+gdat.band_dict[2]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		f_color_color2 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[1]), np.array(fov_sources[0])/np.array(fov_sources[1]), [title_band_dict[2]+' / '+title_band_dict[1], title_band_dict[0]+' / '+title_band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color2.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[1]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		f_color_color3 = plot_flux_color_posterior(np.array(fov_sources[2])/np.array(fov_sources[0]), np.array(fov_sources[0])/np.array(fov_sources[1]), [title_band_dict[2]+' / '+title_band_dict[0], title_band_dict[0]+' / '+title_band_dict[1]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))
+		f_color_color3.savefig(flux_color_dir+'/posterior_color_color_diagram_'+gdat.band_dict[2]+'-'+gdat.band_dict[0]+'_'+gdat.band_dict[0]+'-'+gdat.band_dict[1]+'_5mJy_band0_linear.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
+	# ------------------- SOURCE NUMBER ---------------------------
+
+	if source_number_plots:
+
+		f_nsrc = plot_src_number_posterior(nsrc_fov)
+		f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		f_nsrc_trace = plot_src_number_trace(nsrc_fov)
+		f_nsrc_trace.savefig(gdat.filepath +'/nstar_traceplot.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
+		nsrc_full = []
+		for i, j in enumerate(np.arange(0, gdat.nsamp)):
+		
+			fsrcs_full = np.array([fsrcs[0][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0.])
+
+			nsrc_full.append(len(fsrcs_full))
+
+		f_nsrc_trace_full = plot_src_number_trace(nsrc_full)
+		f_nsrc_trace_full.savefig(gdat.filepath +'/nstar_traceplot_full.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		
 
 
 	

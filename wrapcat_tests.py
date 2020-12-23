@@ -183,32 +183,71 @@ class pcat_test_suite():
 
 
 
+	def run_mocks_and_compare_numbercounts(self, visual=False, show_input_maps=False, fmin=0.007, dataname='sims_12_2_20', tail_name='rxj1347_PSW_nr_1_ext', \
+		use_mask=False, bias=[0.002, 0.002, 0.002], max_nsrc=1000, make_post_plots=True, nsamp=2000, residual_samples=300, image_extnames=['SIG_PRE_LENSE', 'NOISE'], \
+		add_noise=False, sim_idx=None, mockcat_path=None):
+
+		mockcat_fpath = None
+		if mockcat_path is not None:
+			mockcat_fpath = gdat.base_path+mockcat_path
+
+		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=0.7, float_background=True, \
+			  bkg_sample_delay=0, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
+			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=5, \
+			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, \
+			  image_extnames=image_extnames, add_noise=add_noise, mockcat_fpath=mockcat_fpath)
+
+		ob.main()
+
+
 	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
 				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
-				      image_extnames=['SIGNAL']):
+				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=50):
 
-		# this assumes the SZ template is within the fits data struct 
+
 
 		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
 
 		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=0.7, float_background=True, \
-			  bkg_sample_delay=0, temp_sample_delay=50, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
+			  bkg_sample_delay=0, temp_sample_delay=temp_sample_delay, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
 			  float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
 			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=5, \
 			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=40., \
-			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames)
+			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise)
+
+		ob.main()
+
+
+	def real_dat_run(self, band0=0, band1=None, band2=None, fmin=0.007, nsamp=500, template_names=None, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
+		bias = [-0.004, -0.007, -0.008], max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, make_post_plots=True, \
+		inject_sz_frac=0.0, residual_samples=50, float_background=True, timestr_list_file=None, \
+		nbands=1, mask_file=None, weighted_residual=False, float_templates=True, use_mask=True, image_extnames=['SIGNAL'], \
+		float_fourier_comps=False, n_fc_terms=10, fc_sample_delay=0, fourier_comp_moveweight=200., \
+		template_moveweight=40., template_filename=None, \
+		bkg_sample_delay=0, birth_death_sample_delay=0, movestar_sample_delay=0, merge_split_sample_delay=0, \
+		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, n_frames=10, color_mus=None, color_sigs=None):
+
+		ob = lion(band0=band0, band1=band1, band2=band2, base_path=self.base_path, result_path=self.result_path, round_up_or_down='down', \
+					float_background=float_background, burn_in_frac=0.75, bkg_sample_delay=bkg_sample_delay, float_templates=float_templates, template_moveweight=template_moveweight, \
+	 				cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
+	 				template_names=template_names, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=bias, load_state_timestr=load_state_timestr, max_nsrc=max_nsrc,\
+	 				trueminf=fmin, nregion=5, make_post_plots=make_post_plots, nsamp=nsamp, use_mask=use_mask,\
+	 				residual_samples=residual_samples, float_fourier_comps=float_fourier_comps, \
+	 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
+	 				alph=alph, dfc_prob=1.0, nsrc_init=nsrc_init, mask_file=mask_file, birth_death_sample_delay=birth_death_sample_delay, movestar_sample_delay=movestar_sample_delay,\
+	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, raw_counts=True, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha)
 
 		ob.main()
 
 	def iter_fourier_comps(self, n_fc_terms=10, fmin_levels=[0.05, 0.02, 0.01, 0.007], final_fmin=0.007, \
 							nsamps=[50, 100, 200, 500], final_nsamp=2000, \
-							template_names=['sze'], nlast_fc=20, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext',\
+							template_names=['sze'], nlast_fc=20, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 							bias=[-0.004, -0.007, -0.008], max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, \
-							inject_sz_frac=1.0, residual_samples=200, external_sz_file=False, timestr_list_file=None, \
-							inject_diffuse_comp=False, diffuse_comp_path=None):
+							inject_sz_frac=0.0, residual_samples=200, external_sz_file=False, timestr_list_file=None, \
+							inject_diffuse_comp=False, nbands=3, mask_file=None, weighted_residual=False, diffuse_comp_path=None, float_templates=True, use_mask=True, image_extnames=['SIGNAL']):
 
-		nbands = len(bias)
+
 
 		if residual_samples > final_nsamp:
 			residual_samples = final_nsamp // 2
@@ -222,7 +261,7 @@ class pcat_test_suite():
 
 		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
 
-		init_fc = np.zeros(shape=(n_fc_terms, n_fc_terms, 2))
+		init_fc = np.zeros(shape=(n_fc_terms, n_fc_terms, 4))
 
 		for i, fmin in enumerate(fmin_levels):
 			if i==0:
@@ -231,13 +270,13 @@ class pcat_test_suite():
 
 			# start with 250 micron image only
 			ob = lion(band0=0, base_path=self.base_path, result_path=self.result_path, round_up_or_down='down', bolocam_mask=False, \
-						float_background=True, burn_in_frac=0.75, bkg_sample_delay=0, float_templates=True, template_moveweight=0.,\
+						float_background=True, burn_in_frac=0.75, bkg_sample_delay=0, float_templates=float_templates, template_moveweight=0.,\
 		 				cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, init_template_amplitude_dicts=initial_template_amplitude_dicts,\
-		 				template_names=template_names, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=[bias[0]], load_state_timestr=timestr, max_nsrc=max_nsrc,\
-		 				trueminf=fmin, nregion=5, make_post_plots=False, nsamp=nsamps[i], use_mask=True,\
+		 				template_names=template_names, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=None, load_state_timestr=timestr, max_nsrc=max_nsrc,\
+		 				trueminf=fmin, nregion=5, make_post_plots=False, nsamp=nsamps[i], use_mask=use_mask,\
 		 				residual_samples=5, init_fourier_coeffs=median_fc, n_frames=3, float_fourier_comps=True, \
 		 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=0, fourier_comp_moveweight=200.,\
-		 				alph=alph, dfc_prob=1.0, inject_sz_frac=1.0, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
+		 				alph=alph, dfc_prob=1.0, nsrc_init=0, mask_file=mask_file, birth_death_sample_delay=50, movestar_sample_delay=50, merge_split_sample_delay=50, inject_sz_frac=1.0, raw_counts=True, weighted_residual=weighted_residual, image_extnames=image_extnames, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
 
 			ob.main()
 
@@ -257,34 +296,53 @@ class pcat_test_suite():
 
 		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, round_up_or_down='down', \
 					bolocam_mask=False, float_background=True, burn_in_frac=0.75, bkg_sample_delay=0,\
-					temp_sample_delay=50, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps,\
-					float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
+					cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps,\
+					float_templates=float_templates, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
 					tail_name=tail_name, dataname=dataname, max_nsrc=max_nsrc, \
 					init_fourier_coeffs=median_fc, template_filename=template_filename, trueminf=final_fmin, nregion=5, \
-				    make_post_plots=False, nsamp=final_nsamp, use_mask=True, residual_samples=residual_samples, \
+				    make_post_plots=False, nsamp=final_nsamp, use_mask=use_mask, residual_samples=residual_samples, \
 				    float_fourier_comps=True, show_fc_temps=False, n_fourier_terms=n_fc_terms, fc_sample_delay=0, \
 				    fourier_comp_moveweight=0., movestar_sample_delay=0, merge_split_sample_delay=0, birth_death_sample_delay=0,\
 				    alph=alph, dfc_prob=0.0, fc_rel_amps=fc_rel_amps, inject_sz_frac=1.0, timestr_list_file=timestr_list_file, \
-				     inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, bias=[last_bkg_sample_250, 0.003, 0.003], load_state_timestr=timestr)
+				     inject_diffuse_comp=inject_diffuse_comp, mask_file=mask_file, image_extnames=image_extnames, diffuse_comp_path=diffuse_comp_path, bias=[last_bkg_sample_250, 0.003, 0.003], load_state_timestr=timestr)
 
 		ob.main()
 
 base_path='/Users/luminatech/Documents/multiband_pcat/'
 result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'
 
+
+mask_file = base_path+'data/spire/gps_0/gps_0_PSW_mask.fits'
+# mask_file= None
 # timestr_list_file='lensed_no_dust_gen3sims_rxj1347_11_10_20_timestrs.npz'
 # started_idx_list_file = 'lensed_no_dust_gen3sims_rxj1347_11_10_20_simidxs.npz' 
 # started_idx_list_file = 'simidxs.npz' 
 
-sim_idx = 303
-pcat_test = pcat_test_suite(cluster_name='rxj1347', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
-figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0'+str(sim_idx), dataname='sims_12_2_20', ngrid=10, return_validation_figs=True)
-figs[0].savefig('test0.pdf')
-figs[1].savefig('test1.pdf')
+sim_idx = 203
+pcat_test = pcat_test_suite(cluster_name='gps_0', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
+# figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0'+str(sim_idx), dataname='sims_12_2_20', ngrid=10, return_validation_figs=True)
+# figs[0].savefig('test0.pdf')
+# figs[1].savefig('test1.pdf')
 
-# pcat_test.run_sims_with_injected_sz(dataname='sims_12_2_20', image_extnames=['SIG_PRE_LENSE', 'NOISE'], tail_name='rxj1347_PSW_sim0'+str(sim_idx), visual=True, show_input_maps=True)
+# pcat_test.run_sims_with_injected_sz(dataname='gen_2_sims', add_noise=True, temp_sample_delay=10, image_extnames=['SIGNAL'], tail_name='rxj1347_PSW_sim0'+str(sim_idx), visual=True, show_input_maps=False)
+# pcat_test.iter_fourier_comps(dataname='GOODSN', tail_name='GOODSN_image_SMAP_PSW',nsamps=[50, 100, 200], float_templates=False, template_names=None, visual=False, show_input_maps=False, fmin_levels=[0.02,0.01, 0.005], final_fmin=0.003, alph=0.0, use_mask=True, image_extnames=['IMAGE'], max_nsrc=2500)
 
 
+# pcat_test.iter_fourier_comps(dataname='gps_0', tail_name='gps_0_PSW', use_mask=True, bias=None, mask_file=mask_file, nsamps=[50], n_fc_terms=20, weighted_residual=False, float_templates=False, template_names=None, visual=True, show_input_maps=False, fmin_levels=[1.0], final_fmin=0.5, image_extnames=['IMAGE'], max_nsrc=200)
+color_prior_sigs = dict({'S-M':0.2, 'M-L':0.2, 'L-S':0.2, 'M-S':0.2, 'S-L':0.2, 'L-M':0.2})
+# pcat_test.real_dat_run(nbands=1, dataname='gps_0', tail_name='gps_0_PSW', nsrc_init=0, float_fourier_comps=True,\
+# 						 use_mask=True, bias=None, mask_file=mask_file, nsamp=2000, n_fc_terms=20, weighted_residual=False,\
+# 						  float_templates=False, template_names=None, visual=False, show_input_maps=False, fmin=0.2, image_extnames=['IMAGE'],\
+# 						   max_nsrc=300, movestar_sample_delay=50, color_sigs=color_prior_sigs, n_frames=3, birth_death_sample_delay=50, merge_split_sample_delay=50, fc_prop_alpha=-1.)
+
+
+
+# result_plots(timestr='20201222-210426',cattype=None, burn_in_frac=0.7, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, \
+# 			fourier_comp_plots=True)
+
+# result_plots(timestr='20201221-011509',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20201221-010751',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20201221-010006',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # # def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
 

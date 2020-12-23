@@ -44,7 +44,7 @@ def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=
         all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates, psf_fwhm=psf_fwhm))
     return all_templates
 
-def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None):
+def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, shift=False):
         
     '''
     
@@ -78,7 +78,7 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None):
 
     '''
 
-    templates = np.zeros((n_terms, n_terms, 2, N, M))
+    templates = np.zeros((n_terms, n_terms, 4, N, M))
 
     x = np.arange(N)
     y = np.arange(M)
@@ -92,8 +92,15 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None):
     
     
     for n in range(n_terms):
-        xtemps_sin[n] = np.sin((n+1)*np.pi*meshx/N)
-        ytemps_sin[n] = np.sin((n+1)*np.pi*meshy/M)
+
+        # modified series
+        if shift:
+            xtemps_sin[n] = np.sin((n+1-0.5)*np.pi*meshx/N)
+            ytemps_sin[n] = np.sin((n+1-0.5)*np.pi*meshy/M)
+        else:
+            xtemps_sin[n] = np.sin((n+1)*np.pi*meshx/N)
+            ytemps_sin[n] = np.sin((n+1)*np.pi*meshy/M)
+        
         xtemps_cos[n] = np.cos((n+1)*np.pi*meshx/N)
         ytemps_cos[n] = np.cos((n+1)*np.pi*meshy/M)
     
@@ -103,14 +110,17 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None):
             if psf_fwhm is not None: # if beam size given, convolve with PSF assumed to be Gaussian
                 templates[i,j,0,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
                 templates[i,j,1,:,:] = gaussian_filter(xtemps_sin[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
+                templates[i,j,2,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_sin[j], sigma=psf_fwhm/2.355)
+                templates[i,j,3,:,:] = gaussian_filter(xtemps_cos[i]*ytemps_cos[j], sigma=psf_fwhm/2.355)
 
             else:
                 templates[i,j,0,:,:] = xtemps_sin[i]*ytemps_sin[j]
                 templates[i,j,1,:,:] = xtemps_sin[i]*ytemps_cos[j]
-
+                templates[i,j,2,:,:] = xtemps_cos[i]*ytemps_sin[j]
+                templates[i,j,3,:,:] = xtemps_cos[i]*ytemps_cos[j]
      
     if show_templates:
-        for k in range(2):
+        for k in range(4):
             counter = 1
             plt.figure(figsize=(8,8))
             for i in range(n_terms):
@@ -171,17 +181,17 @@ def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M
 
 def fit_coeffs_to_observed_comb(observed_comb, obs_noise_sig,ftemplates, true_fcoeffs = None, true_comb=None, n_terms=None, sig_dtemp=0.1, niter=100, init_nsig=1.):
     if true_fcoeffs is not None:
-        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(true_fcoeffs.shape[0], true_fcoeffs.shape[1], 2))
+        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(true_fcoeffs.shape[0], true_fcoeffs.shape[1], 4))
 
         n_terms = init_fcoeffs.shape[0]
 
     elif n_terms is not None:
-        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(n_terms, n_terms, 2))
+        init_fcoeffs = np.random.normal(0, obs_noise_sig, size=(n_terms, n_terms, 4))
 
             
     running_fcoeffs = init_fcoeffs.copy()
     
-    all_running_fcoeffs = np.zeros((niter//1000, n_terms, n_terms, 2))
+    all_running_fcoeffs = np.zeros((niter//1000, n_terms, n_terms, 4))
 
     temper_schedule = np.logspace(np.log10(init_nsig), np.log10(1.), niter)
     print('temper schedule: ', temper_schedule)
