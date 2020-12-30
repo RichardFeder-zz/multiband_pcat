@@ -7,6 +7,55 @@ from astropy.stats import sigma_clipped_stats
 from image_eval import psf_poly_fit, image_model_eval
 from scipy.ndimage import gaussian_filter
 
+
+def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
+                           ravel_temps=None, fourier_templates=None, data=None, psf_fwhm=3., \
+                          mean_sig=False):
+    
+    if imsz is None:
+        imsz = error.shape
+
+    if fourier_templates is None and ravel_temps is None:
+        fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm)
+
+    if ravel_temps is None:
+        ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
+    
+    
+    err_cut_rav = error.ravel()
+
+    if bt_siginv_b_inv is None:
+        if mean_sig:
+            bt_siginv_b = np.mean(error)**(-2)*np.dot(ravel_temps, ravel_temps.transpose())
+        else:
+            bt_siginv_b = np.dot(ravel_temps, np.dot(np.diag(err_cut_rav**(-2)), ravel_temps.transpose()))
+        
+        print('condition number of (B^T S^{-1} B)^{-1}: ', np.linalg.cond(bt_siginv_b))
+        bt_siginv_b_inv = np.linalg.inv(bt_siginv_b)
+        
+    
+    if data is not None:
+        im_cut_rav = data.ravel()
+        siginv_K_rav = im_cut_rav*err_cut_rav**(-2)
+        bt_siginv_K = np.dot(ravel_temps, siginv_K_rav)
+        A_hat = np.dot(bt_siginv_b_inv, bt_siginv_K)
+        
+        return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, A_hat
+    
+    return fourier_templates, ravel_temps, bt_siginv_b_inv, A_hat
+
+def ravel_temps_from_ndtemp(templates, n_terms, auxdim=4):
+    ravel_temps = []
+    
+    for i in range(n_terms):
+        for j in range(n_terms):
+            for k in range(auxdim):
+                ravel_temps.append(templates[i,j,k].ravel())
+           
+    ravel_temps = np.array(ravel_temps)
+    
+    return ravel_temps
+
 def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=None):
     '''
     Given a list of image and beam sizes, produces multiband fourier templates for background modeling.

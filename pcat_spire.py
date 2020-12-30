@@ -53,7 +53,7 @@ def save_params(directory, gdat):
 
 	file.close()
 
-	with open(dir+'/params_read.txt', 'w') as file2:
+	with open(directory+'/params_read.txt', 'w') as file2:
 		for key in param_dict:
 			file2.write(key+': '+str(param_dict[key])+'\n')
 	file2.close()
@@ -141,7 +141,7 @@ def create_directories(gdat):
 
 def neighbours(x,y,neigh,i,generate=False):
 	''' Neighbours function is used in merge proposal, where you have some source and you want to choose a nearby
-	    source with some probability to merge. '''
+		source with some probability to merge. '''
 
 	neighx = np.abs(x - x[i])
 	neighy = np.abs(y - y[i])
@@ -311,7 +311,8 @@ class Model:
 
 		self.margins = np.zeros(gdat.nbands).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
-
+		
+		self.bkg = np.array(gdat.bias)
 		
 		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
 		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
@@ -338,9 +339,33 @@ class Model:
 				self.template_amplitudes[i][b] = self.init_template_amplitude_dicts[key][gdat.band_dict[band]]
 		
 		if self.gdat.float_fourier_comps:
-			self.fourier_coeffs = self.gdat.init_fourier_coeffs.copy()
-			print(' at This point, fourier coeffs has shape ', self.fourier_coeffs[0].shape)
+			if self.gdat.init_fourier_coeffs is not None:
+				self.fourier_coeffs = self.gdat.init_fourier_coeffs.copy()
+			
 			self.fourier_templates = self.gdat.fc_templates
+			
+			if self.gdat.bkg_moore_penrose_inv:
+
+				# ----- NOTE -------- this only works for single band images right now.
+				self.dat.data_array[0] -= np.mean(self.dat.data_array[0])
+				self.bkg[0] = 0.
+
+				_, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
+																		 fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
+																		 data = self.dat.data_array[0])
+
+				print('A hat is ', A_hat)
+				init_coeffs = np.empty((self.gdat.MP_order,self.gdat.MP_order,4))
+				count = 0
+				for i in range(self.gdat.MP_order):
+					for j in range(self.gdat.MP_order):
+						for k in range(4):
+							init_coeffs[i,j,k] = A_hat[count]
+							count += 1
+
+				self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = init_coeffs.copy()
+
+			# print(' at This point, fourier coeffs has shape ', self.fourier_coeffs[0].shape)
 			self.n_fourier_terms = self.gdat.n_fourier_terms
 			self.dfc = np.zeros((self.n_fourier_terms, self.n_fourier_terms, 4))
 			self.dfc_rel_amps = np.zeros((gdat.nbands))
@@ -375,7 +400,6 @@ class Model:
 		self.trueminf = gdat.trueminf
 
 		self.verbtype = gdat.verbtype
-		self.bkg = np.array(gdat.bias)
 
 		self.bkg_prop_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 		
@@ -1005,6 +1029,8 @@ class Model:
 				frame_dir_path = self.gdat.frame_dir+'/sample_'+str(sample_idx)+'_of_'+str(self.gdat.nsamp)+'.png'
 			else:
 				frame_dir_path = None
+
+			# ndeg = self.gdat.pixsize_dict(self.gdat.)
 
 			if self.gdat.nbands == 1:
 				if self.gdat.float_fourier_comps:
@@ -1843,6 +1869,10 @@ class lion():
 			# specifies the proposal distribution width for the largest spatial mode of the Fourier component model, or for all of them if fc_prop_alpha=None
 			fc_amp_sig = None, \
 
+			bkg_moore_penrose_inv = True, \
+
+			MP_order = 5, \
+
 
 			# --------------------------------- DATA CONFIGURATION ----------------------------------------
 
@@ -1857,6 +1887,9 @@ class lion():
 			tail_name = 'PSW_sim2300', \
 			# file_path can be provided if only one image is desired with a specific path not consistent with the larger directory structure
 			file_path = None, \
+
+			im_fpath = None, \
+			err_fpath = None, \
 			# name of cluster being analyzed. If there is no map object, the location of files is assumed to be "data_repo/dataname/dataname_tailname.fits"
 			dataname = 'a0370', \
 			# mock dataset name
@@ -1963,6 +1996,7 @@ class lion():
 
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.lam_dict = dict({'S':250, 'M':350, 'L':500})
+		self.gdat.pixsize_dict = dict({'S':6., 'M':8., 'L':12.})
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 		
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
