@@ -26,18 +26,29 @@ def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_sigin
 
     if bt_siginv_b_inv is None:
         if mean_sig:
-            bt_siginv_b = np.mean(error)**(-2)*np.dot(ravel_temps, ravel_temps.transpose())
+            bt_siginv_b = np.nanmean(error)**(-2)*np.dot(ravel_temps, ravel_temps.transpose())
         else:
             bt_siginv_b = np.dot(ravel_temps, np.dot(np.diag(err_cut_rav**(-2)), ravel_temps.transpose()))
         
         print('condition number of (B^T S^{-1} B)^{-1}: ', np.linalg.cond(bt_siginv_b))
         bt_siginv_b_inv = np.linalg.inv(bt_siginv_b)
+        print(bt_siginv_b_inv)
         
     
     if data is not None:
         im_cut_rav = data.ravel()
-        siginv_K_rav = im_cut_rav*err_cut_rav**(-2)
+        if mean_sig:
+            siginv_K_rav = im_cut_rav*err_cut_rav**(-2)
+        else:
+            siginv_K_rav = im_cut_rav*np.nanmean(error)**(-2)
+
+        siginv_K_rav[np.isinf(siginv_K_rav)] = 0.
+
+        print('total nans in siginv_K_rav is ', np.sum(np.isinf(siginv_K_rav)))
+        print(np.sum(np.isnan(ravel_temps)), np.sum(np.isinf(im_cut_rav)))
         bt_siginv_K = np.dot(ravel_temps, siginv_K_rav)
+        print('bt_siginv_K is ', bt_siginv_K)
+
         A_hat = np.dot(bt_siginv_b_inv, bt_siginv_K)
         
         return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, A_hat

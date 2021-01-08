@@ -347,12 +347,13 @@ class Model:
 			if self.gdat.bkg_moore_penrose_inv:
 
 				# ----- NOTE -------- this only works for single band images right now.
-				self.dat.data_array[0] -= np.mean(self.dat.data_array[0])
+
+				self.dat.data_array[0] -= np.nanmean(self.dat.data_array[0]) # this is done to isolate the fluctuation component
 				self.bkg[0] = 0.
 
 				_, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
 																		 fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
-																		 data = self.dat.data_array[0])
+																		 data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig)
 
 				print('A hat is ', A_hat)
 				init_coeffs = np.empty((self.gdat.MP_order,self.gdat.MP_order,4))
@@ -412,11 +413,14 @@ class Model:
 
 		self.dback = np.zeros_like(self.bkg)
 		
-		if self.gdat.color_mus is not None and self.gdat.color_sigs is not None:
+		if self.gdat.color_mus is not None:
 			self.mus = self.gdat.color_mus
+		else:			
+			self.mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
+
+		if self.gdat.color_sigs is not None:
 			self.sigs = self.gdat.color_sigs
 		else:
-			self.mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
 			self.sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5}) #very broad color prior
 
 
@@ -431,6 +435,10 @@ class Model:
 				self.color_mus.append(self.mus[col_string])
 				self.color_sigs.append(self.sigs[col_string])
 			
+
+		print('self.color_mus : ', self.color_mus)
+		print('self.color_sigs : ', self.color_sigs)
+
 		if gdat.load_state_timestr is None:
 			for b in range(gdat.nbands):
 
@@ -613,6 +621,8 @@ class Model:
 					yp = y
 				dt_transf += time.time()-t4
 
+
+
 				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
@@ -647,9 +657,9 @@ class Model:
 		dts = np.zeros((4, self.nloop)) # array to store time spent on different proposals
 		diff2_list = np.zeros(self.nloop) 
 
-		if sample_idx == 50:
-			print('new sampling widths babyyyy')
-			self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.005})# sz template normalized to unity, dust template in units of Jy/beam
+		# if sample_idx == 50:
+			# print('new sampling widths babyyyy')
+			# self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.005})# sz template normalized to unity, dust template in units of Jy/beam
 
 
 		''' I'm a bit concerned about setting the offsets for multiple observations with different sizes. 
@@ -690,6 +700,8 @@ class Model:
 		evalx = self.stars[self._X,0:self.n]
 		evaly = self.stars[self._Y,0:self.n]
 		evalf = self.stars[self._F:,0:self.n]
+
+		# print('EVAL F type is ', evalf.dtype)
 		
 		n_phon = evalx.size
 
@@ -1054,7 +1066,7 @@ class Model:
 					# plot_custom_multiband_frame(self, resids, models, sz=[self.template_amplitudes[0,b]*self.dat.template_array[b][0] for b in range(self.gdat.nbands)], fourier_bkg=[self.fc_rel_amps[b]*running_temp[b] for b in range(self.gdat.nbands)], panels=['residual0', 'residual1', 'residual2', 'fourier_bkg0', 'fourier_bkg1', 'dNdS0'], frame_dir_path=frame_dir_path)
 				
 				else:
-					plot_custom_multiband_frame(self, resids, models, panels=['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2'], frame_dir_path=frame_dir_path)
+					plot_custom_multiband_frame(self, resids, models, panels=['data0', 'data1', 'data2', 'residual0', 'dNdS0', 'dNdS2'], frame_dir_path=frame_dir_path)
 
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids, models
@@ -1771,6 +1783,9 @@ class lion():
 			birth_death_sample_delay=0, \
 			birth_death_moveweight=60., \
 
+			# if specified, delays all point source modeling until point_src_delay samples have passed. 
+			point_src_delay = None, \
+
 	
 			# ---------------------------------- BACKGROUND PARAMS --------------------------------
 
@@ -1789,7 +1804,7 @@ class lion():
 
 			# bkg_sample_delay determines how long Lion waits before sampling from the background. I figure it might be 
 			# useful to have this slightly greater than zero so the chain can do a little burn in first.
-			bkg_sample_delay = 50, \
+			bkg_sample_delay = 0, \
 
 			# background amplitude Gaussian prior width [in Jy/beam]
 			bkg_prior_sig = 0.01, \
@@ -1836,7 +1851,7 @@ class lion():
 			# ---------------------------------- FOURIER COMPONENT PARAMS ----------------------------------------
 
 			# number of thinned samples before fourier components are included in the fit
-			fc_sample_delay = 5, \
+			fc_sample_delay = 0, \
 
 			# bool determining whether to fit fourier comps 
 			float_fourier_comps = False, \
@@ -1871,7 +1886,9 @@ class lion():
 
 			bkg_moore_penrose_inv = True, \
 
-			MP_order = 5, \
+			MP_order = 4, \
+
+			mean_sig = True, \
 
 
 			# --------------------------------- DATA CONFIGURATION ----------------------------------------
@@ -1994,6 +2011,11 @@ class lion():
 		if self.gdat.init_seed is not None:
 			np.random.seed(self.gdat.init_seed)
 
+		if self.gdat.point_src_delay is not None:
+			self.gdat.movestar_sample_delay = self.gdat.point_src_delay
+			self.gdat.birth_death_sample_delay = self.gdat.point_src_delay
+			self.gdat.merge_split_sample_delay = self.gdat.point_src_delay
+
 		self.gdat.band_dict = dict({0:'S',1:'M',2:'L'}) # for accessing different wavelength filenames
 		self.gdat.lam_dict = dict({'S':250, 'M':350, 'L':500})
 		self.gdat.pixsize_dict = dict({'S':6., 'M':8., 'L':12.})
@@ -2085,17 +2107,8 @@ class lion():
 			save_params(newdir, self.gdat)
 
 
-	def main(self):
+	def initialize_libmmult(self):
 
-		''' Here is where we initialize the C libraries and instantiate the arrays that will store our 
-		thinned samples and other stats. We want the MKL routine if possible, then OpenBLAS, then regular C,
-		with that order in priority.'''
-
-		if self.gdat.print_log:
-			self.gdat.flog = open(self.gdat.result_path+'/'+self.gdat.timestr+'/print_log.txt','w')
-		else:
-			self.gdat.flog = None
-		
 		if self.gdat.cblas:
 			print('Using CBLAS routines for Intel processors.. :-) ', file=self.gdat.flog)
 
@@ -2119,11 +2132,33 @@ class lion():
 			libmmult = ctypes.cdll['./blas.so'] # not sure how stable this is, trying to find a good Python 3 fix to deal with path configuration
 			# libmmult = npct.load_library('blas', '.')
 
+		return libmmult
+
+
+	def initialize_print_log(self):
+		if self.gdat.print_log:
+			self.gdat.flog = open(self.gdat.result_path+'/'+self.gdat.timestr+'/print_log.txt','w')
+		else:
+			self.gdat.flog = None		
+
+
+	def main(self):
+
+		''' Here is where we initialize the C libraries and instantiate the arrays that will store our 
+		thinned samples and other stats. We want the MKL routine if possible, then OpenBLAS, then regular C,
+		with that order in priority.'''
+
+		self.initialize_print_log()
+		
+		libmmult = self.initialize_libmmult()
+
 		initialize_c(self.gdat, libmmult, cblas=self.gdat.cblas)
 
 		start_time = time.time()
 		samps = Samples(self.gdat)
+
 		model = Model(self.gdat, self.data, libmmult)
+
 
 		trueminf_schedule_counter = 0
 		for j in range(self.gdat.nsamp): # run sampler for gdat.nsamp thinned states

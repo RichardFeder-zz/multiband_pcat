@@ -93,6 +93,8 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 	plt.figure(1, figsize=(15, 10))
 	plt.clf()
 
+	scatter_sizefac = 300
+
 	for i in range(6):
 
 		plt.subplot(2,3,i+1)
@@ -107,10 +109,10 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 			if band_idx > 0:
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
-				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
+				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*scatter_sizefac, color='r')
 			else:
 
-				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*20, color='r', alpha=0.3)
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*scatter_sizefac, color='r', alpha=0.8)
 
 				# plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
 			if 'zoom' in panels[i]:
@@ -172,9 +174,9 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 			if band_idx > 0:
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
-				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*20, color='r')
+				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*scatter_sizefac, color='r')
 			else:
-				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*20, color='r', alpha=0.3)
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*scatter_sizefac, color='r', alpha=0.8)
 
 			if 'zoom' in panels[i]:
 				plt.title('Residual (band '+str(band_idx)+', zoomed in)')
@@ -195,7 +197,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
 				plt.scatter(xp, yp, marker='x', s=obj.stars[obj._F+1, 0:obj.n]*100, color='r')
 			else:
-				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*100, color='r')
+				plt.scatter(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], marker='x', s=obj.stars[obj._F, 0:obj.n]*scatter_sizefac, color='r')
 
 			if 'zoom' in panels[i]:
 				plt.title('SZ (band '+str(band_idx)+', zoomed in)')
@@ -210,7 +212,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 		elif 'dNdS' in panels[i]:
 
 			if obj.n > 0:
-				logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n)
+				logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n, _F=2+band_idx)
 
 				if obj.gdat.raw_counts:
 					plt.plot(logSv+3, dNdS, marker='.')
@@ -531,42 +533,42 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 	std_fc_temp = np.std(all_temps, axis=0)
 
 	if ref_img is not None:
-		f = plt.figure(figsize=(10, 10))
-		if title:
-			plt.suptitle('Best fit Fourier component model', y=1.02)
+		f = plt.figure(figsize=(15, 5))
+		# if title:
+			# plt.suptitle('Best fit Fourier component model', y=1.02)
 
-		plt.subplot(2,2,1)
-		plt.title('Data')
-		plt.imshow(ref_img/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 95)/convert_to_MJy_sr_fac)
-		cb = plt.colorbar(orientation='horizontal')
+		plt.subplot(1,3,1)
+		plt.title('Data', fontsize=14)
+		plt.imshow(ref_img/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 99)/convert_to_MJy_sr_fac)
+		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
 		cb.set_label(xlabel_unit)
-		plt.subplot(2,2,2)
-		plt.title('Median background model')
-		plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_fc_temp, 95)/convert_to_MJy_sr_fac)
-		cb = plt.colorbar(orientation='horizontal')
+		plt.subplot(1,3,2)
+		plt.title('Median background model', fontsize=14)
+		plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_fc_temp, 99)/convert_to_MJy_sr_fac)
+		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
 		cb.set_label(xlabel_unit)		
-		plt.subplot(2,2,3)
+		plt.subplot(1,3,3)
 		plt.title('Data - median background model')
-		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 95)/convert_to_MJy_sr_fac)
+		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 99)/convert_to_MJy_sr_fac)
 		# plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img-mean_fc_temp, 95)/convert_to_MJy_sr_fac)
-		cb = plt.colorbar(orientation='horizontal')
+		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
 		cb.set_label(xlabel_unit)
-		plt.subplot(2,2,4)
-		plt.title('Std. dev. of background model')
-		plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
-		cb = plt.colorbar(orientation='horizontal')
-		cb.set_label(xlabel_unit, fontsize='small')
+		# plt.subplot(2,2,4)
+		# plt.title('Std. dev. of background model')
+		# plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
+		# cb = plt.colorbar(orientation='horizontal', pad=0.04, fraction=0.046)
+		# cb.set_label(xlabel_unit, fontsize='small')
 
 	else:
 
 		plt.subplot(1,2,1)
 		plt.title('Median'+xlabel_unit)
 		plt.imshow(mean_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_fc_temp, 95)/convert_to_MJy_sr_fac)
-		plt.colorbar()
+		plt.colorbar(pad=0.04)
 		plt.subplot(1,2,2)
 		plt.title('Standard deviation'+xlabel_unit)
 		plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
-		plt.colorbar()
+		plt.colorbar(pad=0.04)
 
 	plt.tight_layout()
 	if show:
@@ -852,28 +854,28 @@ def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, nsamp
 
 	import pandas as pd
 	
-	ncounts_bethermin = pd.read_csv('~/Downloads/Bethermin_et_al_'+pl_key[band]+'.csv', header=None)
+	ncounts_bethermin = pd.read_csv('number_counts_spire/Bethermin_et_al_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_bethermin[0]), np.array(ncounts_bethermin[1]), marker='.', markersize=10, label='Bethermin et al. (2012a)', color='cyan')
 
-	ncounts_oliver = pd.read_csv('~/Downloads/Oliver_et_al_'+pl_key[band]+'.csv', header=None)
+	ncounts_oliver = pd.read_csv('number_counts_spire/Oliver_et_al_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_oliver[0]), np.array(ncounts_oliver[1]), marker='3', markersize=10, label='Oliver et al. (2010)', color='b')
 
-	ncounts_Glenn = pd.read_csv('~/Downloads/Glenn_et_al_'+pl_key[band]+'.csv', header=None)
+	ncounts_Glenn = pd.read_csv('number_counts_spire/Glenn_et_al_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_Glenn[0]), np.array(ncounts_Glenn[1]), marker='+', markersize=10, label='Glenn et al. (2010)', color='limegreen')
 
-	ncounts_SIDES_srcextract = pd.read_csv('~/Downloads/SIDES_srcextract_'+pl_key[band]+'.csv', header=None)
+	ncounts_SIDES_srcextract = pd.read_csv('number_counts_spire/SIDES_srcextract_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_SIDES_srcextract[0]), np.array(ncounts_SIDES_srcextract[1]), marker='^', markersize=10, label='SIDES Source Extraction (2017)', color='r')
 
 	# if pl_key[band]=='PSW':
-	ncounts_XIDp_srcextract = pd.read_csv('~/Downloads/Wang_2019_XIDplus_'+pl_key[band]+'.csv', header=None)
+	ncounts_XIDp_srcextract = pd.read_csv('number_counts_spire/Wang_2019_XIDplus_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_XIDp_srcextract[0]), np.array(ncounts_XIDp_srcextract[1]), marker='4', markersize=10, label='XID+ (Wang et al. 2019)', color='y')
 
-	ncounts_SIDES_model = pd.read_csv('~/Downloads/SIDES_'+pl_key[band]+'.csv', header=None)
+	ncounts_SIDES_model = pd.read_csv('number_counts_spire/SIDES_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_SIDES_model[0]), np.array(ncounts_SIDES_model[1]), marker='o', markersize=5, label='SIDES empirical model', color='royalblue')
 
 
 
-	plt.text(0.7, 4.6, 'PRELIMINARY', fontsize=20)
+	# plt.text(0.7, 4.6, 'PRELIMINARY', fontsize=20)
 
 	print('yerrs is ', yerrs)
 	yerrs[np.isinf(yerrs)] = 0
@@ -1449,6 +1451,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			plt.close()
 
 	# ------------------------- BACKGROUND AMPLITUDE ---------------------
+
 	if gdat.float_background and dc_background_plots:
 
 		bkg_dir = add_directory(gdat.filepath+'/bkg')
@@ -1471,14 +1474,15 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 
 	# ------------------------- FOURIER COMPONENTS ----------------------
+
 	if gdat.float_fourier_comps and fourier_comp_plots:
 
 		fc_dir = add_directory(gdat.filepath+'/fourier_comps')
 
 		# median and variance of fourier component model posterior
 		print('Computing Fourier component posterior..')
-		# f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0], ref_img=dat.data_array[0], convert_to_MJy_sr_fac=flux_density_conversion_dict['S'], psf_fwhm=3.)
-		# f_fc_median_std.savefig(fc_dir+'/fourier_comp_model_median_std.'+plttype, bbox_inches='tight', dpi=dpi)
+		f_fc_median_std = plot_fc_median_std(fourier_coeffs[burn_in:], gdat.imszs[0], ref_img=dat.data_array[0], convert_to_MJy_sr_fac=flux_density_conversion_dict['S'], psf_fwhm=3.)
+		f_fc_median_std.savefig(fc_dir+'/fourier_comp_model_median_std.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		f_fc_last = plot_last_fc_map(fourier_coeffs[-1], gdat.imszs[0],ref_img=dat.data_array[0])
 		f_fc_last.savefig(fc_dir+'/last_sample_fourier_comp_model.'+plttype, bbox_inches='tight', dpi=dpi)
@@ -1602,7 +1606,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	# -------------------------------- ITERATE OVER BANDS -------------------------------------
 
-
 	nsrc_fov = []
 	color_lin_post_bins = np.linspace(0.0, 5.0, 30)
 
@@ -1611,6 +1614,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	pairs = []
 
 	fov_sources = [[] for x in range(gdat.nbands)]
+
+	ndeg = None
 
 	for b in range(gdat.nbands):
 
@@ -1628,11 +1633,12 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 		weight = dat.weights[b]
 		
-
+		pixel_sizes_nc = dict({0:6, 1:8, 2:12}) # arcseconds
+		ratio = pixel_sizes_nc[b]/pixel_sizes_nc[0]
 		if flux_dist_plots:
 			for i, j in enumerate(np.arange(burn_in, gdat.nsamp)):
 		
-				fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0.])
+				fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0. and xsrcs[j][k] < dat.weights[0].shape[0]-10. and ysrcs[j][k] < dat.weights[0].shape[1]-10.])
 
 				fov_sources[b].extend(fsrcs_in_fov)
 
@@ -1645,24 +1651,21 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				dSz = binz_Sz[1:]-binz_Sz[:-1]
 				dNdS = hist[0]
 				raw_number_counts[i,:] = hist[0]
-				print('gdat.frac is ', gdat.frac)
-				npix = median_resid.shape[0]
-				assert npix==median_resid.shape[1]
+				npix = median_resid.shape[0]-(10.*ratio)
+				# assert npix==median_resid.shape[1]
 
-				pixel_sizes_nc = dict({0:6, 1:8, 2:12}) # arcseconds
 
 				nsidedeg = npix*pixel_sizes_nc[b]/3600.
-				print(npix, nsidedeg**2)
-				n_steradian = nsidedeg**2/(180./np.pi)**2
+				# n_steradian = nsidedeg**2/(180./np.pi)**2
 				
-				#n_steradian = 0.11/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
+				n_steradian = 0.1/(180./np.pi)**2 # field covers 0.11 degrees, should change this though for different fields
 				n_steradian *= gdat.frac # a number of pixels in the image are not actually observing anything
 				dNdS_S_twop5 = dNdS*(10**(logSv))**(2.5)
 				lit_number_counts[i,:] = dNdS_S_twop5/n_steradian/dSz
 
-			# f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
+			f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
 			# # f_post_number_cts = plot_posterior_number_counts(logSv, lit_number_counts, nsamp=gdat.nsamp-burn_in, trueminf=gdat.trueminf, band=title_band_dict[bands[b]])
-			# f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
+			f_post_number_cts.savefig(flux_color_dir+'/posterior_number_counts_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			f_post_flux_dist = plot_posterior_flux_dist(logSv, raw_number_counts, band=title_band_dict[bands[b]])
 			f_post_flux_dist.savefig(flux_color_dir+'/posterior_flux_histogram_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
