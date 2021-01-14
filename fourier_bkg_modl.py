@@ -10,7 +10,7 @@ from scipy.ndimage import gaussian_filter
 
 def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
                            ravel_temps=None, fourier_templates=None, data=None, psf_fwhm=3., \
-                          mean_sig=False):
+                          mean_sig=True, ridge_fac = None, show=False, inpaint_nans=True):
     
     if imsz is None:
         imsz = error.shape
@@ -21,35 +21,89 @@ def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_sigin
     if ravel_temps is None:
         ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
     
-    
     err_cut_rav = error.ravel()
 
     if bt_siginv_b_inv is None:
         if mean_sig:
-            bt_siginv_b = np.nanmean(error)**(-2)*np.dot(ravel_temps, ravel_temps.transpose())
+            bt_siginv_b = np.dot(ravel_temps, ravel_temps.transpose())
         else:
             bt_siginv_b = np.dot(ravel_temps, np.dot(np.diag(err_cut_rav**(-2)), ravel_temps.transpose()))
         
         print('condition number of (B^T S^{-1} B)^{-1}: ', np.linalg.cond(bt_siginv_b))
-        bt_siginv_b_inv = np.linalg.inv(bt_siginv_b)
-        print(bt_siginv_b_inv)
         
+        if ridge_fac is not None:
+
+            print('adding regularization')
+            lambda_I = np.zeros_like(bt_siginv_b)
+            np.fill_diagonal(lambda_I, ridge_fac)
+            bt_siginv_b_inv = np.linalg.inv(bt_siginv_b + lambda_I)
+
+        else:
+            bt_siginv_b_inv = np.linalg.inv(bt_siginv_b)
+
+
+    if mean_sig:
+        bt_siginv_b_inv *= np.nanmean(error.astype(np.float64))**2
+                
     
     if data is not None:
         im_cut_rav = data.ravel()
+
+        if inpaint_nans:
+            nan_idxs = np.where(np.isnan(im_cut_rav))[0]
+            for nan_idx in nan_idxs:
+                im_cut_rav[nan_idx] = np.nanmean(im_cut_rav)
+
         if mean_sig:
-            siginv_K_rav = im_cut_rav*err_cut_rav**(-2)
-        else:
             siginv_K_rav = im_cut_rav*np.nanmean(error)**(-2)
+        else:
+            siginv_K_rav = im_cut_rav*err_cut_rav**(-2)
+
+
 
         siginv_K_rav[np.isinf(siginv_K_rav)] = 0.
 
-        print('total nans in siginv_K_rav is ', np.sum(np.isinf(siginv_K_rav)))
-        print(np.sum(np.isnan(ravel_temps)), np.sum(np.isinf(im_cut_rav)))
         bt_siginv_K = np.dot(ravel_temps, siginv_K_rav)
-        print('bt_siginv_K is ', bt_siginv_K)
 
         A_hat = np.dot(bt_siginv_b_inv, bt_siginv_K)
+
+
+        arr_3d = np.empty((n_terms,n_terms,4))
+        count = 0
+        for i in range(n_terms):
+            for j in range(n_terms):
+                for k in range(4):
+                    arr_3d[i,j,k] = A_hat[count]
+                    count += 1
+
+
+        temp_A_hat = generate_template(arr_3d, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
+
+        if show:
+
+            plt.figure(figsize=(10,10))
+            plt.suptitle('Moore-Penrose inverse, $N_{FC}$='+str(n_terms), fontsize=20)
+            plt.subplot(2,2,1)
+            plt.title('Background estimate', fontsize=18)
+            plt.imshow(temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 99), vmin=np.percentile(temp_A_hat, 1))
+            plt.colorbar(fraction=0.046, pad=0.04)
+            plt.subplot(2,2,2)
+            plt.hist(np.abs(A_hat), bins=np.logspace(-5, 1, 30))
+            plt.xscale('log')
+            plt.xlabel('Absolute value of Fourier coefficients', fontsize=14)
+            plt.ylabel('N')
+            plt.subplot(2,2,3)
+            plt.title('Image', fontsize=18)
+            plt.imshow(data, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
+            plt.colorbar(fraction=0.046, pad=0.04)
+            plt.subplot(2,2,4)
+            plt.title('Image - Background estimate', fontsize=18)
+            plt.imshow(data-temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
+            plt.colorbar(fraction=0.046, pad=0.04)
+
+            plt.tight_layout()
+            plt.show()
+
         
         return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, A_hat
     

@@ -284,13 +284,6 @@ class Model:
 
 	k =2.5/np.log(10)
 
-	# linear color priors, e.g. F_250/F_350 for S/M, etc.
-	# linear_mus = dict({'S/M':1.0, 'M/S':1.0, 'M/L':1.4, 'L/M':1./1.4, 'S/L':1.4, 'L/S':1./1.4})
-	# linear_sigs = dict({'S/M':0.4, 'M/S':0.4, 'M/L':0.4, 'L/M':0.4, 'S/L':0.8, 'L/S':0.8})
-
-	# mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
-	# sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5}) #very broad color prior
-
 	color_mus, color_sigs = [], []
 	
 	''' the init function sets all of the data structures used for the catalog, 
@@ -351,11 +344,11 @@ class Model:
 				self.dat.data_array[0] -= np.nanmean(self.dat.data_array[0]) # this is done to isolate the fluctuation component
 				self.bkg[0] = 0.
 
-				_, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
-																		 fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
-																		 data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig)
 
-				print('A hat is ', A_hat)
+				_, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
+																		fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
+																		data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig, ridge_fac=self.gdat.ridge_fac)
+
 				init_coeffs = np.empty((self.gdat.MP_order,self.gdat.MP_order,4))
 				count = 0
 				for i in range(self.gdat.MP_order):
@@ -366,7 +359,6 @@ class Model:
 
 				self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = init_coeffs.copy()
 
-			# print(' at This point, fourier coeffs has shape ', self.fourier_coeffs[0].shape)
 			self.n_fourier_terms = self.gdat.n_fourier_terms
 			self.dfc = np.zeros((self.n_fourier_terms, self.n_fourier_terms, 4))
 			self.dfc_rel_amps = np.zeros((gdat.nbands))
@@ -1890,6 +1882,7 @@ class lion():
 
 			mean_sig = True, \
 
+			ridge_fac = 2., \
 
 			# --------------------------------- DATA CONFIGURATION ----------------------------------------
 
@@ -2157,8 +2150,12 @@ class lion():
 		start_time = time.time()
 		samps = Samples(self.gdat)
 
+		print('initializing model')
+
 		model = Model(self.gdat, self.data, libmmult)
 
+
+		print('done initializing model')
 
 		trueminf_schedule_counter = 0
 		for j in range(self.gdat.nsamp): # run sampler for gdat.nsamp thinned states

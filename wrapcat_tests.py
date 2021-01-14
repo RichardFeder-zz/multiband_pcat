@@ -1,6 +1,7 @@
 from pcat_spire import *
 from diffuse_gen import *
 from spire_plotting_fns import *
+import pandas as pd
 
 ''' this script is for testing the iterative background estimation suggested by Mike. the main idea is to 
 gradually reduce the minimum flux threshold of the cataloger while fitting fourier coefficients to observations at 
@@ -224,7 +225,7 @@ class pcat_test_suite():
 		residual_samples=50, float_background=True, timestr_list_file=None, \
 		nbands=None, mask_file=None, use_mask=True, image_extnames=['IMAGE'], float_fourier_comps=False, n_fc_terms=10, fc_sample_delay=0, \
 		point_src_delay=0, nsrc_init=None, fc_prop_alpha=None, fourier_comp_moveweight=200., fc_amp_sig=0.001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
-		bkg_moore_penrose_inv=True, MP_order=5):
+		bkg_moore_penrose_inv=True, MP_order=5, ridge_fac=2., inject_catalog_path=None):
 
 		if nbands is None:
 			nbands = 0
@@ -235,6 +236,9 @@ class pcat_test_suite():
 			if band2 is not None:
 				nbands += 1
 
+		if load_timestr is not None:
+			# if we are analyzing a run of Lion that is already finished, don't bother making a new directory structure when initializing PCAT
+			save = False
 
 		ob = lion(band0=band0, band1=band1, band2=band2, base_path=self.base_path, result_path=self.result_path, round_up_or_down='down', \
 						float_background=float_background, burn_in_frac=0.75, \
@@ -245,7 +249,8 @@ class pcat_test_suite():
 		 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
 		 				alph=alph, dfc_prob=1.0, nsrc_init=nsrc_init, mask_file=mask_file, \
 		 				point_src_delay=point_src_delay, n_frames=n_frames, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
-		 				im_fpath=im_fpath, err_fpath=err_fpath, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv)
+		 				im_fpath=im_fpath, err_fpath=err_fpath, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
+		 				save=save)
 
 
 		if fluxbins is None:
@@ -253,28 +258,35 @@ class pcat_test_suite():
 
 		if load_timestr is None:
 
-			print('FLUXBINS ARE ', fluxbins)
+			if inject_catalog_path is not None:
+				print('loading catalog from ', inject_catalog_path)
+				catalog_inject = np.load(inject_catalog_path)['catalog_inject']
 
-			if type(n_src_perbin)==list:
-				catalog_inject = np.zeros((np.sum(np.array(n_src_perbin)), 2+nbands)).astype(np.float32())
 			else:
-				catalog_inject = np.zeros((n_src_perbin*(nbins-1), 2+nbands)).astype(np.float32())
+				print('FLUXBINS ARE ', fluxbins)
 
-			print('catalog inject has shape ', catalog_inject.shape)
+				if type(n_src_perbin)==list:
+					catalog_inject = np.zeros((np.sum(np.array(n_src_perbin)), 2+nbands)).astype(np.float32())
+				else:
+					catalog_inject = np.zeros((n_src_perbin*(nbins-1), 2+nbands)).astype(np.float32())
+
+				print('catalog inject has shape ', catalog_inject.shape)
+
+				catalog_inject[:, :2] = np.array(np.random.uniform(5., ob.data.data_array[0].shape[0]-5., (catalog_inject.shape[0], 2)), dtype=np.float32)
+
+				idxctr = 0
+				for f in range(len(fluxbins)-1):
+
+					if type(n_src_perbin)==list:
+						print('here')
+						catalog_inject[idxctr:idxctr+int(n_src_perbin[f]), 2] = np.array(np.random.uniform(fluxbins[f], fluxbins[f+1], n_src_perbin[f]), dtype=np.float32)
+						idxctr += int(n_src_perbin[f])
+					else:
+						catalog_inject[f*n_src_perbin:(f+1)*n_src_perbin, 2] = np.array(np.random.uniform(fluxbins[f], fluxbins[f+1], n_src_perbin), dtype=np.float32)
+
 
 			ob.gdat.catalog_inject = catalog_inject.copy()
 
-			catalog_inject[:, :2] = np.array(np.random.uniform(5., ob.data.data_array[0].shape[0]-5., (catalog_inject.shape[0], 2)), dtype=np.float32)
-
-			idxctr = 0
-			for f in range(len(fluxbins)-1):
-
-				if type(n_src_perbin)==list:
-					print('here')
-					catalog_inject[idxctr:idxctr+int(n_src_perbin[f]), 2] = np.array(np.random.uniform(fluxbins[f], fluxbins[f+1], n_src_perbin[f]), dtype=np.float32)
-					idxctr += int(n_src_perbin[f])
-				else:
-					catalog_inject[f*n_src_perbin:(f+1)*n_src_perbin, 2] = np.array(np.random.uniform(fluxbins[f], fluxbins[f+1], n_src_perbin), dtype=np.float32)
 
 		else:
 			catalog_inject = np.load(self.result_path+load_timestr+'/inject_catalog.npz')['catalog_inject']
@@ -292,14 +304,12 @@ class pcat_test_suite():
 
 			initialize_c(ob.gdat, libmmult, cblas=ob.gdat.cblas)
 
-
 			if ob.gdat.cblas:
 				lib = libmmult.pcat_model_eval
 			else:
 				lib = libmmult.clib_eval_modl
 
 			model = Model(ob.gdat, ob.data, libmmult)
-
 
 			resid = ob.data.data_array[0].copy()
 
@@ -308,37 +318,35 @@ class pcat_test_suite():
 													ref=resid, lib=libmmult.pcat_model_eval, regsize=model.regsizes[0], \
 													margin=0, offsetx=0, offsety=0, template=None)
 
+			if show_input_maps:
 
-			# plt.figure()
-			# plt.subplot(1,2,1)
-			# plt.title('Original image')
-			# plt.imshow(ob.data.data_array[0], cmap='Greys', origin='lower', vmax=0.1)
-			# plt.colorbar()
-			# plt.subplot(1,2,2)
-			# plt.title('Injected source image')
-			# plt.imshow(inject_src_image, cmap='Greys', origin='lower')
-			# plt.colorbar()
-			# plt.show()
+				plt.figure()
+				plt.subplot(1,2,1)
+				plt.title('Original image')
+				plt.imshow(ob.data.data_array[0], cmap='Greys', origin='lower', vmax=0.1)
+				plt.colorbar()
+				plt.subplot(1,2,2)
+				plt.title('Injected source image')
+				plt.imshow(inject_src_image, cmap='Greys', origin='lower')
+				plt.colorbar()
+				plt.show()
 
 			# add the injected mdoel image into the real data
 			for b in range(nbands):
 				ob.data.data_array[b] += inject_src_image
 
-
-			# plt.figure()
-			# plt.title('original + injected image')
-			# plt.imshow(ob.data.data_array[0], cmap='Greys', origin='lower', vmax=0.1)
-			# plt.colorbar()
-			# plt.show()
-
+			if show_input_maps:
+				plt.figure()
+				plt.title('original + injected image')
+				plt.imshow(ob.data.data_array[0], cmap='Greys', origin='lower', vmax=0.1)
+				plt.colorbar()
+				plt.show()
 
 			# run the thing
 			ob.main()
 			# save the injected catalog to the result directory
 			print(self.result_path+ob.gdat.timestr+'/inject_catalog.npz')
 			np.savez(self.result_path+ob.gdat.timestr+'/inject_catalog.npz', catalog_inject=catalog_inject)
-
-
 
 		# load the run and compute the completeness for each artificial source
 
@@ -357,6 +365,8 @@ class pcat_test_suite():
 
 		completeness_ensemble = np.zeros((residual_samples, catalog_inject.shape[0]))
 
+		fluxerror_ensemble = np.zeros((residual_samples, catalog_inject.shape[0]))
+
 		for i in range(residual_samples):
 
 			for j in range(catalog_inject.shape[0]):
@@ -366,13 +376,172 @@ class pcat_test_suite():
 				fluxes_poscutpass = fsrcs[0][-i][idx_pos]
 
 				# make flux cut
-				mask_flux = (np.abs(fluxes_poscutpass - catalog_inject[j,2])/catalog_inject[j,2] < frac_flux_thresh)
+				mask_flux = np.where(np.abs(fluxes_poscutpass - catalog_inject[j,2])/catalog_inject[j,2] < frac_flux_thresh)[0]
 
-				if np.sum(mask_flux) >= 1:
+
+				if len(mask_flux) >= 1:
+
 					# print('we got one! true source is ', catalog_inject[j])
 					# print('while PCAT source is ', xsrcs[-i][idx_pos][mask_flux], ysrcs[i][idx_pos][mask_flux], fluxes_poscutpass[mask_flux])
 
 					completeness_ensemble[i,j] = 1.
+
+					# compute the relative difference in flux densities between the true and PCAT source and add to list specific for each source 
+					# (in practice, a numpy.ndarray with zeros truncated after the fact). 
+					# For a given injected source, PCAT may or may not have a detection, so one is probing the probability distribution P(S_{Truth, i} - S_{PCAT} | N_{PCAT, i} == 1)
+					# where N_{PCAT, i} is an indicator variable for whether PCAT has a source within the desired cross match criteria. 
+
+					# if there is more than one source satisfying the cross-match criteria, choose the brighter source
+
+					flux_candidates = fluxes_poscutpass[mask_flux]
+
+					brighter_flux = np.max(flux_candidates)
+					dists = np.sqrt((xsrcs[-i][mask_flux] - catalog_inject[j,0])**2 + (ysrcs[-i][mask_flux] - catalog_inject[j,1])**2)
+
+
+					mindist_idx = np.argmin(dists)					
+					mindist_flux = flux_candidates[mindist_idx]
+
+					# fluxerror_ensemble[i,j] = brighter_flux/catalog_inject[j,2]
+					# fluxerror_ensemble[i,j] = (brighter_flux-catalog_inject[j,2])/catalog_inject[j,2]
+					fluxerror_ensemble[i,j] = (mindist_flux-catalog_inject[j,2])/catalog_inject[j,2]
+
+
+
+		mean_frac_flux_error = np.zeros((catalog_inject.shape[0],))
+		pct_16_fracflux = np.zeros(catalog_inject.shape[0],)
+		pct_84_fracflux = np.zeros(catalog_inject.shape[0],)
+
+		prevalences = []
+
+		for j in range(catalog_inject.shape[0]):
+			nonzero_fidx = np.where(fluxerror_ensemble[:,j] != 0)[0]
+			prevalences.append(float(len(nonzero_fidx))/float(residual_samples))
+			if len(nonzero_fidx) > 0:
+				mean_frac_flux_error[j] = np.median(fluxerror_ensemble[nonzero_fidx, j])
+				pct_16_fracflux[j] = np.percentile(fluxerror_ensemble[nonzero_fidx, j], 16)
+				pct_84_fracflux[j] = np.percentile(fluxerror_ensemble[nonzero_fidx, j], 84)
+
+		nonzero_ferridx = np.where(mean_frac_flux_error != 0)[0]
+
+		prevalences = np.array(prevalences)
+
+		mean_ferr_nonzero_ferridx = mean_frac_flux_error[nonzero_ferridx]
+		pct_16_nonzero_ferridx = pct_16_fracflux[nonzero_ferridx]
+		pct_84_nonzero_ferridx = pct_84_fracflux[nonzero_ferridx]
+
+		yerrs = [mean_ferr_nonzero_ferridx - pct_16_nonzero_ferridx, pct_84_nonzero_ferridx-mean_ferr_nonzero_ferridx]
+
+		mean_frac_flux_error_binned = np.zeros((len(fluxbins)-1))
+		pct16_frac_flux_error_binned = np.zeros((len(fluxbins)-1))
+		pct84_frac_flux_error_binned = np.zeros((len(fluxbins)-1))
+
+		for f in range(len(fluxbins)-1):
+
+			finbin = np.where((catalog_inject[nonzero_ferridx, 2] >= fluxbins[f])&(catalog_inject[nonzero_ferridx, 2] < fluxbins[f+1]))[0]
+			
+			mean_frac_flux_error_binned[f] = np.median(mean_ferr_nonzero_ferridx[finbin])
+
+			pct16_frac_flux_error_binned[f] = np.percentile(mean_ferr_nonzero_ferridx[finbin], 16)
+
+			pct84_frac_flux_error_binned[f] = np.percentile(mean_ferr_nonzero_ferridx[finbin], 84)
+
+
+		g = plt.figure(figsize=(9, 6))
+		# plt.title('Blank field test', fontsize=18)
+		# plt.title('GOODS N', fontsize=18)
+		# plt.title('HERITAGE Survey - SMC', fontsize=18)
+
+		# plt.axhline(1.0, linestyle='dashed', color='b')
+
+		plt.axhline(0.0, linestyle='solid', color='grey', alpha=0.4, linewidth=3, zorder=-10)
+		# plt.errorbar(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
+		# 				 yerr=yerrs, color='k', c=prevalences[nonzero_ferridx], marker='.', fmt='.', capsize=2, alpha=0.2)
+		# plt.errorbar(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
+		# 				 yerr=yerrs, color='k', marker='.', markersize=80*prevalences[nonzero_ferridx], fmt='.', capsize=2, alpha=0.2)
+		# plt.errorbar(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
+		# 				 yerr=yerrs, color='k', marker='.',  fmt='none', capsize=2, alpha=0.4)
+		# # plt.scatter(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
+		# 				 c=prevalences[nonzero_ferridx], marker='.', s=80, label='PCAT x Truth catalog (GOODS-N)')
+		# plt.scatter(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
+						 # c=prevalences[nonzero_ferridx], alpha=0.7, marker='.', s=80, label='PCAT x Injected catalog (SMC)')
+		# plt.scatter(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
+		# 				 s=160*prevalences[nonzero_ferridx], alpha=0.4, marker='.', color='k', label='PCAT x Injected catalog (SMC, 15th order FCs)')
+		# # cbar = plt.colorbar()
+		# cbar.set_label('Prevalence', fontsize=14)
+		geom_mean = np.sqrt(fluxbins[1:]*fluxbins[:-1])
+		xerrs = [[1e3*(geom_mean[f] - fluxbins[f]) for f in range(len(geom_mean))], [1e3*(fluxbins[f+1] - geom_mean[f]) for f in range(len(geom_mean))]]
+
+
+		# plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
+		# 				 yerr=[mean_frac_flux_error_binned-pct16_frac_flux_error_binned, pct84_frac_flux_error_binned-mean_frac_flux_error_binned], fmt='.', color='C3', \
+		# 				 linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (GOODS-N) \n single band fit, averaged', markersize=15)
+		plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
+						 yerr=[mean_frac_flux_error_binned-pct16_frac_flux_error_binned, pct84_frac_flux_error_binned-mean_frac_flux_error_binned], fmt='.', color='C3', \
+						 linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (SMC, 15th order FCs) \n single band fit, averaged', markersize=15)
+		
+		heritage_pcat = np.load('spire_results/20210109-134459/fracflux_errs_dpos='+str(np.round(pos_thresh, 1))+'_heritage.npz')
+		geom_mean = heritage_pcat['geom_mean']
+		mean_frac_flux_error_binned = heritage_pcat['mean_frac_flux_error_binned']
+		pct16_frac_flux_error_binned = heritage_pcat['pct16_frac_flux_error_binned']
+		pct84_frac_flux_error_binned = heritage_pcat['pct84_frac_flux_error_binned']
+		fluxbins = heritage_pcat['fluxbins']
+		xerrs = [[1e3*(geom_mean[f] - fluxbins[f]) for f in range(len(geom_mean))], [1e3*(fluxbins[f+1] - geom_mean[f]) for f in range(len(geom_mean))]]
+
+
+		plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
+						 yerr=[mean_frac_flux_error_binned-pct16_frac_flux_error_binned, pct84_frac_flux_error_binned-mean_frac_flux_error_binned], fmt='.', color='k', \
+						 linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (SMC, 10th order FCs) \n single band fit, averaged', markersize=15)
+
+
+		# np.savez('spire_results/'+load_timestr+'/fracflux_errs_dpos='+str(np.round(pos_thresh, 1))+'_heritage.npz', geom_mean=geom_mean, mean_frac_flux_error_binned=mean_frac_flux_error_binned, \
+		# 		pct16_frac_flux_error_binned=pct16_frac_flux_error_binned, pct84_frac_flux_error_binned=pct84_frac_flux_error_binned, fluxbins=fluxbins)
+
+		import pandas as pd
+
+		roseboom_medianx = np.array(pd.read_csv('~/Downloads/median_roseboom_250.csv', header=None)[0])
+		roseboom_mediany = np.array(pd.read_csv('~/Downloads/median_roseboom_250.csv', header=None)[1])
+
+
+		rb_pct16x = np.array(pd.read_csv('~/Downloads/roseboom_16_250.csv', header=None)[0])
+		rb_pct16y = np.array(pd.read_csv('~/Downloads/roseboom_16_250.csv', header=None)[1])
+
+		rb_pct84x = np.array(pd.read_csv('~/Downloads/roseboom_84_250.csv', header=None)[0])
+		rb_pct84y = np.array(pd.read_csv('~/Downloads/roseboom_84_250.csv', header=None)[1])
+
+		xid_medianx = np.array(pd.read_csv('~/Downloads/xid_median_250.csv', header=None)[0])
+		xid_mediany = np.array(pd.read_csv('~/Downloads/xid_median_250.csv', header=None)[1])
+
+		xid_pct16x = np.array(pd.read_csv('~/Downloads/xid_16_250.csv', header=None)[0])
+		xid_pct16y = np.array(pd.read_csv('~/Downloads/xid_16_250.csv', header=None)[1])
+
+		xid_pct84x = np.array(pd.read_csv('~/Downloads/xid_84_250.csv', header=None)[0])
+		xid_pct84y = np.array(pd.read_csv('~/Downloads/xid_84_250.csv', header=None)[1])
+
+
+		plt.plot(roseboom_medianx, roseboom_mediany/roseboom_medianx, label='XID (Deep) \n Roseboom et al. 2010', color='C2', marker='.', linewidth=3, markersize=15)
+		plt.fill_between(rb_pct16x, rb_pct16y/roseboom_medianx, rb_pct84y/roseboom_medianx, color='C2', alpha=0.3)
+
+
+		plt.plot(xid_medianx, xid_mediany, label='XID+ (COSMOS) \n Hurley et al. 2016', color='b', marker='.', linewidth=3, markersize=15)
+		plt.fill_between(xid_pct16x, xid_pct16y, xid_pct84y, color='b', alpha=0.3)
+
+
+		plt.legend(fontsize=13)
+		plt.xlabel('$S_{250}^{True}$ [mJy]', fontsize=18)
+		plt.ylabel('$(S_{250}^{Obs} - S_{250}^{True})/S_{250}^{True}$', fontsize=16)
+		plt.xscale('log')
+		# plt.yscale('log')
+		# plt.ylim(0.1, 10.0)
+		# plt.ylim(-1.5, 2)
+		plt.ylim(-0.5, 0.5)
+		# plt.xlim(1e-3, 10)
+		# plt.xlim(3, 700)
+		plt.xlim(10, 700)
+		plt.tight_layout()
+		plt.show()
+		# g.savefig(filepath+'/fluxerr_vs_fluxdensity_dx='+str(pos_thresh)+'_dS-S='+str(frac_flux_thresh)+'_mindist.pdf', bbox_inches='tight')
+
 
 		xstack = xsrcs[-20:,:].ravel()
 		ystack = ysrcs[-20:,:].ravel()
@@ -390,8 +559,8 @@ class pcat_test_suite():
 
 		f = plt.figure(figsize=(10, 5.5))
 		plt.subplot(1,2, 1)
-		plt.title('GOODS-N', fontsize=16)
-		# plt.title('HERITAGE Survey - SMC', fontsize=16)
+		# plt.title('GOODS-N', fontsize=16)
+		plt.title('HERITAGE Survey - SMC', fontsize=16)
 		plt.imshow(91.*ob.data.data_array[0][:-5, :-5]-91.*np.nanmean(ob.data.data_array[0][:-5, :-5]), cmap='Greys', vmax=0.02*91., origin='lower')
 		plt.xlabel('x [pix]', fontsize=14)
 		plt.ylabel('y [pix]', fontsize=14)
@@ -406,15 +575,16 @@ class pcat_test_suite():
 		plt.subplot(1,2, 2)
 		plt.title('$|\\delta \\vec{x}| < $'+str(np.round(pos_thresh, 2))+', $|\\delta S/S| < $'+str(np.round(frac_flux_thresh, 2)), fontsize=16)
 		plt.errorbar(1e3*np.sqrt(fluxbins[:-1]*fluxbins[1:]), completeness_vs_flux, yerr=cvf_std/np.sqrt(completeness_ensemble.shape[0]), color='r', marker='x', capsize=5, label='PCAT')
-		# plt.plot([20, 50, 100, 200, 500, 1000], [0, 0.9, 1.0, 1.0, 1.0, 1.0], marker='+', color='k', markersize=10, label='Meixner et al. 2013 \n (low background)')
+		plt.plot([20, 50, 100, 200, 500, 1000], [0, 0.9, 1.0, 1.0, 1.0, 1.0], marker='+', color='k', markersize=10, label='Meixner et al. 2013 \n (low background)')
 		import pandas as pd
 
-		psc_spire_cosmos_comp = pd.read_csv('~/Downloads/PSW_completeness.csv', header=None)
-		plt.plot(np.array(psc_spire_cosmos_comp[0]), np.array(psc_spire_cosmos_comp[1]), marker='.', markersize=10, label='SPIRE Point Source Catalog (2017)', color='k')
+		# psc_spire_cosmos_comp = pd.read_csv('~/Downloads/PSW_completeness.csv', header=None)
+		# plt.plot(np.array(psc_spire_cosmos_comp[0]), np.array(psc_spire_cosmos_comp[1]), marker='.', markersize=10, label='SPIRE Point Source Catalog (2017)', color='k')
 		plt.xscale('log')
 		plt.xlabel('$S_{250}$ [mJy]', fontsize=14)
 		plt.ylabel('Completeness', fontsize=14)
-		plt.xlim(4, 1e3)
+		# plt.xlim(4, 1e3)
+		plt.xlim(15, 1e3)
 		plt.legend()
 		plt.ylim(-0.05, 1.05)
 		plt.tight_layout()
@@ -434,7 +604,7 @@ class pcat_test_suite():
 		template_moveweight=40., template_filename=None, \
 		bkg_sample_delay=0, birth_death_sample_delay=0, movestar_sample_delay=0, merge_split_sample_delay=0, \
 		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, fc_amp_sig=0.0001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
-		bkg_moore_penrose_inv=True, MP_order=5.):
+		bkg_moore_penrose_inv=True, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5):
 
 		if nbands is None:
 			nbands = 0
@@ -449,12 +619,12 @@ class pcat_test_suite():
 					float_background=float_background, burn_in_frac=0.75, bkg_sample_delay=bkg_sample_delay, float_templates=float_templates, template_moveweight=template_moveweight, \
 	 				cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
 	 				template_names=template_names, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=bias, load_state_timestr=load_state_timestr, max_nsrc=max_nsrc,\
-	 				trueminf=fmin, nregion=5, make_post_plots=make_post_plots, nsamp=nsamp, use_mask=use_mask,\
+	 				trueminf=fmin, nregion=nregion, make_post_plots=make_post_plots, nsamp=nsamp, use_mask=use_mask,\
 	 				residual_samples=residual_samples, float_fourier_comps=float_fourier_comps, \
 	 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
 	 				alph=alph, dfc_prob=1.0, nsrc_init=nsrc_init, mask_file=mask_file, birth_death_sample_delay=birth_death_sample_delay, movestar_sample_delay=movestar_sample_delay,\
 	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, raw_counts=False, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
-	 				 im_fpath=im_fpath, err_fpath=err_fpath, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv)
+	 				 im_fpath=im_fpath, err_fpath=err_fpath, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac)
 
 		ob.main()
 
@@ -497,7 +667,8 @@ class pcat_test_suite():
 		 				trueminf=fmin, nregion=5, make_post_plots=False, nsamp=nsamps[i], use_mask=use_mask,\
 		 				residual_samples=5, init_fourier_coeffs=median_fc, n_frames=3, float_fourier_comps=True, \
 		 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=0, fourier_comp_moveweight=200.,\
-		 				alph=alph, dfc_prob=1.0, nsrc_init=0, mask_file=mask_file, birth_death_sample_delay=50, movestar_sample_delay=50, merge_split_sample_delay=50, inject_sz_frac=1.0, raw_counts=True, weighted_residual=weighted_residual, image_extnames=image_extnames, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
+		 				alph=alph, dfc_prob=1.0, nsrc_init=0, mask_file=mask_file, birth_death_sample_delay=50, movestar_sample_delay=50, merge_split_sample_delay=50, \
+		 				inject_sz_frac=1.0, raw_counts=True, weighted_residual=weighted_residual, image_extnames=image_extnames, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
 
 			ob.main()
 
@@ -538,7 +709,6 @@ result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'
 mask_file = base_path+'/data/spire/GOODSN/GOODSN_PSW_mask.fits'
 
 # mask_file=None
-
 # mask_file= None
 # timestr_list_file='lensed_no_dust_gen3sims_rxj1347_11_10_20_timestrs.npz'
 # started_idx_list_file = 'lensed_no_dust_gen3sims_rxj1347_11_10_20_simidxs.npz' 
@@ -575,16 +745,20 @@ color_prior_sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 
 # 								  float_fourier_comps=True, n_fc_terms=10, n_frames=10, point_src_delay=10, nsrc_init=0, \
 # 								  frac_flux_thresh=0.5, pos_thresh=1., inject_fmax=0.4, max_nsrc=500, show_input_maps=True)
 
-im_fpath = 'Data/spire/SMC_HERITAGE/cutouts/SMC_HERITAGE_cutsize200_199_PSW.fits'
+# im_fpath = 'Data/spire/SMC_HERITAGE/cutouts/SMC_HERITAGE_cutsize200_199_PSW.fits'
+im_fpath = 'Data/spire/LMC_HERITAGE/cutouts/LMC_HERITAGE_cutsize200_36_PSW.fits'
+
 # im_fpath = 'Data/spire/SMC_HERITAGE/cutouts/SMC_HERITAGE_cutsize200_162_PSW.fits'
 
 # load_timestr='20210105-042450'
 # load_timestr = '20210105-142743'
 # load_timestr = '20210105-162254'
 # load_timestr = '20210106-012646'
-load_timestr = '20210106-230414'
-
-# load_timestr = None
+# load_timestr = '20210106-230414'
+# load_timestr = '20210109-134459'
+# load_timestr = '20210109-050110'
+# load_timestr = '20210111-133739'
+load_timestr = None
 
 fluxbins = np.logspace(np.log10(0.015), np.log10(1.0), 10)
 fluxbins_bright = np.logspace(np.log10(0.1), np.log10(3.0), 8)
@@ -594,11 +768,14 @@ fluxbins_goodsn = np.logspace(np.log10(0.005), np.log10(0.5), 10)
 print('flux bins are :', fluxbins)
 print('flux bins bright : ', fluxbins_bright)
 
-n_src_perbin = [100, 50, 20, 20, 10, 5, 5, 5, 5]
+n_src_perbin = [100, 50, 50, 20, 20, 5, 3, 2, 2]
 n_src_perbin_brightdust = [100, 50, 20, 20, 5, 5, 5]
 
 
 n_src_perbin_goodsn = [100, 100, 50, 50, 10, 5, 5, 5, 5]
+
+inject_catalog_path = 'spire_results/20210109-134459/inject_catalog.npz'
+# inject_catalog_path = None
 
 
 # n_src_perbin = 30
@@ -611,18 +788,18 @@ n_src_perbin_goodsn = [100, 100, 50, 50, 10, 5, 5, 5, 5]
 # pcat_test.artificial_star_test(n_src_perbin=n_src_perbin, fluxbins=fluxbins, nbins=None, nsamp=2000, residual_samples=200, visual=False,\
 # 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_168_PSW', im_fpath=im_fpath, use_mask=False, \
 # 								  float_fourier_comps=True, n_fc_terms=10, n_frames=10, point_src_delay=10, nsrc_init=0, \
-# 								  frac_flux_thresh=0.5, pos_thresh=1.0, max_nsrc=1500, load_timestr=load_timestr, show_input_maps=False, fmin=0.01)
+# 								  frac_flux_thresh=2.5, pos_thresh=0.0, max_nsrc=1500, load_timestr=load_timestr, show_input_maps=False, fmin=0.01)
 
-pcat_test.artificial_star_test(n_src_perbin=n_src_perbin_goodsn, fluxbins=fluxbins_goodsn, nbins=None, nsamp=2000, residual_samples=200, visual=True,\
-								  dataname='GOODSN',tail_name='GOODSN_image_SMAP_PSW', use_mask=True, fc_amp_sig=0.0002, \
-								  float_fourier_comps=False, n_fc_terms=5, n_frames=10, point_src_delay=0, nsrc_init=0, \
-								  frac_flux_thresh=2.0, pos_thresh=1.0, max_nsrc=2500, mask_file=mask_file, load_timestr=load_timestr, show_input_maps=False, fmin=0.004)
+# pcat_test.artificial_star_test(n_src_perbin=n_src_perbin_goodsn, fluxbins=fluxbins_goodsn, nbins=None, nsamp=2000, residual_samples=300, visual=True,\
+# 								  dataname='GOODSN',tail_name='GOODSN_image_SMAP_PSW', use_mask=True, fc_amp_sig=0.0002, \
+# 								  float_fourier_comps=False, n_fc_terms=5, n_frames=10, point_src_delay=0, nsrc_init=0, \
+# 								  frac_flux_thresh=2.5, pos_thresh=1.0, max_nsrc=2500, mask_file=mask_file, load_timestr=load_timestr, show_input_maps=False, fmin=0.004)
 
 
-# pcat_test.artificial_star_test(n_src_perbin=n_src_perbin, fluxbins=fluxbins, nbins=None, nsamp=2000, residual_samples=200, visual=False,\
+# pcat_test.artificial_star_test(n_src_perbin=n_src_perbin, fluxbins=fluxbins, inject_catalog_path=inject_catalog_path, nbins=None, nsamp=3000, residual_samples=200, visual=False,\
 # 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_199_PSW', im_fpath=im_fpath, use_mask=False, \
-# 								  float_fourier_comps=True, n_fc_terms=10, n_frames=10, point_src_delay=10, nsrc_init=0, \
-# 								  frac_flux_thresh=0.5, pos_thresh=1.0, max_nsrc=1500, MP_order=6, fc_amp_sig=0.002, load_timestr=load_timestr, show_input_maps=False, fmin=0.015)
+# 								  float_fourier_comps=True, n_fc_terms=15, n_frames=10, point_src_delay=10, nsrc_init=0, \
+# 								  frac_flux_thresh=2.5, bkg_moore_penrose_inv=False, pos_thresh=1.0, max_nsrc=2000, MP_order=10, ridge_fac=1., fc_amp_sig=0.0005, load_timestr=load_timestr, show_input_maps=False, fmin=0.01)
 
 # pcat_test.artificial_star_test(n_src_perbin=n_src_perbin_brightdust, fluxbins=fluxbins_bright, nbins=None, nsamp=200, residual_samples=40, visual=True,\
 # 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_162_PSW', im_fpath=im_fpath, use_mask=False, \
@@ -635,8 +812,16 @@ pcat_test.artificial_star_test(n_src_perbin=n_src_perbin_goodsn, fluxbins=fluxbi
 # 						   max_nsrc=500, movestar_sample_delay=0, color_sigs=color_prior_sigs, n_frames=20, birth_death_sample_delay=0, merge_split_sample_delay=0,\
 # 						    fc_prop_alpha=-1., fc_amp_sig=0.002, MP_order=6, bkg_moore_penrose_inv=True)
 
+pcat_test.real_dat_run(nbands=1, dataname='LMC_HERITAGE/cutouts', tail_name='LMC_HERITAGE_cutsize200_36_PSW', im_fpath=im_fpath, image_extnames=['IMAGE'], err_fpath=None, nsrc_init=0, float_fourier_comps=True,\
+						 use_mask=False, bias=None, mask_file=None, nsamp=3000, n_fc_terms=15, weighted_residual=True, residual_samples=300,\
+						  float_templates=False, template_names=None, visual=True, show_input_maps=False, fmin=0.01, \
+						   max_nsrc=1200, point_src_delay=0, color_sigs=color_prior_sigs, n_frames=20, \
+						    fc_amp_sig=0.0005, bkg_moore_penrose_inv=True, MP_order=15, ridge_fac=1., nregion=10)
 
-# result_plots(timestr='20210106-012646',cattype=None, burn_in_frac=0.7, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, \
+
+
+
+# result_plots(timestr='20210109-134459',cattype=None, burn_in_frac=0.7, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, \
 # 			fourier_comp_plots=True)
 
 # result_plots(timestr='20201221-011509',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
