@@ -1,7 +1,7 @@
 from fast_astrom import *
 import numpy as np
 from astropy.convolution import Gaussian2DKernel
-from image_eval import psf_poly_fit, image_model_eval
+from image_eval import psf_poly_fit
 import pickle
 import matplotlib
 import matplotlib.pyplot as plt
@@ -125,24 +125,40 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 		print('ATTENTION loading from ', gdat.band_dict[band])
 		astrom.load_wcs_header_and_dim(file_path, round_up_or_down=gdat.round_up_or_down)
 
-	spire_dat = fits.open(file_path)
-	# image = np.nan_to_num(spire_dat['IMAGE'].data)
 
 	#by loading in the image this way, we can compose maps from several components, e.g. noiseless CIB + noise realization
-	for e, extname in enumerate(image_extnames):
-		if e==0:
-			image = np.nan_to_num(spire_dat[extname].data)
-		else:
-			image += np.nan_to_num(spire_dat[extname].data)
-		if gdat.show_input_maps:
-			plt.figure()
-			plt.title(extname)
-			plt.imshow(image, origin='lower')
-			plt.colorbar()
-			plt.show()
-	# image = np.nan_to_num(spire_dat['SIGNAL'].data)
-	error = np.nan_to_num(spire_dat['ERROR'].data)
+	
+	if gdat.im_fpath is None:
+		spire_dat = fits.open(file_path)
 
+		for e, extname in enumerate(image_extnames):
+			if e==0:
+				image = np.nan_to_num(spire_dat[extname].data)
+			else:
+				image += np.nan_to_num(spire_dat[extname].data)
+			if gdat.show_input_maps:
+				plt.figure()
+				plt.title(extname)
+				plt.imshow(image, origin='lower')
+				plt.colorbar()
+				plt.show()
+	else:
+		spire_dat = fits.open(gdat.im_fpath)
+		# hduim = spire_dat[0]
+		# image = np.nan_to_num(hduim.data/hduim.header['JANSCALE'])
+
+		for e, extname in enumerate(image_extnames):
+			if e==0:
+				image = np.nan_to_num(spire_dat[extname].data)
+			else:
+				image += np.nan_to_num(spire_dat[extname].data)
+
+	if gdat.err_fpath is None:
+		error = np.nan_to_num(spire_dat['ERROR'].data)
+	else:
+		hdu = fits.open(gdat.err_fpath)[0]
+		# error = np.nan_to_num(hdu.data/hdu.header['JANSCALE'])
+		error = np.nan_to_num(hdu.data)
 	# main functionality is following eight lines
 	if gdat.use_mask:
 
@@ -180,7 +196,6 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	# 	image += noise_realization
 	# mask = fits.open(gdat.base_path+'/data/spire/GOODSN/GOODSN_P'+str(gdat.band_dict[band])+'W_mask.fits')[0].data
 	# mask = fits.open(gdat.base_path+'/data/spire/gps_0/gps_0_P'+str(gdat.band_dict[band])+'W_mask.fits')[0].data
-
 	# mask = fits.open(gdat.base_path+'/data/spire/rxj1347_831/rxj1347_P'+str(gdat.band_dict[band])+'W_nr_1_ext.fits')['MASK'].data
 	# exposure = spire_dat[3].data
 	# mask = spire_dat[3].data
@@ -310,8 +325,8 @@ class pcat_data():
 
 				if bounds is not None:
 
-					big_dim = np.maximum(find_nearest_mod(bounds[0,1]-bounds[0,0], gdat.nregion, mode=gdat.round_up_or_down),\
-											 find_nearest_mod(bounds[1,1]-bounds[1,0], gdat.nregion, mode=gdat.round_up_or_down))
+					big_dim = np.maximum(find_nearest_mod(bounds[0,1]-bounds[0,0]+1, gdat.nregion, mode=gdat.round_up_or_down),\
+											 find_nearest_mod(bounds[1,1]-bounds[1,0]+1, gdat.nregion, mode=gdat.round_up_or_down))
 
 					self.fast_astrom.dims[i] = (big_dim, big_dim)
 
@@ -410,6 +425,11 @@ class pcat_data():
 						print('we have more than one band:', gdat.bands[0], band)
 					self.fast_astrom.fit_astrom_arrays(0, i, bounds0=gdat.bounds[0], bounds1=gdat.bounds[i])
 
+					x_max_pivot, y_max_pivot = self.fast_astrom.obs_to_obs(0, i, gdat.imsz0[0], gdat.imsz0[1])
+
+					print('xmaxpivot, ymaxpivot for band ', i, ' are ', x_max_pivot, y_max_pivot)
+
+
 
 				if gdat.noise_thresholds is not None:
 					error[error > gdat.noise_thresholds[i]] = 0 # this equates to downweighting the pixels
@@ -419,19 +439,21 @@ class pcat_data():
 				image, error, mask = load_in_mock_map(gdat.mock_name, band)
 			
 			if gdat.auto_resize:
-
-				error = error[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
-				image = image[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+				# error = error[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+				# image = image[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+				error = error[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1]
+				image = image[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1]
 				smaller_dim = np.min(image.shape)
 				larger_dim = np.max(image.shape)
 
-				if gdat.verbtype > 1:
-					print('smaller dim is', smaller_dim)
-					print('larger dim is ', larger_dim)
+				print('smaller dim for band ', band, ' is', smaller_dim)
+				print('larger dim for band ', band, ' is ', larger_dim)
 
 				gdat.width = find_nearest_mod(larger_dim, gdat.nregion, mode=gdat.round_up_or_down)
 				gdat.height = gdat.width
 				image_size = (gdat.width, gdat.height)
+
+				print('image size is ', image_size)
 
 				resized_image = np.zeros(shape=(gdat.width, gdat.height))
 				resized_error = np.zeros(shape=(gdat.width, gdat.height))
@@ -443,15 +465,20 @@ class pcat_data():
 				resized_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 				resized_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 
+				if i > 0:
+					if int(x_max_pivot) < resized_image.shape[0]:
+						print('Setting pixels in band '+str(i)+' not in band 0 FOV to zero..')
+						resized_image[int(x_max_pivot):,:] = 0.
+						resized_image[:,int(x_max_pivot):] = 0.
+						resized_error[int(x_max_pivot):,:] = 0.
+						resized_error[:,int(x_max_pivot):] = 0.
+
 				resized_template_list = []
 				for t, template in enumerate(template_list):
 					if template is not None:
 
-						# template = np.fliplr(template)
-
 						resized_template = np.zeros(shape=(gdat.width, gdat.height))
 
-						# if gdat.bolocam_mask:
 						template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
 
 
@@ -463,10 +490,14 @@ class pcat_data():
 							plt.title('resized template -- '+gdat.template_order[t])
 							plt.imshow(resized_template, cmap='Greys', origin='lower')
 							plt.colorbar()
+							plt.axhline(x_max_pivot, color='r', linestyle='solid')
+							plt.axvline(y_max_pivot, color='r', linestyle='solid')
 							plt.subplot(1,2,2)
 							plt.title('image + '+gdat.template_order[t])
 							plt.imshow(resized_image, origin='lower', cmap='Greys')
 							plt.colorbar()
+							plt.axhline(x_max_pivot, color='r', linestyle='solid')
+							plt.axvline(y_max_pivot, color='r', linestyle='solid')
 							plt.tight_layout()
 							plt.show()
 
@@ -485,7 +516,7 @@ class pcat_data():
 
 
 							if gdat.inject_dust and template_name=='planck':
-								print('we are putting in dust now')
+								print('Injecting dust template into image..')
 
 								resized_image += resized_template
 
@@ -600,15 +631,27 @@ class pcat_data():
 				plt.title('data, '+gdat.tail_name)
 				plt.imshow(self.data_array[i], vmin=np.percentile(self.data_array[i], 5), vmax=np.percentile(self.data_array[i], 95), cmap='Greys', origin=[0,0])
 				plt.colorbar()
-				if i==2:
-					print('saving this one boyyyy')
-					plt.savefig('../data_sims/'+gdat.tail_name+'_data_500micron.png', bbox_inches='tight')
+
+				if i > 0:
+					plt.axhline(x_max_pivot, color='r', linestyle='solid')
+					plt.axvline(y_max_pivot, color='r', linestyle='solid')
+
+				plt.xlim(0, self.data_array[i].shape[0])
+				plt.ylim(0, self.data_array[i].shape[1])
+				# if i==2:
+					# print('saving this one boyyyy')
+					# plt.savefig('../data_sims/'+gdat.tail_name+'_data_500micron.png', bbox_inches='tight')
 				plt.show()
 
 				plt.figure()
 				plt.title('errors')
 				plt.imshow(self.errors[i], vmin=np.percentile(self.errors[i], 5), vmax=np.percentile(self.errors[i], 95), cmap='Greys', origin=[0,0])
 				plt.colorbar()
+				if i > 0:
+					plt.axhline(x_max_pivot, color='r', linestyle='solid')
+					plt.axvline(y_max_pivot, color='r', linestyle='solid')
+				plt.xlim(0, self.errors[i].shape[0])
+				plt.ylim(0, self.errors[i].shape[1])
 				plt.show()
 
 			gdat.imszs.append(image_size)

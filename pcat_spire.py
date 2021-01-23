@@ -19,7 +19,7 @@ from image_eval import psf_poly_fit, image_model_eval
 from fast_astrom import *
 import pickle
 from spire_data_utils import *
-#from spire_roc import *
+from spire_roc_condensed_cat import *
 from spire_plotting_fns import *
 from fourier_bkg_modl import *
 
@@ -30,9 +30,6 @@ np.seterr(divide='ignore', invalid='ignore')
 class objectview(object):
 	def __init__(self, d):
 		self.__dict__ = d
-
-#generate random seed for initialization
-# np.random.seed(20170609)
 
 class gdatstrt(object):
 
@@ -526,7 +523,7 @@ class Model:
 		namely acceptance fractions for the different proposals and some time performance statistics as well. 
 		'''  
 		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
-		print('Background', self.bkg, 'N_star', self.n, 'chi^2', list(chi2), file=self.gdat.flog)
+		print('Background', np.round(self.bkg, 4), 'N_star', self.n, 'chi^2', list(np.round(chi2, 2)), file=self.gdat.flog)
 		dts *= 1000
 		accept_fracs = []
 		timestat_array = np.zeros((6, 1+len(self.moveweights)), dtype=np.float32)
@@ -649,14 +646,10 @@ class Model:
 		dts = np.zeros((4, self.nloop)) # array to store time spent on different proposals
 		diff2_list = np.zeros(self.nloop) 
 
-		# if sample_idx == 50:
-			# print('new sampling widths babyyyy')
-			# self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.005})# sz template normalized to unity, dust template in units of Jy/beam
-
 
 		''' I'm a bit concerned about setting the offsets for multiple observations with different sizes. 
 		For now what I'll do is choose an offset for the pivot band and then compute scaled offsets for the other bands
-		based on the relative sub region size, this will be off by at most 0.5 pixel, which hopefully shouldn't affect 
+		based on the relative sub region size, which hopefully shouldn't affect 
 		things too negatively. There might be some edge effects though. '''
 		
 		if self.nregion > 1:
@@ -1023,7 +1016,7 @@ class Model:
 
 
 		self.bkg += self.dback
-		print('at the end of nloop, self.dback is', self.dback, 'so self.bkg is now ', self.bkg)
+		print('at the end of nloop, self.dback is', np.round(self.dback, 4), 'so self.bkg is now ', np.round(self.bkg, 4))
 		self.dback = np.zeros_like(self.bkg)
 
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
@@ -1058,7 +1051,8 @@ class Model:
 					# plot_custom_multiband_frame(self, resids, models, sz=[self.template_amplitudes[0,b]*self.dat.template_array[b][0] for b in range(self.gdat.nbands)], fourier_bkg=[self.fc_rel_amps[b]*running_temp[b] for b in range(self.gdat.nbands)], panels=['residual0', 'residual1', 'residual2', 'fourier_bkg0', 'fourier_bkg1', 'dNdS0'], frame_dir_path=frame_dir_path)
 				
 				else:
-					plot_custom_multiband_frame(self, resids, models, panels=['data0', 'data1', 'data2', 'residual0', 'dNdS0', 'dNdS2'], frame_dir_path=frame_dir_path)
+					if sample_idx < 50 or sample_idx%50==0:
+						plot_custom_multiband_frame(self, resids, models, panels=['data0', 'data1', 'data2', 'residual0', 'dNdS0', 'dNdS2'], frame_dir_path=frame_dir_path)
 
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids, models
@@ -1744,7 +1738,7 @@ class lion():
 			# resizes images to largest square dimension modulo nregion
 			auto_resize = True, \
 			# don't use 'down' configuration yet, not implemented consistently in all data parsing routines
-			round_up_or_down = 'down',\
+			round_up_or_down = 'up',\
 			#specify these if you want to fix the dimension of incoming image
 			width = 0, \
 			height = 0, \
@@ -1946,7 +1940,7 @@ class lion():
 			color_sigs = None, \
 
 			# the scheduling within a chain does not work, use iter_fourier_comps.py instead (10/13/20)
-			trueminf_schedule_vals = [0.1, 0.05, 0.02, 0.01, 0.005], \
+			trueminf_schedule_vals = [0.1, 0.05, 0.02, 0.01, 0.005],\
 			trueminf_schedule_samp_idxs = [0, 50, 100, 200, 500],\
 			schedule_trueminf=False, \
 
@@ -1987,6 +1981,23 @@ class lion():
 			integrate_sz_prof=False, \
 
 			n_frames = 30, \
+
+			# ----------------------------------------- CONDENSED CATALOG --------------------------------------
+
+			# if True, takes last n_condensed_samp catalog realizations and groups together samples to produce a marginalized 
+			# catalog with reported uncertainties for each source coming from the several realizations
+			generate_condensed_catalog = False, \
+			# number of samples to construct condensed catalog from. Condensing the catalog can take a long time, so I usually choose like 100 for a "quick" answer
+			# and closer to 300 for a science-grade catalog.
+			n_condensed_samp = 100, \
+			# cuts catalog sources that appear in less than {prevalence_cut} fraction of {n_condensed_samp} samples
+			prevalence_cut = 0.1, \
+			# removes sources within {mask_hwhm} pixels of image border, in case there are weird artifacts
+			mask_hwhm = 2, \
+
+			# used when grouping together catalog sources across realizations
+			search_radius=0.75, \
+			matching_dist = 0.75, \
 
 			# ----------------------------------- COMPUTATIONAL ROUTINE OPTIONS -------------------------------
 			
@@ -2194,6 +2205,12 @@ class lion():
 				timestr_list = [self.gdat.timestr]
 			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
 
+		if self.gdat.generate_condensed_catalog:
+
+			xmatch_roc = cross_match_roc(timestr=timestr, nsamp=self.gdat.n_condensed_samp)
+			xmatch_roc.load_gdat_params(gdat=self.gdat)
+			condensed_cat, seed_cat = xmatch_roc.condense_catalogs(prevalence_cut=self.gdat.prevalence_cut, save_cats=True, make_seed_bool=True,\
+																	 mask_hwhm=self.gdat.mask_hwhm, search_radius=self.gdat.search_radius, matching_dist=self.gdat.matching_dist)
 
 		if self.gdat.make_post_plots:
 			result_plots(gdat = self.gdat)
