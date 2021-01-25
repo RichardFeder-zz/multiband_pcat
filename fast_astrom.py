@@ -207,7 +207,7 @@ class wcs_astrometry():
         
         return dxp, dyp
            
-    def fit_astrom_arrays(self, idx0, idx1, bounds0=None, bounds1=None):
+    def fit_astrom_arrays(self, idx0, idx1, bounds0=None, bounds1=None, pos0_pivot=None, pos0=None, x0=None, y0=None):
         '''
         Precomputes set of astrometry arrays used to quickly compute coordinate shifts across bands. 
 
@@ -221,6 +221,12 @@ class wcs_astrometry():
             Can be used to specify image bounds over which to compute fast astrometry arrays. 
             If left unspecified, astrometry arrays computed over full range of initial observation.
             Default is 'None'.
+
+        x0, y0 : ints, optional
+            Occasionally we will want to take image cutouts from a large map (e.g. 100x100 pixel cutouts from a larger 5000x5000 pixel map)
+            while using the header as copied from the larger map. Because the cutouts will have different zero points,
+            the parent WCS header will be offset by some amount (x0, y0). One could maybe modify the WCS header directly, but this 
+            is equivalent. 
 
         Returns
         -------
@@ -243,6 +249,9 @@ class wcs_astrometry():
         
         xv, yv = np.meshgrid(x, y)
 
+        if pos0_pivot is not None:
+            xv += pos0_pivot[0]
+            yv += pos0_pivot[1]
         
         if self.verbosity > 0:
             print('xv:')
@@ -258,6 +267,10 @@ class wcs_astrometry():
         if bounds1 is not None:
             xp -= bounds1[0,0]
             yp -= bounds1[1,0]
+
+        if pos0 is not None: 
+            xp -= pos0[0]
+            yp -= pos0[1]
         
         if self.verbosity > 0:
             print('xp:')

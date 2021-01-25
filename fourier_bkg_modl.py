@@ -10,13 +10,19 @@ from scipy.ndimage import gaussian_filter
 
 def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
                            ravel_temps=None, fourier_templates=None, data=None, psf_fwhm=3., \
-                          mean_sig=True, ridge_fac = None, show=False, inpaint_nans=True):
+                          mean_sig=True, ridge_fac = None, show=False, inpaint_nans=True, x_max_pivot=None):
     
+    # NOTE -- this only works for single band at the moment. Is there a way to compute the Moore-Penrose inverse for 
+    # backgrounds observed over several bands with a fixed color prior? 
+
+    # also , I think that using the full noise model in the matrix product is necessary when using multiband and multi-region
+    # evaluations. This migth already be handled in the code by zeroing out NaNs.
+
     if imsz is None:
         imsz = error.shape
 
     if fourier_templates is None and ravel_temps is None:
-        fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm)
+        fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
 
     if ravel_temps is None:
         ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
@@ -77,7 +83,7 @@ def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_sigin
                     count += 1
 
 
-        temp_A_hat = generate_template(arr_3d, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1])
+        temp_A_hat = generate_template(arr_3d, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1], x_max_pivot=x_max_pivot)
 
         if show:
 
@@ -121,7 +127,7 @@ def ravel_temps_from_ndtemp(templates, n_terms, auxdim=4):
     
     return ravel_temps
 
-def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=None):
+def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=None, x_max_pivot_list=None):
     '''
     Given a list of image and beam sizes, produces multiband fourier templates for background modeling.
 
@@ -150,15 +156,21 @@ def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=
     '''
 
     all_templates = []
+
     for b in range(len(imszs)):
         if psf_fwhms is None:
             psf_fwhm = None
         else:
             psf_fwhm = psf_fwhms[b]
-        all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates, psf_fwhm=psf_fwhm))
+
+        x_max_pivot = None
+        if x_max_pivot_list is not None:
+            x_max_pivot = x_max_pivot_list[b]
+
+        all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot))
     return all_templates
 
-def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, shift=False):
+def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, shift=False, x_max_pivot=None):
         
     '''
     
@@ -183,6 +195,9 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
         Observation PSF full width at half maximum (FWHM). This can be used to pre-convolve templates for background modeling 
         Default is 'None'.
 
+    x_max_pivot : float, optional
+        Indicating pixel coordinate for boundary of FOV in each dimension. Default is 'None'.
+
     Returns
     -------
     
@@ -203,20 +218,26 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
     ytemps_cos = np.zeros((n_terms, N, M))
     xtemps_sin = np.zeros((n_terms, N, M))
     ytemps_sin = np.zeros((n_terms, N, M))
-    
-    
+
+    N_denom = N
+    M_denom = M
+
+    if x_max_pivot is not None:
+        N_denom = x_max_pivot
+        M_denom = x_max_pivot
+
     for n in range(n_terms):
 
         # modified series
         if shift:
-            xtemps_sin[n] = np.sin((n+1-0.5)*np.pi*meshx/N)
-            ytemps_sin[n] = np.sin((n+1-0.5)*np.pi*meshy/M)
+            xtemps_sin[n] = np.sin((n+1-0.5)*np.pi*meshx/N_denom)
+            ytemps_sin[n] = np.sin((n+1-0.5)*np.pi*meshy/M_denom)
         else:
-            xtemps_sin[n] = np.sin((n+1)*np.pi*meshx/N)
-            ytemps_sin[n] = np.sin((n+1)*np.pi*meshy/M)
+            xtemps_sin[n] = np.sin((n+1)*np.pi*meshx/N_denom)
+            ytemps_sin[n] = np.sin((n+1)*np.pi*meshy/M_denom)
         
-        xtemps_cos[n] = np.cos((n+1)*np.pi*meshx/N)
-        ytemps_cos[n] = np.cos((n+1)*np.pi*meshy/M)
+        xtemps_cos[n] = np.cos((n+1)*np.pi*meshx/N_denom)
+        ytemps_cos[n] = np.cos((n+1)*np.pi*meshy/M_denom)
     
     for i in range(n_terms):
         for j in range(n_terms):
@@ -249,7 +270,7 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
     return templates
 
 
-def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M=None, psf_fwhm=None):
+def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M=None, psf_fwhm=None, x_max_pivot=None):
 
     '''
     Given a set of coefficients and Fourier templates, computes their dot product.
@@ -279,6 +300,15 @@ def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M
         Observation PSF full width at half maximum (FWHM). This can be used to pre-convolve templates for background modeling 
         Default is 'None'.
 
+    x_max_pivot : float, optional
+        Because of different image resolution across bands and the use of multiple region proposals, the non pivot band images may cover a larger 
+        field of view than the pivot band image. When modeling structured emission across several bands, it is important that the Fourier components
+        model a consistent field of view. Extra pixels in the non-pivot bands do not contribute to the log-likelihood, so I think the solution is to 
+        compute the Fourier templates where the period is based on the WCS transformations across bands, which can translate coordinates bounding
+        the pivot image to coordinates in the non-pivot band images.
+
+        Default is 'None'. 
+
     Returns
     -------
 
@@ -287,7 +317,7 @@ def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M
 
     '''
     if fourier_templates is None:
-        fourier_templates = make_fourier_templates(N, M, n_terms, psf_fwhm=psf_fwhm)
+        fourier_templates = make_fourier_templates(N, M, n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
 
     sum_temp = np.sum([fourier_coeffs[i,j,k]*fourier_templates[i,j,k] for i in range(n_terms) for j in range(n_terms) for k in range(fourier_coeffs.shape[-1])], axis=0)
     

@@ -128,30 +128,55 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 
 	#by loading in the image this way, we can compose maps from several components, e.g. noiseless CIB + noise realization
 	
+
 	if gdat.im_fpath is None:
 		spire_dat = fits.open(file_path)
-
-		for e, extname in enumerate(image_extnames):
-			if e==0:
-				image = np.nan_to_num(spire_dat[extname].data)
-			else:
-				image += np.nan_to_num(spire_dat[extname].data)
-			if gdat.show_input_maps:
-				plt.figure()
-				plt.title(extname)
-				plt.imshow(image, origin='lower')
-				plt.colorbar()
-				plt.show()
 	else:
 		spire_dat = fits.open(gdat.im_fpath)
-		# hduim = spire_dat[0]
-		# image = np.nan_to_num(hduim.data/hduim.header['JANSCALE'])
 
-		for e, extname in enumerate(image_extnames):
-			if e==0:
-				image = np.nan_to_num(spire_dat[extname].data)
-			else:
-				image += np.nan_to_num(spire_dat[extname].data)
+	for e, extname in enumerate(image_extnames):
+		if e==0:
+			image = np.nan_to_num(spire_dat[extname].data)
+		else:
+			image += np.nan_to_num(spire_dat[extname].data)
+
+	if gdat.show_input_maps:
+		plt.figure()
+		plt.title(extname)
+		plt.imshow(image, origin='lower')
+		plt.colorbar()
+		plt.show()
+
+	# if gdat.im_fpath is None:
+	# 	spire_dat = fits.open(file_path)
+
+	# 	for e, extname in enumerate(image_extnames):
+	# 		if e==0:
+	# 			image = np.nan_to_num(spire_dat[extname].data)
+	# 		else:
+	# 			image += np.nan_to_num(spire_dat[extname].data)
+	# 		if gdat.show_input_maps:
+	# 			plt.figure()
+	# 			plt.title(extname)
+	# 			plt.imshow(image, origin='lower')
+	# 			plt.colorbar()
+	# 			plt.show()
+	# else:
+	# 	spire_dat = fits.open(gdat.im_fpath)
+	# 	# hduim = spire_dat[0]
+	# 	# image = np.nan_to_num(hduim.data/hduim.header['JANSCALE'])
+
+	# 	for e, extname in enumerate(image_extnames):
+	# 		if e==0:
+	# 			image = np.nan_to_num(spire_dat[extname].data)
+	# 		else:
+	# 			image += np.nan_to_num(spire_dat[extname].data)
+
+	x0 = None
+	y0 = None
+	if gdat.use_zero_point:
+		x0 = spire_dat[image_extnames[0]].header['x0']
+		y0 = spire_dat[image_extnames[0]].header['y0']
 
 	if gdat.err_fpath is None:
 		error = np.nan_to_num(spire_dat['ERROR'].data)
@@ -172,6 +197,12 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 		else:
 			mask = spire_dat['MASK'].data
 	else:
+		print('Not using mask..')
+		plt.figure()
+		plt.title('image')
+		plt.imshow(image)
+		plt.colorbar()
+		plt.show()
 		mask = np.ones_like(image)
 
 	# this is for gen_2_sims, which don't have same FITS structure as new sims
@@ -221,7 +252,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 
 		plt.show()
 
-	return image, error, mask, file_path
+	return image, error, mask, file_path, x0, y0
 
 
 def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'):
@@ -289,6 +320,10 @@ class pcat_data():
 		'''
 
 		gdat.imszs, gdat.regsizes, gdat.margins, gdat.bounds = [[] for x in range(4)]
+		gdat.x_max_pivot_list, gdat.y_max_pivot_list = [], []
+
+		if gdat.use_zero_point:
+			gdat.x0_list, gdat.y0_list = [], []
 
 		for i, band in enumerate(gdat.bands):
 
@@ -304,17 +339,21 @@ class pcat_data():
 				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize'] # gives it in arcseconds and neet to convert to pixels
 				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'], round_up_or_down=gdat.round_up_or_down)
 				gdat.dataname = obj['name']
+
 				if i > 0:
-					self.fast_astrom.fit_astrom_arrays(0, i)
+					self.fast_astrom.fit_astrom_arrays(0, i, pos0=None)
 
 				bounds = get_rect_mask_bounds(mask)
 
-
+				gdat.x0_list.append(x0)
+				gdat.y0_list.append(y0)
 
 			elif gdat.mock_name is None:
 
-				image, error, mask, file_name = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps, image_extnames=gdat.image_extnames)
+				image, error, mask, file_name, x0, y0 = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps, image_extnames=gdat.image_extnames)
 
+				gdat.x0_list.append(x0)
+				gdat.y0_list.append(y0)
 				# bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
 				bounds = get_rect_mask_bounds(mask)
 
@@ -414,7 +453,7 @@ class pcat_data():
 
 
 						else:
-							print('no band in self.tempalte_bands')
+							print('no band in self.template_bands')
 							template = None
 
 						template_list.append(template)
@@ -423,13 +462,19 @@ class pcat_data():
 				if i > 0:
 					if gdat.verbtype > 1:
 						print('we have more than one band:', gdat.bands[0], band)
+					print('HEEEEEEY i = ', i)
 					self.fast_astrom.fit_astrom_arrays(0, i, bounds0=gdat.bounds[0], bounds1=gdat.bounds[i])
 
+					print('EHEEEEEY gdat.imsz0 is ', gdat.imsz0)
 					x_max_pivot, y_max_pivot = self.fast_astrom.obs_to_obs(0, i, gdat.imsz0[0], gdat.imsz0[1])
 
 					print('xmaxpivot, ymaxpivot for band ', i, ' are ', x_max_pivot, y_max_pivot)
+					gdat.x_max_pivot_list.append(x_max_pivot)
+					gdat.y_max_pivot_list.append(y_max_pivot)
 
-
+				else:
+					gdat.x_max_pivot_list.append(big_dim)
+					gdat.y_max_pivot_list.append(big_dim)
 
 				if gdat.noise_thresholds is not None:
 					error[error > gdat.noise_thresholds[i]] = 0 # this equates to downweighting the pixels
@@ -660,7 +705,8 @@ class pcat_data():
 
 			gdat.frac = np.count_nonzero(weight)/float(gdat.width*gdat.height)
 			# psf, cf, nc, nbin = get_gaussian_psf_template(pixel_fwhm=gdat.psf_pixel_fwhm, normalization=gdat.normalization)
-			psf, cf, nc, nbin = get_gaussian_psf_template_3_5_20(pixel_fwhm=gdat.psf_pixel_fwhm)
+			# psf, cf, nc, nbin = get_gaussian_psf_template_3_5_20(pixel_fwhm=gdat.psf_pixel_fwhm)
+			psf, cf, nc, nbin = get_gaussian_psf_template_3_5_20(pixel_fwhm=gdat.psf_fwhms[i]) # variable psf pixel fwhm
 
 			if gdat.verbtype > 1:
 				print('image maximum is ', np.max(self.data_array[0]))
@@ -683,7 +729,9 @@ class pcat_data():
 		pixel_variance = np.median(self.errors[0]**2)
 		print('pixel_variance:', pixel_variance)
 		print('self.dat.fracs is ', self.fracs)
-		gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2 # 2 instead of 4 for spire beam size
+		# gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2 # 2 instead of 4 for spire beam size
+		gdat.N_eff = 4*np.pi*(gdat.psf_fwhms[0]/2.355)**2 # variable psf pixel fwhm, use pivot band fwhm
+
 		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/10
 
 

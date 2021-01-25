@@ -288,10 +288,13 @@ class Model:
 	def __init__(self, gdat, dat, libmmult=None, samp_idx=None):
 
 		self.dat = dat
+		
 		self.err_f = gdat.err_f
 		self.gdat = gdat
 
-		self.pixel_per_beam = 2*np.pi*(self.gdat.psf_pixel_fwhm/2.355)**2
+		self.pixel_per_beam = [2*np.pi*(psf_pixel_fwhm/2.355)**2 for psf_pixel_fwhm in self.gdat.psf_fwhms] # variable pixel fwhm
+		# self.pixel_per_beam = 2*np.pi*(self.gdat.psf_pixel_fwhm/2.355)**2
+
 		self.linear_flux = gdat.linear_flux
 
 		self.imsz0 = gdat.imsz0 # this is just for first band, where proposals are first made
@@ -338,6 +341,7 @@ class Model:
 
 				# ----- NOTE -------- this only works for single band images right now.
 
+				print('moore penrose inverse is happening!!!!!')
 				self.dat.data_array[0] -= np.nanmean(self.dat.data_array[0]) # this is done to isolate the fluctuation component
 				self.bkg[0] = 0.
 
@@ -611,20 +615,29 @@ class Model:
 				dt_transf += time.time()-t4
 
 
-
-				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
+				dmodel, diff2 = image_model_eval(xp, yp, beam_fac[b]*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
+
+				# dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
+				# 								nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
+				# 								ref=ref[b], lib=lib, regsize=self.regsizes[b], \
+				# 								margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 				diff2s += diff2
 			else:    
 				xp=x
 				yp=y
 
-				dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
+				dmodel, diff2 = image_model_eval(xp, yp, beam_fac[b]*nc[b]*f[b], bkg[b], self.imszs[b], \
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
+			
+				# dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
+				# 								nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
+				# 								ref=ref[b], lib=lib, regsize=self.regsizes[b], \
+				# 								margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 			
 				
 				diff2s = diff2
@@ -1745,6 +1758,8 @@ class lion():
 			# these set x/y coordinate of lower left corner if cropping image
 			x0 = 0, \
 			y0 = 0, \
+
+			use_zero_point = False, \
 			bolocam_mask = False, \
 			use_mask = True, \
 			mask_file = None, \
@@ -1754,9 +1769,12 @@ class lion():
 			band1 = None, \
 			band2 = None, \
 
-			# Full width half maximum for the PSF of the instrument/observation. Currently assumed to be Gaussian, but other 
+			# Full width at half maximum for the PSF of the instrument/observation. Currently assumed to be Gaussian, but other 
 			# PCAT implementations have used a PSF template, so perhaps a more detailed PSF model could be added as another FITS header
 			psf_pixel_fwhm = 3.0, \
+
+			psf_fwhms = None, \
+
 			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
 			noise_thresholds=None, \
 
@@ -1870,7 +1888,7 @@ class lion():
 			# specifies the proposal distribution width for the largest spatial mode of the Fourier component model, or for all of them if fc_prop_alpha=None
 			fc_amp_sig = None, \
 
-			bkg_moore_penrose_inv = True, \
+			bkg_moore_penrose_inv = False, \
 
 			MP_order = 4, \
 
@@ -2040,6 +2058,9 @@ class lion():
 
 		# fourier comp colors
 		fourier_band_idxs = [0, 1, 2]
+
+		if self.gdat.psf_fwhms is None:
+			self.gdat.psf_fwhms = [self.gdat.psf_pixel_fwhm for i in range(self.gdat.nbands)]
 		
 		self.gdat.template_order = []
 		
@@ -2078,7 +2099,10 @@ class lion():
 			else:
 				self.gdat.init_fourier_coeffs = np.zeros((self.gdat.n_fourier_terms, self.gdat.n_fourier_terms, 4))
 
-			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=[self.gdat.psf_pixel_fwhm for i in range(self.gdat.nbands)])
+			print('ATTENTION x_max_pivot_list IS', self.gdat.x_max_pivot_list)
+			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=self.gdat.psf_fwhms, x_max_pivot_list=self.gdat.x_max_pivot_list)
+
+			# self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=self.gdat.psf_fwhms)
 
 			# fourier comp colors
 			self.gdat.fourier_band_idxs = [None for b in range(self.gdat.nbands)]
