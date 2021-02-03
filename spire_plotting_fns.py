@@ -1400,8 +1400,7 @@ def plot_src_number_trace(nsrc_fov, show=False, title=False):
 	return f
 
 
-
-def plot_grap(verbtype=0):
+def plot_grap():
 
 	'''
 	Makes plot of probabilistic graphical model for SPIRE
@@ -1927,7 +1926,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 		if flux_dist_plots:
 			for i, j in enumerate(np.arange(burn_in, gdat.nsamp)):
 		
-				fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0. and xsrcs[j][k] < dat.weights[0].shape[0]-10. and ysrcs[j][k] < dat.weights[0].shape[1]-10.])
+				# fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0. and xsrcs[j][k] < dat.weights[0].shape[0]-10. and ysrcs[j][k] < dat.weights[0].shape[1]-10.])
+				fsrcs_in_fov = np.array([fsrcs[b][j][k] for k in range(nsrcs[j]) if dat.weights[0][int(ysrcs[j][k]),int(xsrcs[j][k])] != 0. and xsrcs[j][k] < dat.weights[0].shape[0] and ysrcs[j][k] < dat.weights[0].shape[1]])
 
 				fov_sources[b].extend(fsrcs_in_fov)
 

@@ -112,23 +112,17 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	else:
 		file_path = gdat.file_path
 
-	print("gdat show input maps is ", gdat.show_input_maps)
-
 	file_path = file_path.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
 
-
-	if gdat.verbtype > 1:
-		print('band is ', gdat.band_dict[band])
-		print('file_path:', file_path)
+	verbprint(gdat.verbtype, 'Band is '+str(gdat.band_dict[band]), verbthresh=1)
+	verbprint(gdat.verbtype, 'file path is '+str(file_path), verbthresh=1)
 
 	if astrom is not None:
 		print('ATTENTION loading from ', gdat.band_dict[band])
 		astrom.load_wcs_header_and_dim(file_path, round_up_or_down=gdat.round_up_or_down)
 
-
 	#by loading in the image this way, we can compose maps from several components, e.g. noiseless CIB + noise realization
 	
-
 	if gdat.im_fpath is None:
 		spire_dat = fits.open(file_path)
 	else:
@@ -255,7 +249,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	return image, error, mask, file_path, x0, y0
 
 
-def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'):
+def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/', encoding=None):
 	
 	''' 
 	Loads dictionary of configuration parameters from prior run of PCAT.
@@ -285,7 +279,17 @@ def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_
 	filepath = result_path + timestr
 	# Python version thing here
 	filen = open(filepath+'/params.txt','rb')
-	pdict = pickle.load(filen)
+	if encoding is not None:
+		pdict = pickle.load(filen, encoding=encoding)
+		# try:
+		# 	pdict = pickle.load(filen, encoding='bytes')
+		# except:
+		# 	try:
+		# 		pdict = pickle.load(filen, encoding='latin1')
+		# 	except:
+		# 		print('failed')
+	else:
+		pdict = pickle.load(filen)
 	opt = objectview(pdict)
 
 	return opt, filepath, result_path
@@ -351,16 +355,13 @@ class pcat_data():
 			elif gdat.mock_name is None:
 
 				image, error, mask, file_name, x0, y0 = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps, image_extnames=gdat.image_extnames)
-
-				gdat.x0_list.append(x0)
-				gdat.y0_list.append(y0)
+				if gdat.use_zero_point:
+					gdat.x0_list.append(x0)
+					gdat.y0_list.append(y0)
 				# bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
 				bounds = get_rect_mask_bounds(mask)
 
-				print('bounds are ', bounds)
-
-				if gdat.verbtype > 1:
-					print('bounds for band ', i, 'are ', bounds)
+				print('Bounds are ', bounds)
 
 				if bounds is not None:
 
@@ -368,7 +369,6 @@ class pcat_data():
 											 find_nearest_mod(bounds[1,1]-bounds[1,0]+1, gdat.nregion, mode=gdat.round_up_or_down))
 
 					self.fast_astrom.dims[i] = (big_dim, big_dim)
-
 
 				gdat.bounds.append(bounds)
 
@@ -388,8 +388,7 @@ class pcat_data():
 						print('template name is ', template_name)
 						if gdat.band_dict[band] in self.template_bands[template_name]:
 
-							if gdat.verbtype > 1:
-								print('were in business, ', gdat.band_dict[band], self.template_bands[template_name], gdat.lam_dict[gdat.band_dict[band]])
+							verbprint(gdat.verbtype, 'Were in business, '+str(gdat.band_dict[band])+', '+str(self.template_bands[template_name])+', '+str(gdat.lam_dict[gdat.band_dict[band]]), verbthresh=1)
 
 							# if template_name=='sze':
 							# 	template = fits.open(gdat.base_path+'/data/spire/rxj1347_sz_templates/rxj1347_P'+str(gdat.band_dict[band])+'W_nr_sze.fits')[0].data
@@ -460,13 +459,13 @@ class pcat_data():
 
 
 				if i > 0:
-					if gdat.verbtype > 1:
-						print('we have more than one band:', gdat.bands[0], band)
-					print('HEEEEEEY i = ', i)
-					self.fast_astrom.fit_astrom_arrays(0, i, bounds0=gdat.bounds[0], bounds1=gdat.bounds[i])
+					verbprint(gdat.verbtype, 'We have more than one band! Handling band '+str(band))
+
+					self.fast_astrom.fit_astrom_arrays(0, i, bounds0=gdat.bounds[0], bounds1=gdat.bounds[i], correct_misaligned_shift=gdat.correct_misaligned_shift)
 
 					print('EHEEEEEY gdat.imsz0 is ', gdat.imsz0)
-					x_max_pivot, y_max_pivot = self.fast_astrom.obs_to_obs(0, i, gdat.imsz0[0], gdat.imsz0[1])
+					x_max_pivot, y_max_pivot = self.fast_astrom.transform_q(np.array([gdat.imsz0[0]]), np.array([gdat.imsz0[1]]), i-1)
+					# x_max_pivot, y_max_pivot = self.fast_astrom.obs_to_obs(0, i, gdat.imsz0[0], gdat.imsz0[1])
 
 					print('xmaxpivot, ymaxpivot for band ', i, ' are ', x_max_pivot, y_max_pivot)
 					gdat.x_max_pivot_list.append(x_max_pivot)
@@ -519,13 +518,14 @@ class pcat_data():
 						resized_error[:,int(x_max_pivot):] = 0.
 
 				resized_template_list = []
+
 				for t, template in enumerate(template_list):
+
 					if template is not None:
 
 						resized_template = np.zeros(shape=(gdat.width, gdat.height))
 
 						template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
-
 
 						resized_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 
@@ -708,10 +708,7 @@ class pcat_data():
 			# psf, cf, nc, nbin = get_gaussian_psf_template_3_5_20(pixel_fwhm=gdat.psf_pixel_fwhm)
 			psf, cf, nc, nbin = get_gaussian_psf_template_3_5_20(pixel_fwhm=gdat.psf_fwhms[i]) # variable psf pixel fwhm
 
-			if gdat.verbtype > 1:
-				print('image maximum is ', np.max(self.data_array[0]))
-				print('gdat.frac is ', gdat.frac)
-				print('sum of PSF is ', np.sum(psf))
+			verbprint(gdat.verbtype, 'Image maximum is '+str(np.max(self.data_array[0]))+', gdat.frac = '+str(gdat.frac)+', sum of PSF is '+str(np.sum(psf)), verbthresh=1)
 
 			self.psfs.append(psf)
 			self.cfs.append(cf)

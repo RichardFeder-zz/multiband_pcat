@@ -22,7 +22,7 @@ import os
 def mag_from_fluxes(fluxes):
     return -2.5*np.log10(fluxes)
 
-def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
+def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None, frac_flux_thresh = None):
     allmatches = a.query_ball_tree(b, dr)
     goodmatch = np.zeros(mags_a.size, np.bool)
     if confs_b is not None:
@@ -37,12 +37,22 @@ def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None):
             goodmatch[i] = False
             for j in matches:
                 mag_b = mags_b[j]
-                if np.abs(mag_a - mag_b) < dmag:
-                    goodmatch[i] = True
-                    if (confs_b is not None) and (confs_b[j] > confmatch[i]):
-                        confmatch[i] = confs_b[j]
-                    if (sigfs_b is not None) and (sigfs_b[j] < sigfmatch[i]):
-                        sigfmatch[i] = sigfs_b[j]
+
+                if frac_flux_thresh is not None:
+                    if np.abs(mags_a - mag_b)/mag_b < frac_flux_thresh:
+                        goodmatch[i] = True
+                        if (confs_b is not None) and (confs_b[j] > confmatch[i]):
+                            confmatch[i] = confs_b[j]
+                        if (sigfs_b is not None) and (sigfs_b[j] < sigfmatch[i]):
+                            sigfmatch[i] = sigfs_b[j]
+
+                else:
+                    if np.abs(mag_a - mag_b) < dmag:
+                        goodmatch[i] = True
+                        if (confs_b is not None) and (confs_b[j] > confmatch[i]):
+                            confmatch[i] = confs_b[j]
+                        if (sigfs_b is not None) and (sigfs_b[j] < sigfmatch[i]):
+                            sigfmatch[i] = sigfs_b[j]
 
     if confs_b is not None:
         if sigfs_b is not None:
@@ -148,6 +158,8 @@ def clusterize_spire(seed_cat, cat_x, cat_y, cat_n, cat_fs, max_num_sources, nsa
     mean_x = np.zeros(cat_len)
     mean_y = np.zeros(cat_len)
     mean_fs = np.zeros(shape=(nbands, cat_len))
+    fluxes_hipct = np.zeros(shape=(nbands, cat_len))
+    fluxes_lopct = np.zeros(shape=(nbands, cat_len))
 
     err_x = np.zeros(cat_len)
     err_y = np.zeros(cat_len)
@@ -175,18 +187,22 @@ def clusterize_spire(seed_cat, cat_x, cat_y, cat_n, cat_fs, max_num_sources, nsa
         mean_y[i] = np.nanmean(y)
 
         for b in xrange(nbands):
-            mean_fs[b,i] = np.mean(fs[b])
+            mean_fs[b,i] = np.nanmean(fs[b])
 
         if x.size > 1:
-            err_x[i] = np.percentile(x, hi) - np.percentile(x, lo)
-            err_y[i] = np.percentile(y, hi) - np.percentile(y, lo)
+            err_x[i] = 0.5*(np.percentile(x, hi) - np.percentile(x, lo))
+            err_y[i] = 0.5*(np.percentile(y, hi) - np.percentile(y, lo))
 
             for b in xrange(nbands):
-                err_fluxes[b, i] = np.percentile(fs[b], hi) - np.percentile(fs[b],lo)
+                err_fluxes[b, i] = 0.5*(np.percentile(fs[b], hi) - np.percentile(fs[b],lo))
+                fluxes_hipct[b, i] = np.percentile(fs[b], hi)
+                fluxes_lopct[b, i] = np.percentile(fs[b], lo)
+
 
     #makes classical catalog
 
-    classical_catalog = np.zeros((cat_len, 5+2*nbands))
+    classical_catalog = np.zeros((cat_len, 5+4*nbands))
+
     classical_catalog[:,0] = mean_x
     classical_catalog[:,1] = err_x
     classical_catalog[:,2] = mean_y
@@ -194,13 +210,16 @@ def clusterize_spire(seed_cat, cat_x, cat_y, cat_n, cat_fs, max_num_sources, nsa
     classical_catalog[:,4] = confidence
 
     for b in xrange(nbands):
-        classical_catalog[:,5+2*b] = mean_fs[b]
-        classical_catalog[:,6+2*b] = err_fluxes[b]
+        classical_catalog[:,5+4*b] = mean_fs[b]
+        classical_catalog[:,6+4*b] = err_fluxes[b]
+        classical_catalog[:,7+4*b] = fluxes_hipct[b]
+        classical_catalog[:,8+4*b] = fluxes_lopct[b]
+        
 
     return classical_catalog
 
         
-def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd, dr=0.5, dmag=0.5):
+def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd, dr=0.5, dmag=0.5, frac_flux_thresh=None):
     complete = np.zeros((test_x.shape[0], ref_x.size))
     for i in xrange(test_x.shape[0]):
         print('B', i)
@@ -210,7 +229,7 @@ def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd, d
         CCc_one[:, 1] = test_y[i,0:n]
         CCmag_one = test_mag[i,0:n]
 
-        complete[i,:] = associate(ref_kd, ref_mag, scipy.spatial.KDTree(CCc_one), CCmag_one, dr, dmag)
+        complete[i,:] = associate(ref_kd, ref_mag, scipy.spatial.KDTree(CCc_one), CCmag_one, dr, dmag, frac_flux_thresh=None)
     complete = np.sum(complete, axis=0) / float(test_x.shape[0])
     return complete
 
@@ -340,6 +359,148 @@ def generate_seed_catalog(kd, cat_all, cat_f0_all, PCi, matching_dist, verbose=F
 
 
 
+def completeness_basic_pcat(truth_catalog, pcat_xs, pcat_ys, pcat_fluxes, fluxbins, residual_samples=None, \
+                           frac_flux_thresh=0.5, pos_thresh=1.0, imdim=None, mask_hwhm=0.):
+    
+    if residual_samples is None:
+        residual_samples = pcat_xs.shape[0]
+        
+    if imdim is not None:
+        
+        print('Before edge cut, truth catalog has length ', len(truth_catalog))
+
+        edge_mask = np.where((truth_catalog[:,0] > mask_hwhm)*(truth_catalog[:,0] < imdim[0]-mask_hwhm)*(truth_catalog[:,1] > mask_hwhm)*(truth_catalog[:,1] < imdim[1]-mask_hwhm))[0]
+        truth_catalog = truth_catalog[edge_mask,:]
+        
+        print('Truth catalog now has length ', len(truth_catalog))
+        
+    flux_bin_idxs = [np.where((truth_catalog[:,2] > fluxbins[i])&(truth_catalog[:,2] < fluxbins[i+1]))[0] for i in range(len(fluxbins)-1)]
+
+    completeness_ensemble = np.zeros((residual_samples, truth_catalog.shape[0]))
+    recovered_flux_ensemble = np.zeros((residual_samples, truth_catalog.shape[0]))
+    fluxerror_ensemble = np.zeros((residual_samples, truth_catalog.shape[0]))
+    
+    for i in range(residual_samples):
+        
+        for j in range(truth_catalog.shape[0]):
+            
+            idx_pos = np.where(np.sqrt((pcat_xs[-i] - truth_catalog[j,0])**2 + (pcat_ys[-i] - truth_catalog[j,1])**2 ) < pos_thresh)[0]
+            fluxes_poscutpass = pcat_fluxes[-i][idx_pos]
+            
+            
+            mask_flux = np.where(np.abs(fluxes_poscutpass - truth_catalog[j,2])/truth_catalog[j,2] < frac_flux_thresh)[0]
+            
+            if len(mask_flux) >= 1:
+                completeness_ensemble[i,j] = 1.
+                flux_candidates = fluxes_poscutpass[mask_flux]
+                
+                dists = np.sqrt((pcat_xs[-i][mask_flux] - truth_catalog[j,0])**2 + (pcat_ys[-i][mask_flux] - truth_catalog[j,1])**2)
+                mindist_idx = np.argmin(dists)
+                
+                mindist_flux = flux_candidates[mindist_idx]
+                
+                
+                
+                recovered_flux_ensemble[i,j] = mindist_flux
+                
+                fluxerror_ensemble[i,j] = mindist_flux - truth_catalog[j,2]
+                
+    
+    avg_completeness = np.mean(completeness_ensemble, axis=0)
+
+    completeness_vs_flux = [np.mean(avg_completeness[fbin_idxs]) for fbin_idxs in flux_bin_idxs]
+                
+    return completeness_ensemble, completeness_vs_flux
+
+def false_discovery_rate_basic_pcat(truth_catalog, pcat_xs, pcat_ys, pcat_fluxes, fluxbins, residual_samples=None, \
+                           frac_flux_thresh=0.5, pos_thresh=1.0, imdim=None, mask_hwhm=0.):
+    
+    if residual_samples is None:
+        residual_samples = pcat_xs.shape[0]
+        
+    if imdim is not None:
+        edge_mask = np.where((truth_catalog[:,0] > mask_hwhm)*(truth_catalog[:,0] < imdim[0]-mask_hwhm)*(truth_catalog[:,1] > mask_hwhm)*(truth_catalog[:,1] < imdim[1]-mask_hwhm))[0]
+        truth_catalog = truth_catalog[edge_mask,:]
+        
+    fdr_ensemble = np.zeros((residual_samples, len(fluxbins)-1))
+    
+    fdr_vs_flux = [[] for x in range(len(fluxbins)-1)]
+    
+    number_in_fbin_list = np.zeros((len(fluxbins)-1,))
+    number_in_fbin_goodmatch_list = np.zeros((len(fluxbins)-1,))
+    
+    for i in range(residual_samples):
+        
+        cat_realization_xs = pcat_xs[-i].copy()
+        cat_realization_ys = pcat_ys[-i].copy()
+        cat_realization_fs = pcat_fluxes[-i].copy()
+        
+        if imdim is not None:
+            edge_mask = np.where((cat_realization_xs > mask_hwhm)*(cat_realization_xs < imdim[0]-mask_hwhm)*(cat_realization_ys > mask_hwhm)*(cat_realization_ys < imdim[1]-mask_hwhm))[0]
+            
+            cat_realization_xs = cat_realization_xs[edge_mask]
+            cat_realization_ys = cat_realization_ys[edge_mask]
+            cat_realization_fs = cat_realization_fs[edge_mask]
+            
+
+        # for each sample, bin pcat fluxes, then iterate over fluxes and see how many have a good match
+        
+        for k in range(len(fluxbins)-1):
+            inbin = np.where((cat_realization_fs >= fluxbins[k])*(cat_realization_fs < fluxbins[k+1]))[0]
+            
+            inbin_xs = cat_realization_xs[inbin]
+            inbin_ys = cat_realization_ys[inbin]
+            inbin_fluxes = cat_realization_fs[inbin]
+            
+            
+            for j in range(len(inbin_xs)):
+                
+                idx_pos = np.where(np.sqrt((truth_catalog[:,0] - inbin_xs[j])**2 + (truth_catalog[:,1] - inbin_ys[j])**2) < pos_thresh)[0]
+
+                fluxes_poscutpass = truth_catalog[idx_pos,2]
+            
+                mask_flux = np.where(np.abs(fluxes_poscutpass - inbin_fluxes[j])/inbin_fluxes[j] < frac_flux_thresh)[0]
+
+                number_in_fbin_list[k] += 1
+                
+                if len(mask_flux) >= 1:
+                    
+                    number_in_fbin_goodmatch_list[k] += 1
+                    
+                    
+    fdr = np.ones_like(number_in_fbin_list) - (np.array(number_in_fbin_goodmatch_list)/np.array(number_in_fbin_list))
+    print('average false discovery rate is ', fdr)
+    
+    return fdr
+                    
+                      
+def compute_kd_tree_refcat(cat,  minflux, imdim=None, mask_hwhm=0., \
+    xkey='x', ykey='y', fluxkey='f0'):
+    
+    
+    coords = np.zeros((cat[xkey].shape[0], 2))
+    fs = cat[fluxkey]
+
+    mask = (cat[xkey] > 0)
+    
+    if imdim is not None:
+        mask *= (cat[ykey] > mask_hwhm)*(cat[ykey] < imdim - mask_hwhm)*(cat[ykey] > mask_hwhm)*(cat[ykey] < imdim - mask_hwhm)
+        
+    mask *= (cat[fluxkey] > minflux)
+    
+    coords= np.zeros((np.sum(mask), 2))
+
+    coords[:, 0] = cat[xkey][mask].flatten()
+    coords[:, 1] = cat[ykey][mask].flatten()
+        
+    lion_f0_all = fs[mask].flatten()
+
+    kd_tree = scipy.spatial.KDTree(coords)
+
+    return kd_tree, coords, fs          
+
+
+
 class cross_match_roc():
 
     def __init__(self, prev_cut = 0.1, minf=0.005, maxf=0.1, nsamp=100, imdim=100, dr=0.5, dmag=None, nbins=18, \
@@ -393,21 +554,22 @@ class cross_match_roc():
             print('mock cat has shape', self.mock_cat['x'].shape)
             
                 
-    def load_cat(self, path=None, mode='mock_truth', restrict_cat=False):
+    def load_cat(self, path=None, mode='mock_truth', restrict_cat=False, xkey='x', ykey='y', fluxkey='f'):
 
         if self.filetype=='.txt':
             cat = np.loadtxt(path)
             if mode=='mock_truth':
-                self.mock_cat = dict({'x':cat[:,0], 'y':cat[:,1], 'f':cat[:,2]})
+                self.mock_cat = dict({xkey:cat[:,0], ykey:cat[:,1], fluxkey:cat[:,2]})
  
             elif mode=='condensed_cat':
-                self.cond_cat = dict({'x':cat[:,0], 'y':cat[:,2], 'f':cat[:, 4]})
+                self.cond_cat = dict({xkey:cat[:,0], ykey:cat[:,2], fluxkey:cat[:, 4]})
         
         elif self.filetype=='.npy':
             print('.npy file')
             cat = np.load(path, allow_pickle=True).item()
             if mode=='mock_truth':
-                self.mock_cat = dict({'x':np.array(cat['x']), 'y':np.array(cat['y']), 'f':np.array(cat['f'])})
+                print('we are here')
+                self.mock_cat = dict({xkey:np.array(cat[xkey]), ykey:np.array(cat[ykey]), fluxkey:np.array(cat[fluxkey])})
             
             
     def load_chain(self, path):
@@ -418,6 +580,7 @@ class cross_match_roc():
         self.nbands = lion['f'].shape[0]
         print('self.nbands:', self.nbands)
         
+
 
     def compute_kd_tree(self, chain_path=None, mode='lion', mask_hwhm=0., apply_noise_mask=False):
         
@@ -468,7 +631,7 @@ class cross_match_roc():
         return kd_tree, coords, fs
 
 
-        lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r, lion_all, PCi, lion_f, nb, lion_comments, lion_fs, nmgy = lion_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/chain.npz')
+        # lion_kd, lion_r_all, lion_x, lion_y, lion_n, lion_r, lion_all, PCi, lion_f, nb, lion_comments, lion_fs, nmgy = lion_cat_kd(base_path+'/pcat-lion-results/'+run_name+'/chain.npz')
 
 
     def save_results(filepath, bins, recl_lion=None, recl_condensed=None, prec_lion=None, prec_condensed=None):
@@ -485,12 +648,19 @@ class cross_match_roc():
         if prec_condensed is not None:
             np.savetxt(filepath+'/fdr_lion_condensed_dr='+str(self.dr)+'_df='+str(self.dmag)+'.txt', 1.-prec_condensed)
 
-    def load_gdat_params(self, timestr):
-        gdat, filepath, result_path = load_param_dict(timestr)
+    def load_gdat_params(self, timestr=None, gdat=None, verbose=True, encoding=None):
+        if gdat is None:
+            if timestr is not None:
+                print('Loading gdat object from timestring '+timestr)
+                gdat, filepath, result_path = load_param_dict(timestr, encoding=encoding)
+            else:
+                print('neither gdat object nor timestring provided, exiting')
+        
         self.gdat=gdat
-        self.result_path = result_path
+
+        self.result_path = self.gdat.result_path
+
         self.imdim = self.gdat.imsz0[0]
-        print('self imdim is now ', self.imdim)
         
     def compute_completeness_fdr(self, ref_path=None, lion_path=None, map_path=None, lion_mode='ensemble', ref_mode='mock_truth',  plot=True, timestr=None):
         

@@ -40,6 +40,14 @@ class gdatstrt(object):
 		super(gdatstrt, self).__setattr__(attr, valu)
 
 
+def verbprint(verbose, text, file=None, verbthresh=None):
+	if verbthresh is not None:
+		if verbose > verbthresh:
+			print(text, file=file)
+	else:
+		if verbose:
+			print(text, file=file)
+
 def save_params(directory, gdat):
 	# save parameters as dictionary, then pickle them to txt file
 	param_dict = vars(gdat).copy()
@@ -60,8 +68,9 @@ def fluxes_to_color(flux1, flux2):
 
 def initialize_c(gdat, libmmult, cblas=False):
 
-	if gdat.verbtype > 1:
-		print('initializing c routines and data structs', file=gdat.flog)
+	verbprint(gdat.verbtype, 'initializing c routines and data structs', file=gdat.flog, verbthresh=1)
+	# if gdat.verbtype > 1:
+	# 	print('initializing c routines and data structs', file=gdat.flog)
 
 	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
 	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
@@ -527,7 +536,8 @@ class Model:
 		namely acceptance fractions for the different proposals and some time performance statistics as well. 
 		'''  
 		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
-		print('Background', np.round(self.bkg, 4), 'N_star', self.n, 'chi^2', list(np.round(chi2, 2)), file=self.gdat.flog)
+		print('Background '+str(np.round(self.bkg, 5)) + ', N_star '+str(self.n)+' chi^2 '+str(list(np.round(chi2, 2))), file=self.gdat.flog)
+		print('Reduced chi^2 ', [np.round(chi2[b]/(self.dat.fracs[b]*self.dat.data_array[b].shape[0]*self.dat.data_array[b].shape[1]), 2) for b in range(self.gdat.nbands)])
 		dts *= 1000
 		accept_fracs = []
 		timestat_array = np.zeros((6, 1+len(self.moveweights)), dtype=np.float32)
@@ -565,8 +575,9 @@ class Model:
 			if dtemplate is not None:
 				dtemp = []
 				for i, temp in enumerate(self.dat.template_array[b]):
-					if self.gdat.verbtype > 1:
-						print('dtemplate in multiband eval is ', dtemplate.shape)
+					verbprint(self.gdat.verbtype, 'dtemplate in multiband eval is '+str(dtemplate.shape), verbthresh=1)
+					# if self.gdat.verbtype > 1:
+					# 	print('dtemplate in multiband eval is ', dtemplate.shape)
 					if temp is not None and dtemplate[i][b] != 0.:
 						dtemp.append(dtemplate[i][b]*temp)
 				if len(dtemp) > 0:
@@ -620,10 +631,6 @@ class Model:
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 
-				# dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
-				# 								nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-				# 								ref=ref[b], lib=lib, regsize=self.regsizes[b], \
-				# 								margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 				diff2s += diff2
 			else:    
 				xp=x
@@ -634,14 +641,8 @@ class Model:
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 			
-				# dmodel, diff2 = image_model_eval(xp, yp, beam_fac*nc[b]*f[b], bkg[b], self.imszs[b], \
-				# 								nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
-				# 								ref=ref[b], lib=lib, regsize=self.regsizes[b], \
-				# 								margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
-			
 				
 				diff2s = diff2
-
 
 			dmodels.append(dmodel)
 
@@ -675,8 +676,10 @@ class Model:
 				self.offsetxs[b+1] = int(self.offsetxs[0]*reg_ratio)
 				self.offsetys[b+1] = int(self.offsetys[0]*reg_ratio)
 				self.margins[b+1] = int(self.margins[0]*reg_ratio)
-				if self.gdat.verbtype > 1:
-					print(self.offsetxs[b+1], self.offsetys[b+1], self.margins[b+1])
+
+				verbprint(self.gdat.verbtype, str(self.offsetxs[b+1])+', '+str(self.offsetys[b+1])+', '+str(self.margins[b+1]), verbthresh=1)
+				# if self.gdat.verbtype > 1:
+				# 	print(self.offsetxs[b+1], self.offsetys[b+1], self.margins[b+1])
 		else:
 
 			self.offsetxs = np.array([0 for b in range(self.gdat.nbands)])
@@ -691,8 +694,9 @@ class Model:
 		for b in range(self.nbands):
 
 			resid = self.dat.data_array[b].copy() # residual for zero image is data
-			if self.gdat.verbtype > 1:
-				print('resid has shape:', resid.shape)
+			verbprint(self.gdat.verbtype, 'resid has shape '+str(resid.shape), verbthresh=1)
+			# if self.gdat.verbtype > 1:
+			# 	print('resid has shape:', resid.shape)
 			resids.append(resid)
 
 		evalx = self.stars[self._X,0:self.n]
@@ -703,12 +707,17 @@ class Model:
 		
 		n_phon = evalx.size
 
-		if self.gdat.verbtype > 1:
-			print('beginning of run sampler')
-			print('self.n here')
-			print(self.n)
-			print('n_phon')
-			print(n_phon)
+		verbprint(self.gdat.verbtype, 'Beginning of run sampler', verbthresh=1)
+		verbprint(self.gdat.verbtype, 'self.n here is '+str(self.n), verbthresh=1)
+		verbprint(self.gdat.verbtype, 'n_phon = '+str(n_phon), verbthresh=1)
+
+		# if self.gdat.verbtype > 1:
+
+		# 	print('beginning of run sampler')
+		# 	print('self.n here')
+		# 	print(self.n)
+		# 	print('n_phon')
+		# 	print(n_phon)
 
 		if self.gdat.cblas:
 			lib = self.libmmult.pcat_model_eval
@@ -758,8 +767,9 @@ class Model:
 			t1 = time.time()
 			rtype = rtype_array[i]
 			
-			if self.verbtype > 1:
-				print('rtype: ', rtype)
+			verbprint(self.verbtype, 'rtype = '+str(rtype), verbthresh=1)
+			# if self.verbtype > 1:
+			# 	print('rtype: ', rtype)
 			if self.nregion > 1:
 				self.parity_x = xparities[i] # should regions be perturbed randomly or systematically?
 				self.parity_y = yparities[i]
@@ -867,9 +877,9 @@ class Model:
 
 					regionx = get_region(refx, self.offsetxs[0], self.regsizes[0])
 					regiony = get_region(refy, self.offsetys[0], self.regsizes[0])
-					if self.verbtype > 1:
-						print('proposal factor has shape:', proposal.factor.shape, regionx.shape, regiony.shape)
-						print('proposal factor:', proposal.factor)
+
+					verbprint(self.verbtype, 'Proposal factor has shape '+str(proposal.factor.shape), verbthresh=1)
+					verbprint(self.verbtype, 'Proposal factor = '+str(proposal.factor), verbthresh=1)
 					
 					if proposal.factor is not None:
 						dlogP[regiony, regionx] += proposal.factor
@@ -988,48 +998,41 @@ class Model:
 						accept[i] = 0
 			
 			else:
-				if self.verbtype > 1:
-					print('out of bounds')
+				verbprint(self.verbtype, 'Out of bounds..', verbthresh=1)
+
 				outbounds[i] = 1
 
 			for b in range(self.nbands):
 				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 
-					
-			if self.verbtype > 1:
-				print('end of Loop', i)
-				print('self.n')
-				print(self.n)
-				print('diff2')
-				print(diff2_list[i])
+			verbprint(self.verbtype, 'End of loop '+str(i), verbthresh=1)		
+			verbprint(self.verbtype, 'self.n = '+str(self.n), verbthresh=1)					
+			verbprint(self.verbtype, 'Diff2 = '+str(diff2_list[i]), verbthresh=1)					
 			
 		# this is after nloop iterations
 		chi2 = np.zeros(self.nbands)
 		for b in range(self.nbands):
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 			
-		if self.verbtype > 1:
-			print('end of sample')
-			print('self.n end')
-			print(self.n)
+		verbprint(self.verbtype, 'End of sample. self.n = '+str(self.n), verbthresh=1)
 
 		if self.gdat.float_templates:
 			self.template_amplitudes += self.dtemplate 
-			print('at the end of nloop, self.dtemplate is', self.dtemplate)
+			print('At the end of nloop, self.dtemplate is', self.dtemplate)
 			print('so self.template_amplitudes are now ', self.template_amplitudes)
 			self.dtemplate = np.zeros_like(self.template_amplitudes)
 
 		if self.gdat.float_fourier_comps: 
 			self.fourier_coeffs += self.dfc 
 			self.fc_rel_amps += self.dfc_rel_amps
-			print('at the end of nloop, self.dfc_rel_amps is ', self.dfc_rel_amps)
+			print('At the end of nloop, self.dfc_rel_amps is ', self.dfc_rel_amps)
 			print('so self.fc_rel_amps is ', self.fc_rel_amps)
 			self.dfc = np.zeros_like(self.fourier_coeffs)
 			self.dfc_rel_amps = np.zeros_like(self.fc_rel_amps)
 
 
 		self.bkg += self.dback
-		print('at the end of nloop, self.dback is', np.round(self.dback, 4), 'so self.bkg is now ', np.round(self.bkg, 4))
+		print('At the end of nloop, self.dback is', np.round(self.dback, 4), 'so self.bkg is now ', np.round(self.bkg, 4))
 		self.dback = np.zeros_like(self.bkg)
 
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
@@ -1039,8 +1042,6 @@ class Model:
 				frame_dir_path = self.gdat.frame_dir+'/sample_'+str(sample_idx)+'_of_'+str(self.gdat.nsamp)+'.png'
 			else:
 				frame_dir_path = None
-
-			# ndeg = self.gdat.pixsize_dict(self.gdat.)
 
 			if self.gdat.nbands == 1:
 				if self.gdat.float_fourier_comps:
@@ -1243,18 +1244,16 @@ class Model:
 
 		dlogf = np.log(pfs[0]/f0[0])
 
-		if self.verbtype > 1:
-			print('average flux difference')
-			print(np.average(np.abs(f0[0]-pfs[0])))
+		verbprint(self.verbtype, 'Average flux difference : '+str(np.average(np.abs(f0[0]-pfs[0]))), verbthresh=1)
 
 		factor = -self.truealpha*dlogf
 
 		if np.isnan(factor).any():
-			print('factor nan from flux')
-			print('number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0])))
-			if self.verbtype > 1:
-				print('factor')
-				print(factor)
+			print('Factor NaN from flux')
+			print('Number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0])))
+
+			verbprint(self.verbtype, 'prior factor = '+str(factor), verbthresh=1)
+
 			factor[np.isnan(factor)]=0
 
 		''' the loop over bands below computes colors and prior factors in color used when sampling the posterior
@@ -1277,17 +1276,14 @@ class Model:
 	
 		assert np.isnan(color_factors).any()==False       
 
-		if self.verbtype > 1:
-			print('avg abs color_factors:', np.average(np.abs(color_factors)))
-			print('avg abs flux factor:', np.average(np.abs(factor)))
+		verbprint(self.verbtype,'Average absolute color factors : '+str(np.average(np.abs(color_factors))), verbthresh=1)
+		verbprint(self.verbtype,'Average absolute flux factors : '+str(np.average(np.abs(factor))), verbthresh=1)
 
 		factor = np.array(factor) + np.sum(color_factors, axis=0)
 		
 		dpos_rms = np.float32(np.sqrt(self.gdat.N_eff/(2*np.pi))*self.err_f/(np.sqrt(self.nominal_nsrc*self.regions_factor*(2+self.nbands))))/(np.maximum(f0[0],pfs[0]))
 
-		if self.verbtype > 1:
-			print('dpos_rms')
-			print(dpos_rms)
+		verbprint(self.verbtype,'dpos_rms : '+str(dpos_rms), verbthresh=1)
 		
 		dpos_rms[dpos_rms < 1e-3] = 1e-3 #do we need this line? perhaps not
 		dx = np.random.normal(size=nw).astype(np.float32)*dpos_rms
@@ -1295,18 +1291,14 @@ class Model:
 		starsp[self._X,:] = stars0[self._X,:] + dx
 		starsp[self._Y,:] = stars0[self._Y,:] + dy
 		
-		if self.verbtype > 1:
-			print('dx')
-			print(dx)
-			print('dy')
-			print(dy)
-			print('mean absolute dx and mean absolute dy')
-			print(np.mean(np.abs(dx)), np.mean(np.abs(dy)))
+		verbprint(self.verbtype, 'dx : '+str(dx), verbthresh=1)
+		verbprint(self.verbtype, 'dy : '+str(dy), verbthresh=1)
+		verbprint(self.verbtype, 'Mean absolute dx and dy : '+str(np.mean(np.abs(dx)))+', '+str(np.mean(np.abs(dy))), verbthresh=1)
 
 		for b in range(self.nbands):
 			starsp[self._F+b,:] = pfs[b]
 			if (pfs[b]<0).any():
-				print('proposal fluxes less than 0')
+				print('Proposal fluxes less than 0')
 				print('band', b)
 				print(pfs[b])
 		self.bounce_off_edges(starsp)
@@ -1410,18 +1402,11 @@ class Model:
 
 			fminratio = stars0[self._F,:] / self.trueminf
  
-			if self.verbtype > 1:
-				print('stars0 at splitsville start')
-				print(stars0)
-				print('fminratio here')
-				print(fminratio)
-				print('dx')
-				print(dx)
-				print('dy')
-				print(dy)
-				print('idx_move')
-				print(idx_move)
-
+			verbprint(self.verbtype, 'stars0 at splitsville start: '+str(stars0), verbthresh=1)
+			verbprint(self.verbtype, 'fminratio here is '+str(fminratio), verbthresh=1)
+			verbprint(self.verbtype, 'dx = '+str(dx), verbthresh=1)
+			verbprint(self.verbtype, 'dy = '+str(dy), verbthresh=1)
+			verbprint(self.verbtype, 'idx_move : '+str(idx_move), verbthresh=1)
 				
 			fracs.append((1./fminratio + np.random.uniform(size=nms)*(1. - 2./fminratio)).astype(np.float32))
 			
@@ -1433,7 +1418,6 @@ class Model:
 				# F_b = F_1*(1 + [f_1*(1-F_1)*delta s/f_2])
 				if self.linear_flux:
 					frac_sim = fracs[0]*(1 + (stars0[self._F,:]*(1-fracs[0])*d_color)/stars0[self._F+b+1,:])
-					# print('Frac sim is ', frac_sim)
 				else:
 					frac_sim = np.exp(d_color/self.k)*fracs[0]/(1-fracs[0]+np.exp(d_color/self.k)*fracs[0])
 
@@ -1483,16 +1467,12 @@ class Model:
 				# can this go nested in if statement? 
 			invpairs = np.empty(nms)
 			
-			if self.verbtype > 1:
-				print('splitsville happening')
-				print('goodmove:', goodmove)
-				print('invpairs')
-				print(invpairs)
-				print('nms:', nms)
-				print('sum_fs')
-				print(sum_fs)
-				print('fminratio')
-				print(fminratio)
+			verbprint(self.verbtype, 'splitsville is happening', verbthresh=1)
+			verbprint(self.verbtype, 'goodmove: '+str(goodmove), verbthresh=1)
+			verbprint(self.verbtype, 'invpairs: '+str(invpairs), verbthresh=1)
+			verbprint(self.verbtype, 'nms: '+str(nms), verbthresh=1)
+			verbprint(self.verbtype, 'sum_fs: '+str(sum_fs), verbthresh=1)
+			verbprint(self.verbtype, 'fminratio is '+str(fminratio), verbthresh=1)
 
 			for k in range(nms):
 				xtemp = self.stars[self._X, 0:self.n].copy()
@@ -1516,11 +1496,10 @@ class Model:
 			nchoosable = float(idx_reg.size)
 			invpairs = np.empty(nms)
 			
-			if self.verbtype > 1:
-				print('merging two things!')
-				print('nms:', nms)
-				print('idx_move', idx_move)
-				print('idx_kill', idx_kill)
+			verbprint(self.verbtype, 'Merging two things!!', verbthresh=1)
+			verbprint(self.verbtype, 'nms: '+str(nms), verbthresh=1)
+			verbprint(self.verbtype, 'idx_move '+str(idx_move), verbthresh=1)
+			verbprint(self.verbtype, 'idx_kill '+str(idx_kill), verbthresh=1)
 				
 			for k in range(nms):
 				idx_move[k] = np.random.choice(self.max_nsrc, p=choosable/nchoosable)
@@ -1555,21 +1534,12 @@ class Model:
 			
 			fminratio = sum_fs[0] / self.trueminf
 			
-			if self.verbtype > 1:
-				print('fminratio')
-				print(fminratio)
-				print('nms is now', nms)
-				print('sum_fs[0]', sum_fs[0])
-				print('all sum_fs:')
-				print(sum_fs)
-				print('stars0')
-				print(stars0)
-				print('starsk')
-				print(starsk)
-				print('idx_move')
-				print(idx_move)
-				print('idx_kill')
-				print(idx_kill)
+			verprint(self.verbtype, 'fminratio: '+str(fminratio)+', nms: '+str(nms), verbthresh=1)
+			verprint(self.verbtype, 'sum_fs[0] is '+str(sum_fs[0]), verbthresh=1)
+			verprint(self.verbtype, 'stars0: '+str(stars0), verbthresh=1)
+			verprint(self.verbtype, 'starsk: '+str(starsk), verbthresh=1)
+			verprint(self.verbtype, 'idx_move '+str(idx_move), verbthresh=1)
+			verprint(self.verbtype, 'idx_kill '+str(idx_kill), verbthresh=1)
 				
 			starsp = np.empty_like(stars0)
 			# place merged source at center of flux of previous two sources
@@ -1649,16 +1619,15 @@ class Model:
 			proposal.set_factor(factor)
 						
 			if np.isnan(factor).any():
-				print('there was a nan factor in merge/split!')	
+				print('There was a NaN factor in merge/split!')	
 
-			if self.verbtype > 1:
-				print('kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange))
-				print('imsz factor', np.log(self.imsz0[0]*self.imsz0[1]))
-				print('fminratio:', fminratio)
-				print('fmin factor', np.log(1. - 2./fminratio))
-				print('kickrange factor', np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio))
-				print('factor after colors')
-				print(factor)
+			verbprint(self.verbtype, 'kickrange factor: '+str(np.log(2*np.pi*self.kickrange*self.kickrange)), verbthresh=1)
+			verbprint(self.verbtype, 'imsz factor: '+str(np.log(2*np.pi*self.kickrange*self.kickrange)), verbthresh=1)
+			verbprint(self.verbtype, 'kickrange factor: '+str(np.log(self.imsz0[0]*self.imsz0[1])), verbthresh=1)
+			verbprint(self.verbtype, 'fminratio: '+str(fminratio)+', fmin factor: '+str(np.log(1. - 2./fminratio)), verbthresh=1)
+			verbprint(self.verbtype, 'factor after colors: '+str(factor), verbthresh=1)
+
+
 		return proposal
 
 
@@ -1760,6 +1729,13 @@ class lion():
 			y0 = 0, \
 
 			use_zero_point = False, \
+
+			# if there is a shift offset in the astrometry but the images are themselves aligned, can use this to subtract a zero point off of the astrometric solution.
+			# if True, the fast_astrom module this takes the coordinate (0, 0), transforms them into the other bands using the provided WCS header/s, and then subtracts these new coordinates
+			# from the fast_astrom solution.
+
+			correct_misaligned_shift = False, \
+
 			bolocam_mask = False, \
 			use_mask = True, \
 			mask_file = None, \
@@ -1982,7 +1958,7 @@ class lion():
 			# set to True to automatically make posterior/diagnostic plots after the run 
 			make_post_plots = True, \
 			# used for computing posteriors
-			burn_in_frac = 0.75, 
+			burn_in_frac = 0.75, \
 			# save posterior plots
 			bool_plot_save = True, \
 			# return median model image from last 'residual_samples' samples 
@@ -2185,12 +2161,12 @@ class lion():
 		start_time = time.time()
 		samps = Samples(self.gdat)
 
-		print('initializing model')
+		verbprint(self.gdat.verbtype, 'Initializing model..', verbthresh=1)
 
 		model = Model(self.gdat, self.data, libmmult)
 
 
-		print('done initializing model')
+		print(self.gdat.verbtype, 'Done initializing model..', verbthresh=1)
 
 		trueminf_schedule_counter = 0
 		for j in range(self.gdat.nsamp): # run sampler for gdat.nsamp thinned states
@@ -2203,7 +2179,7 @@ class lion():
 					model.trueminf = self.gdat.trueminf_schedule_vals[trueminf_schedule_counter]
 
 					trueminf_schedule_counter += 1
-					print('changing trueminf: ', self.gdat.trueminf, model.trueminf)
+					print('Changing trueminf.. ', self.gdat.trueminf, model.trueminf)
 			
 			# once ready to sample, recompute proposal weights
 			model.update_moveweights(j)
@@ -2213,7 +2189,7 @@ class lion():
 
 
 		if self.gdat.save:
-			print('saving...', file=self.gdat.flog)
+			print('Saving...', file=self.gdat.flog)
 
 			# save catalog ensemble and other diagnostics
 			samps.save_samples(self.gdat.result_path, self.gdat.timestr)

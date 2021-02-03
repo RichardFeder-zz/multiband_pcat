@@ -70,14 +70,9 @@ class wcs_astrometry():
         
     '''
     
-    all_fast_arrays = []
-    wcs_objs = []
-    filenames = []
-    dims = []
-    verbosity = 0
+    all_fast_arrays, wcs_objs, filenames, dims = [[] for x in range(4)]
     
-    
-    def __init__(self, auto_resize=False, nregion=1, base_path='/Users/richardfeder/Documents/multiband_pcat/Data/spire/'):
+    def __init__(self, auto_resize=False, nregion=1, base_path='/Users/richardfeder/Documents/multiband_pcat/Data/spire/', verbosity=0):
         self.wcs_objs = []
         self.filenames = []
         self.all_fast_arrays = []
@@ -85,6 +80,7 @@ class wcs_astrometry():
         self.auto_resize = auto_resize
         self.nregion = nregion
         self.base_path = base_path
+        self.verbosity = verbosity
     
     def change_verbosity(self, verbtype):
         self.verbosity = verbtype
@@ -207,7 +203,7 @@ class wcs_astrometry():
         
         return dxp, dyp
            
-    def fit_astrom_arrays(self, idx0, idx1, bounds0=None, bounds1=None, pos0_pivot=None, pos0=None, x0=None, y0=None):
+    def fit_astrom_arrays(self, idx0, idx1, bounds0=None, bounds1=None, pos0_pivot=None, pos0=None, x0=None, y0=None, correct_misaligned_shift=False):
         '''
         Precomputes set of astrometry arrays used to quickly compute coordinate shifts across bands. 
 
@@ -271,6 +267,14 @@ class wcs_astrometry():
         if pos0 is not None: 
             xp -= pos0[0]
             yp -= pos0[1]
+
+        if correct_misaligned_shift:
+            x0, y0 = self.obs_to_obs(idx0, idx1, np.array([0.]), np.array([0.]))
+            xp -= x0
+            yp -= y0
+
+            print('x0 = '+str(x0))
+            print('y0 = '+str(y0))
         
         if self.verbosity > 0:
             print('xp:')
@@ -314,9 +318,6 @@ class wcs_astrometry():
             print(np.max(xints), np.max(yints), xtrans.shape)
             print(xints, dxs, yints, dys)
             raise ValueError('problem accessing elements')
-
-
-
 
 
 

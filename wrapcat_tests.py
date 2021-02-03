@@ -117,26 +117,31 @@ class pcat_test_suite():
 		print('we are done now!')
 
 	def validate_astrometry(self, band0=0, band1=1, band2=2, tail_name='rxj1347_PSW_nr_1_ext', dataname='rxj1347_831', use_mask=False, nregion=5, auto_resize=True,\
-						ngrid=20, return_validation_figs=True, image_extnames=['IMAGE'], use_zero_point=True):
+						ngrid=20, return_validation_figs=True, image_extnames=['IMAGE'], use_zero_point=False, correct_misaligned_shift=False):
 
 		ob = lion(band0=band0, band1=band1, band2=band2, base_path=self.base_path, result_path=self.result_path, cblas=self.cblas, openblas=self.openblas, \
-			  tail_name=tail_name, dataname=dataname, use_mask=use_mask, nregion=nregion, image_extnames=image_extnames, use_zero_point=use_zero_point)
+			  tail_name=tail_name, dataname=dataname, use_mask=use_mask, nregion=nregion, image_extnames=image_extnames, use_zero_point=use_zero_point, correct_misaligned_shift=correct_misaligned_shift)
 
 		# ob.data.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
 		# ob.data.fast_astrom.load_wcs_header_and_dim(file_path, round_up_or_down=gdat.round_up_or_down)
 		# separate for 
 
-		for b in range(ob.gdat.nbands - 1):
-			pos0_pivot = None
-			pos0 = None
-			if ob.gdat.use_zero_point:
-				pos0_pivot = [ob.gdat.x0_list[0], ob.gdat.y0_list[0]]
-				pos0 = [ob.gdat.x0_list[b], ob.gdat.y0_list[b]]
+		if ob.gdat.nbands > 1:
+			for b in range(ob.gdat.nbands - 1):
+				pos0_pivot = None
+				pos0 = None
+				if ob.gdat.use_zero_point:
+					pos0_pivot = [ob.gdat.x0_list[0], ob.gdat.y0_list[0]]
+					pos0 = [ob.gdat.x0_list[b], ob.gdat.y0_list[b]]
 
-			ob.data.fast_astrom.fit_astrom_arrays(b+1, 0, bounds0=ob.gdat.bounds[b+1], bounds1=ob.gdat.bounds[0], pos0_pivot=pos0_pivot, pos0=pos0)
 
+				print('BOUNDS[b+1] is ', ob.gdat.bounds[b+1])
+				print('BOUNDS[0] is ', ob.gdat.bounds[0])
+
+				ob.data.fast_astrom.fit_astrom_arrays(b+1, 0, bounds0=ob.gdat.bounds[b+1], bounds1=ob.gdat.bounds[0], pos0_pivot=pos0_pivot, pos0=pos0, correct_misaligned_shift=True)
+
+		
 		xr = np.arange(0, ob.gdat.imszs[0][0], ngrid)
-
 		yr = np.arange(0, ob.gdat.imszs[0][1], ngrid)
 
 		xv, yv = np.meshgrid(xr, yr)
@@ -164,8 +169,8 @@ class pcat_test_suite():
 			plt.subplot(1,2,1)
 			plt.title('band 0')
 			plt.imshow(ob.data.data_array[0]-np.median(ob.data.data_array[0]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
-			plt.xlim(0, ob.data.data_array[0].shape[0]/2)
-			plt.ylim(0, ob.data.data_array[0].shape[1]/2)
+			# plt.xlim(0, ob.data.data_array[0].shape[0])
+			# plt.ylim(0, ob.data.data_array[0].shape[1])
 
 			plt.colorbar()
 			plt.scatter(xv, yv, marker='x', color='r')
@@ -173,11 +178,11 @@ class pcat_test_suite():
 			plt.title('band '+str(b+1))
 			plt.imshow(ob.data.data_array[b+1]-np.median(ob.data.data_array[b+1]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
 			plt.colorbar()
-			# plt.scatter(xnew, ynew, marker='x', color='r')
-			plt.scatter(xnew_wcs, ynew_wcs, marker='x', color='r', label='WCS')
+			plt.scatter(xnew, ynew, marker='x', color='r', label='Fast astrom')
+			plt.scatter(xnew_wcs, ynew_wcs, marker='x', color='g', label='WCS')
 			plt.legend()
-			plt.xlim(0, ob.data.data_array[b+1].shape[0]/2)
-			plt.ylim(0, ob.data.data_array[b+1].shape[1]/2)
+			# plt.xlim(0, ob.data.data_array[b+1].shape[0])
+			# plt.ylim(0, ob.data.data_array[b+1].shape[1])
 
 			plt.show()
 
@@ -185,7 +190,6 @@ class pcat_test_suite():
 
 		if return_validation_figs:
 			return validation_figs
-
 
 
 	def run_mocks_and_compare_numbercounts(self, visual=False, show_input_maps=False, fmin=0.007, dataname='sims_12_2_20', tail_name='rxj1347_PSW_nr_1_ext', \
@@ -222,6 +226,7 @@ class pcat_test_suite():
 			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise)
 
 		ob.main()
+
 
 	def artificial_star_test(self, n_src_perbin=10, inject_fmin=0.01, inject_fmax=0.2, nbins=20, fluxbins=None, frac_flux_thresh=0.2, pos_thresh=0.5,\
 		band0=0, band1=None, band2=None, fmin=0.01, nsamp=500, load_timestr=None, dataname='SMC_HERITAGE', tail_name='SMC_HERITAGE_mask2_PSW', \
@@ -625,12 +630,12 @@ class pcat_test_suite():
 	def real_dat_run(self, band0=0, band1=None, band2=None, fmin=0.007, nsamp=500, template_names=None, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 		bias = [-0.004, -0.007, -0.008], max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, make_post_plots=True, \
 		inject_sz_frac=0.0, residual_samples=50, float_background=True, timestr_list_file=None, \
-		nbands=None, mask_file=None, weighted_residual=False, float_templates=True, use_mask=True, image_extnames=['SIGNAL'], \
+		nbands=None, mask_file=None, weighted_residual=False, float_templates=False, use_mask=True, image_extnames=['SIGNAL'], \
 		float_fourier_comps=False, n_fc_terms=10, fc_sample_delay=0, fourier_comp_moveweight=200., \
 		template_moveweight=40., template_filename=None, psf_fwhms=None, \
 		bkg_sample_delay=0, birth_death_sample_delay=0, movestar_sample_delay=0, merge_split_sample_delay=0, \
 		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, fc_amp_sig=0.0001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
-		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None):
+		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False):
 
 		if nbands is None:
 			nbands = 0
@@ -657,7 +662,8 @@ class pcat_test_suite():
 	 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
 	 				alph=alph, dfc_prob=1.0, nsrc_init=nsrc_init, mask_file=mask_file, birth_death_sample_delay=birth_death_sample_delay, movestar_sample_delay=movestar_sample_delay,\
 	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, raw_counts=False, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
-	 				 im_fpath=im_fpath, err_fpath=err_fpath, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac)
+	 				 im_fpath=im_fpath, err_fpath=err_fpath, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
+	 				 correct_misaligned_shift=correct_misaligned_shift)
 
 		ob.main()
 
@@ -748,9 +754,9 @@ result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'
 # started_idx_list_file = 'lensed_no_dust_gen3sims_rxj1347_11_10_20_simidxs.npz' 
 # started_idx_list_file = 'simidxs.npz' 
 
-sim_idx = 203
+sim_idx = 350
 # pcat_test = pcat_test_suite(cluster_name='SMC_HERITAGE', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
-pcat_test = pcat_test_suite(cluster_name='GOODSN', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
+pcat_test = pcat_test_suite(cluster_name='conley_sims_20200202', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
 
 # figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0'+str(sim_idx), dataname='sims_12_2_20', ngrid=10, return_validation_figs=True)
 # figs[0].savefig('test0.pdf')
@@ -780,7 +786,7 @@ color_prior_sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 
 # 								  frac_flux_thresh=0.5, pos_thresh=1., inject_fmax=0.4, max_nsrc=500, show_input_maps=True)
 
 # im_fpath = 'Data/spire/SMC_HERITAGE/cutouts/SMC_HERITAGE_cutsize200_199_PSW.fits'
-im_fpath = 'Data/spire/LMC_HERITAGE/cutouts/LMC_HERITAGE_cutsize200_36_PSW.fits'
+# im_fpath = 'Data/spire/LMC_HERITAGE/cutouts/LMC_HERITAGE_cutsize200_36_PSW.fits'
 
 # im_fpath = 'Data/spire/SMC_HERITAGE/cutouts/SMC_HERITAGE_cutsize200_162_PSW.fits'
 
@@ -793,7 +799,7 @@ im_fpath = 'Data/spire/LMC_HERITAGE/cutouts/LMC_HERITAGE_cutsize200_36_PSW.fits'
 # load_timestr = '20210109-050110'
 # load_timestr = '20210111-133739'
 # load_timestr = '20210114-054614'
-load_timestr = '20210117-193600'
+# load_timestr = '20210117-193600'
 # load_timestr = None
 
 fluxbins = np.logspace(np.log10(0.015), np.log10(1.0), 10)
@@ -807,12 +813,12 @@ fluxbins_goodsn_deep = np.logspace(np.log10(0.002), np.log10(0.5), 12)
 n_src_perbin = [100, 50, 50, 20, 20, 5, 3, 2, 2]
 n_src_perbin_brightdust = [100, 50, 20, 20, 5, 5, 5]
 n_src_perbin_goodsn = [100, 100, 50, 50, 10, 5, 5, 5, 5]
-
 n_src_perbin_goodsn_deep = [100, 100, 50, 50, 40, 30, 20, 2, 2, 2, 1]
 
 # inject_catalog_path = 'spire_results/20210114-054614/inject_catalog.npz'
+# inject_catalog_path = 'spire_results/'+load_timestr+'/inject_catalog.npz'
 
-inject_catalog_path = 'spire_results/20210117-193600/inject_catalog.npz'
+# inject_catalog_path = 'spire_results/20210117-193600/inject_catalog.npz'
 # inject_catalog_path = None
 
 
@@ -840,7 +846,15 @@ inject_catalog_path = 'spire_results/20210117-193600/inject_catalog.npz'
 # 								  float_fourier_comps=False, n_fc_terms=5, n_frames=10, point_src_delay=0, nsrc_init=0, \
 # 								  frac_flux_thresh=100., pos_thresh=1.0, max_nsrc=3000, mask_file=mask_file, load_timestr=load_timestr, show_input_maps=False, fmin=0.002)
 # color_sigs = color_prior_sigs
+t = pcat_test.validate_astrometry(dataname='conley_sims_20200202', tail_name='rxj1347_PSW_sim0351', use_zero_point=False, correct_misaligned_shift=False, image_extnames=['SIG_PRE_LENS'], ngrid=20, return_validation_figs=True)
 
+# pcat_test.real_dat_run(nbands=1, band0=0, dataname='Conley_sims_zitrin', tail_name='rxj1347_PSW_sim0351', image_extnames=['SIG_PRE_LENS', 'NOISE'], nsrc_init=0, float_fourier_comps=False, \
+# 	use_mask=False, bias=None, nsamp=2000, weighted_residual=True, visual=True, show_input_maps=True, fmin=0.004, max_nsrc=1300, color_sigs=color_prior_sigs, \
+# 	n_frames=20)
+
+# pcat_test.real_dat_run(nbands=3, band0=0, band1=1, band2=2, dataname='Conley_sims_zitrin', tail_name='rxj1347_PSW_sim0351', image_extnames=['SIG_PRE_LENS', 'NOISE'], float_fourier_comps=False, \
+# 	use_mask=False, bias=None, nsamp=3000, weighted_residual=True, visual=False, show_input_maps=False, fmin=0.004, max_nsrc=1500, color_sigs=color_prior_sigs, \
+# 	n_frames=20, correct_misaligned_shift=True, residual_samples=200)
 # pcat_test.artificial_star_test(n_src_perbin=n_src_perbin, fluxbins=fluxbins, inject_catalog_path=inject_catalog_path, nbins=None, nsamp=3000, residual_samples=200, visual=True,\
 # 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_199_PSW', im_fpath=im_fpath, use_mask=False, \
 # 								  float_fourier_comps=True, n_fc_terms=15, n_frames=10, point_src_delay=10, nsrc_init=0, \
@@ -876,7 +890,7 @@ print("psf pix fwhms are ", psf_pix_fwhms)
 # 						   max_nsrc=1200, ridge_fac=1., bkg_moore_penrose_inv=False, point_src_delay=20, color_sigs=color_prior_sigs, n_frames=20, \
 # 						    fc_amp_sig=0.0005, nregion=5)
 
-pcat_test.validate_astrometry(dataname='LMC_HERITAGE/cutouts', tail_name='test_lmc_PSW_100', ngrid=10, return_validation_figs=True)
+# pcat_test.validate_astrometry(dataname='LMC_HERITAGE/cutouts', tail_name='test_lmc_PSW_100', ngrid=10, return_validation_figs=True)
 # figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0'+str(sim_idx), dataname='sims_12_2_20', ngrid=10, return_validation_figs=True)
 
 # --------- condensed catalog results ----------------
@@ -889,7 +903,7 @@ pcat_test.validate_astrometry(dataname='LMC_HERITAGE/cutouts', tail_name='test_l
 # 			n_condensed_samp=100, prevalence_cut=0.5, mask_hwhm=5, search_radius=0.75, matching_dist=0.75, residual_plots=False, flux_color_color_plots=True)
 
 # -----------------------------------------
-# result_plots(timestr='20201221-011509',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
+# result_plots(timestr='20210202-004937',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 # result_plots(timestr='20201221-010751',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 # result_plots(timestr='20201221-010006',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
