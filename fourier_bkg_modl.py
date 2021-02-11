@@ -201,7 +201,7 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
     Returns
     -------
     
-    templates : `numpy.ndarray' of shape (n_terms, n_terms, 2, N, M)
+    templates : `numpy.ndarray' of shape (n_terms, n_terms, 4, N, M)
         Contains 2D Fourier templates for truncated series
 
 

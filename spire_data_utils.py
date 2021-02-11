@@ -12,6 +12,14 @@ class objectview(object):
 	def __init__(self, d):
 		self.__dict__ = d
 
+def verbprint(verbose, text, file=None, verbthresh=None):
+	if verbthresh is not None:
+		if verbose > verbthresh:
+			print(text)
+	else:
+		if verbose:
+			print(text)
+
 def get_gaussian_psf_template_3_5_20(pixel_fwhm = 3., nbin=5):
 	''' 
 	Computes Gaussian PSF kernel for fast model evaluation with lion
@@ -192,11 +200,11 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 			mask = spire_dat['MASK'].data
 	else:
 		print('Not using mask..')
-		plt.figure()
-		plt.title('image')
-		plt.imshow(image)
-		plt.colorbar()
-		plt.show()
+		# plt.figure()
+		# plt.title('image')
+		# plt.imshow(image)
+		# plt.colorbar()
+		# plt.show()
 		mask = np.ones_like(image)
 
 	# this is for gen_2_sims, which don't have same FITS structure as new sims

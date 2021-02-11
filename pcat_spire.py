@@ -52,6 +52,7 @@ def save_params(directory, gdat):
 	# save parameters as dictionary, then pickle them to txt file
 	param_dict = vars(gdat).copy()
 	param_dict['fc_templates'] = None # these take up too much space and not necessary
+	param_dict['truth_catalog'] = None 
 	
 	with open(directory+'/params.txt', 'wb') as file:
 		file.write(pickle.dumps(param_dict))
@@ -390,7 +391,9 @@ class Model:
 		self.offsetxs = np.zeros(self.nbands).astype(np.int)
 		self.offsetys = np.zeros(self.nbands).astype(np.int)
 		
-		self.penalty = 1+0.5*gdat.alph*gdat.nbands
+		self.penalty = (2.+gdat.nbands)*0.5*gdat.alph
+		print('PENALTY is ', self.penalty)
+
 		self.regions_factor = gdat.regions_factor
 		self.regsizes = np.array(gdat.regsizes).astype(np.int)
 		
@@ -522,8 +525,6 @@ class Model:
 				self.moveweights[moveidx] = moveweight_dict[moveidx]
 				print('moveweights:', self.moveweights, file=self.gdat.flog)
 
-
-
 	def normalize_weights(self, weights):
 		''' This gets used when updating proposal weights during burn-in.'''
 		normalized_weights = weights / np.sum(weights)
@@ -576,8 +577,6 @@ class Model:
 				dtemp = []
 				for i, temp in enumerate(self.dat.template_array[b]):
 					verbprint(self.gdat.verbtype, 'dtemplate in multiband eval is '+str(dtemplate.shape), verbthresh=1)
-					# if self.gdat.verbtype > 1:
-					# 	print('dtemplate in multiband eval is ', dtemplate.shape)
 					if temp is not None and dtemplate[i][b] != 0.:
 						dtemp.append(dtemplate[i][b]*temp)
 				if len(dtemp) > 0:
@@ -588,15 +587,13 @@ class Model:
 			if precomp_temps is not None:
 				pc_temp = precomp_temps[b]
 
-				# fourier comp colors. if passing fixed fourier comp template, fc_rel_amps should be model + d_rel_amps, if perturbing
+				# if passing fixed fourier comp template, fc_rel_amps should be model + d_rel_amps, if perturbing
 				# relative amplitude, fc_rel_amps should be one hot vector with change in one of the bands
 				if dtemp is None:
 					dtemp = fc_rel_amps[b]*pc_temp
 				else:
 					dtemp += fc_rel_amps[b]*pc_temp
 
-
-			# fourier comp colors
 			elif dfc is not None:
 
 				if idxvec is not None:
@@ -604,12 +601,11 @@ class Model:
 
 					if dtemp is None:
 						dtemp = fc_rel_amps[b]*pc_temp
-
 					else:
 						dtemp += fc_rel_amps[b]*pc_temp
+
 				else:
 					pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
-					# pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(2)], axis=0)
 
 					if dtemp is None:
 						dtemp = fc_rel_amps[b]*pc_temp
@@ -641,7 +637,6 @@ class Model:
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 			
-				
 				diff2s = diff2
 
 			dmodels.append(dmodel)
@@ -678,8 +673,7 @@ class Model:
 				self.margins[b+1] = int(self.margins[0]*reg_ratio)
 
 				verbprint(self.gdat.verbtype, str(self.offsetxs[b+1])+', '+str(self.offsetys[b+1])+', '+str(self.margins[b+1]), verbthresh=1)
-				# if self.gdat.verbtype > 1:
-				# 	print(self.offsetxs[b+1], self.offsetys[b+1], self.margins[b+1])
+
 		else:
 
 			self.offsetxs = np.array([0 for b in range(self.gdat.nbands)])
@@ -695,29 +689,17 @@ class Model:
 
 			resid = self.dat.data_array[b].copy() # residual for zero image is data
 			verbprint(self.gdat.verbtype, 'resid has shape '+str(resid.shape), verbthresh=1)
-			# if self.gdat.verbtype > 1:
-			# 	print('resid has shape:', resid.shape)
+
 			resids.append(resid)
 
 		evalx = self.stars[self._X,0:self.n]
 		evaly = self.stars[self._Y,0:self.n]
-		evalf = self.stars[self._F:,0:self.n]
-
-		# print('EVAL F type is ', evalf.dtype)
-		
+		evalf = self.stars[self._F:,0:self.n]		
 		n_phon = evalx.size
 
 		verbprint(self.gdat.verbtype, 'Beginning of run sampler', verbthresh=1)
 		verbprint(self.gdat.verbtype, 'self.n here is '+str(self.n), verbthresh=1)
 		verbprint(self.gdat.verbtype, 'n_phon = '+str(n_phon), verbthresh=1)
-
-		# if self.gdat.verbtype > 1:
-
-		# 	print('beginning of run sampler')
-		# 	print('self.n here')
-		# 	print(self.n)
-		# 	print('n_phon')
-		# 	print(n_phon)
 
 		if self.gdat.cblas:
 			lib = self.libmmult.pcat_model_eval
@@ -1043,33 +1025,18 @@ class Model:
 			else:
 				frame_dir_path = None
 
-			if self.gdat.nbands == 1:
-				if self.gdat.float_fourier_comps:
-					if self.gdat.inject_diffuse_comp:
-						plot_custom_multiband_frame(self, resids, models, fourier_bkg=running_temp, panels=['data0', 'model0', 'residual0', 'fourier_bkg0', 'injected_diffuse_comp0', 'residualzoom0'], frame_dir_path=frame_dir_path)
-					else:
-						if sample_idx < 50 or sample_idx%10==0:
-							plot_custom_multiband_frame(self, resids, models, fourier_bkg=running_temp, panels=['data0', 'model0', 'residual0', 'fourier_bkg0', 'dNdS0', 'residualzoom0'], frame_dir_path=frame_dir_path)
 
-				else:
-					plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'dNdS0', 'modelzoom0', 'residualzoom0'], frame_dir_path=frame_dir_path)
+			fourier_any_bool = any(['fourier_bkg' in panel_name for panel_name in self.gdat.panel_list])
+			fourier_bkg = None
 
-			elif self.gdat.nbands == 2:
-				plot_custom_multiband_frame(self, resids, models, panels=['data0', 'model0', 'residual0', 'model1', 'residual1', 'residualzoom0'], frame_dir_path=frame_dir_path)
+			if self.gdat.float_fourier_comps and fourier_any_bool:
+				fourier_bkg = [self.fc_rel_amps[b]*running_temp[b] for b in range(self.gdat.nbands)]
 
-			elif self.gdat.nbands == 3:
-				if self.gdat.float_fourier_comps:
-					if sample_idx < 100 or sample_idx%10==0:
-						plot_custom_multiband_frame(self, resids, models, fourier_bkg=[self.fc_rel_amps[b]*running_temp[b] for b in range(self.gdat.nbands)], panels=['residual0', 'residual1', 'residual2', 'fourier_bkg0', 'fourier_bkg1', 'dNdS0'], frame_dir_path=frame_dir_path)
-
-					# plot_custom_multiband_frame(self, resids, models, sz=[self.template_amplitudes[0,b]*self.dat.template_array[b][0] for b in range(self.gdat.nbands)], fourier_bkg=[self.fc_rel_amps[b]*running_temp[b] for b in range(self.gdat.nbands)], panels=['residual0', 'residual1', 'residual2', 'fourier_bkg0', 'fourier_bkg1', 'dNdS0'], frame_dir_path=frame_dir_path)
-				
-				else:
-					if sample_idx < 50 or sample_idx%50==0:
-						plot_custom_multiband_frame(self, resids, models, panels=['data0', 'data1', 'data2', 'residual0', 'dNdS0', 'dNdS2'], frame_dir_path=frame_dir_path)
-
+			if sample_idx < 50 or sample_idx%self.gdat.plot_sample_period==0:
+				plot_custom_multiband_frame(self, resids, models, panels = self.gdat.panel_list, frame_dir_path = frame_dir_path, fourier_bkg = fourier_bkg)
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids, models
+
 
 	def idx_parity_stars(self):
 		return idx_parity(self.stars[self._X,:], self.stars[self._Y,:], self.n, self.offsetxs[0], self.offsetys[0], self.parity_x, self.parity_y, self.regsizes[0])
@@ -1534,12 +1501,12 @@ class Model:
 			
 			fminratio = sum_fs[0] / self.trueminf
 			
-			verprint(self.verbtype, 'fminratio: '+str(fminratio)+', nms: '+str(nms), verbthresh=1)
-			verprint(self.verbtype, 'sum_fs[0] is '+str(sum_fs[0]), verbthresh=1)
-			verprint(self.verbtype, 'stars0: '+str(stars0), verbthresh=1)
-			verprint(self.verbtype, 'starsk: '+str(starsk), verbthresh=1)
-			verprint(self.verbtype, 'idx_move '+str(idx_move), verbthresh=1)
-			verprint(self.verbtype, 'idx_kill '+str(idx_kill), verbthresh=1)
+			verbprint(self.verbtype, 'fminratio: '+str(fminratio)+', nms: '+str(nms), verbthresh=1)
+			verbprint(self.verbtype, 'sum_fs[0] is '+str(sum_fs[0]), verbthresh=1)
+			verbprint(self.verbtype, 'stars0: '+str(stars0), verbthresh=1)
+			verbprint(self.verbtype, 'starsk: '+str(starsk), verbthresh=1)
+			verbprint(self.verbtype, 'idx_move '+str(idx_move), verbthresh=1)
+			verbprint(self.verbtype, 'idx_kill '+str(idx_kill), verbthresh=1)
 				
 			starsp = np.empty_like(stars0)
 			# place merged source at center of flux of previous two sources
@@ -1852,9 +1819,6 @@ class lion():
 			# n_fourier_terms squared 
 			n_fourier_terms = 5, \
 
-			# look at templates
-			show_fc_temps = False, \
-
 			# this is for perturbing the relative amplitudes of a fixed fourier comp model across bands
 			fourier_amp_sig = 0.0005, \
 
@@ -1902,6 +1866,9 @@ class lion():
 			# if set to true, Gaussian noise realization of error model is added to signal image
 			add_noise=False, \
 
+			# if true catalog provided, passes on to posterior analysis
+			truth_catalog = None, \
+
 			# ---------------------------------- SAMPLER PARAMS ------------------------------------------
 
 			# number of thinned samples
@@ -1910,6 +1877,8 @@ class lion():
 			nloop = 1000, \
 			# scalar factor in regularization prior, scales dlogL penalty when adding/subtracting a source
 			alph = 1.0, \
+			# if set to True, computes parsimony prior using F statistic, nominal_nsrc and the number of pixels in the immages
+			F_statistic_alph = False, \
 			# scale for merge proposal i.e. how far you look for neighbors to merge
 			kickrange = 1.0, \
 			# used in subregion model evaluation
@@ -1933,7 +1902,7 @@ class lion():
 			color_mus = None, \
 			color_sigs = None, \
 
-			# the scheduling within a chain does not work, use iter_fourier_comps.py instead (10/13/20)
+			# the scheduling within a chain does not work, use iter_fourier_comps() instead (10/13/20)
 			trueminf_schedule_vals = [0.1, 0.05, 0.02, 0.01, 0.005],\
 			trueminf_schedule_samp_idxs = [0, 50, 100, 200, 500],\
 			schedule_trueminf=False, \
@@ -1947,6 +1916,10 @@ class lion():
 			visual = False, \
 			# used for visual mode
 			weighted_residual = True, \
+			# panel list controls what is shown in six panels plotted by PCAT intermittently when visual=True  
+			panel_list = None, \
+			# plots visual frames every "plot_sample_period" thinned samples
+			plot_sample_period = 1, \
 			# can have fully deterministic trials by specifying a random initial seed 
 			init_seed = None, \
 			# to show raw number counts set to True
@@ -2055,6 +2028,9 @@ class lion():
 
 				self.gdat.template_order.append(temp_name)
 
+		if self.gdat.panel_list is None:
+			self.gdat.panel_list = ['data0', 'model0', 'residual0', 'data_zoom0', 'dNdS0', 'residual_zoom0']
+
 
 		if self.gdat.data_path is None:
 			self.gdat.data_path = self.gdat.base_path+'/Data/spire/'
@@ -2063,21 +2039,25 @@ class lion():
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
 		self.data.load_in_data(self.gdat, map_object=map_object, show_input_maps=self.gdat.show_input_maps)
 
+		if self.gdat.F_statistic_alph:
+			npix = np.sum(np.array([self.gdat.imszs[b][0]*self.gdat.imszs[b][1] for b in range(self.gdat.nbands)]))
+			alph = 0.5*(2.+self.gdat.nbands)*npix/(npix - (2.+self.gdat.nbands)*self.gdat.nominal_nsrc)
+			alph /= 0.5*(2.+self.gdat.nbands) # regularization prior is normalized relative to limit with infinite data, per degree of freedom
+			self.gdat.alph = alph
+			print('alph computed from the F statistic with '+str(self.gdat.nominal_nsrc)+' sources is '+str(np.round(alph, 3)))
+
 		# fourier comp
 		if self.gdat.float_fourier_comps:
 			print('WERE FLOATING FOURIER COMPS BABY')
 			# if there are previous fourier components, use those
 			if self.gdat.init_fourier_coeffs is not None:
-
 				if self.gdat.n_fourier_terms != self.gdat.init_fourier_coeffs.shape[0]:
 					self.gdat.n_fourier_terms = self.gdat.init_fourier_coeffs.shape[0]
-
 			else:
 				self.gdat.init_fourier_coeffs = np.zeros((self.gdat.n_fourier_terms, self.gdat.n_fourier_terms, 4))
 
 			print('ATTENTION x_max_pivot_list IS', self.gdat.x_max_pivot_list)
-			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=self.gdat.psf_fwhms, x_max_pivot_list=self.gdat.x_max_pivot_list)
-
+			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, psf_fwhms=self.gdat.psf_fwhms, x_max_pivot_list=self.gdat.x_max_pivot_list)
 			# self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=self.gdat.psf_fwhms)
 
 			# fourier comp colors
@@ -2166,7 +2146,7 @@ class lion():
 		model = Model(self.gdat, self.data, libmmult)
 
 
-		print(self.gdat.verbtype, 'Done initializing model..', verbthresh=1)
+		verbprint(self.gdat.verbtype, 'Done initializing model..', verbthresh=1)
 
 		trueminf_schedule_counter = 0
 		for j in range(self.gdat.nsamp): # run sampler for gdat.nsamp thinned states

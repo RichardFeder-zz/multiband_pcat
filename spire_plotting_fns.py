@@ -36,7 +36,9 @@ def convert_pngs_to_gif(filenames, gifdir='/Users/richardfeder/Documents/multiba
 				   save_all=True,
 				   duration=duration, loop=loop)
 
-def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
+def compute_dNdS(trueminf, stars, nsrc, _F=2):
+
+	''' function for computing number counts '''
 
 	binz = np.linspace(np.log10(trueminf)+3., np.ceil(np.log10(np.max(stars[_F, 0:nsrc]))+3.), 20)
 	hist = np.histogram(np.log10(stars[_F, 0:nsrc])+3., bins=binz)
@@ -47,6 +49,45 @@ def compute_dNdS(trueminf, stars, nsrc, _X=0, _Y=1, _F=2):
 
 	return logSv, dSz, dNdS
 
+
+def compute_degradation_fac(condensed_cat, err, flux_err_idx, smooth_fac=5, xidx=0, yidx=2, psf_fwhm=3.):
+
+	''' Given a condensed catalog and underlying noise model, compute the departure of PCAT estimated source uncertainties from 
+	what one would expect for an isolated source.
+
+	Parameters
+	----------
+
+	condensed_cat : `~numpy.ndarray' of shape (nsrc, n_features)
+		Input condensed catalog
+
+	err : `~numpy.ndarray'
+		Noise model for field being cataloged. 
+
+	smooth_fac : float, optional
+		Because there may be significant pixel variation in the noise model, smooth_fac sets the scale for smoothing the error map, 
+		such that when the error is quoted based on a sources position, it represents something closer to the effective (beam averaged) noise.
+		Default is 5 pixels. 
+
+	psf_fwhm : float, optional
+		Full width at half maximum for point spread function. Default is 3 pixels. 
+
+	Returns
+	-------
+
+	flux_deg_fac : `~numpy.ndarray' of length (N_src)
+		array of flux degradation factors for each source in the condensed catalog.
+
+	'''
+
+	optimal_ferr_map = np.sqrt(err**2/(4*np.pi*(psf_fwhm/2.355)**2))
+	smoothed_optimal_ferr_map = gaussian_filter(optimal_ferr_map, smooth_fac)
+	flux_deg_fac = np.zeros_like(condensed_cat[:,0])
+
+	for s, src in enumerate(condensed_cat):
+		flux_deg_fac[s] = src[flux_err_idx]/smoothed_optimal_ferr_map[int(src[xidx]), int(src[yidx])]
+	
+	return flux_deg_fac
 
 def plot_atcr(listsamp, title):
 
@@ -152,10 +193,6 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 		elif 'fourier_bkg' in panels[i]:
 			fbkg = fourier_bkg[band_idx]
 
-			# if band_idx > 1:
-				# fbkg = gaussian_filter(fbkg, sigma=0.25*obj.imszs[0][0]/obj.n_fourier_terms)
-			# np.sqrt(obj.dat.weights[band_idx])
-
 			fbkg[obj.dat.weights[band_idx]==0] = 0.
 
 			plt.imshow(fbkg, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(fbkg , 5), vmax=np.percentile(fbkg, 95))
@@ -233,8 +270,6 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.legend()
 				plt.xlabel('log($S_{\\nu}$) (mJy)')
 				plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
-
-
 
 
 	if frame_dir_path is not None:
@@ -405,6 +440,8 @@ def make_pcat_sample_gif(timestr, im_path, image_extension='SIGNAL', gif_path=No
 
 def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False, convert_to_MJy_sr_fac=None, smooth_fac=None):
 
+	''' This function takes a chain of background samples from PCAT and makes a trace plot. '''
+
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
 		ylabel_unit = ' [Jy/beam]'
@@ -430,6 +467,8 @@ def plot_bkg_sample_chain(bkg_samples, band='250 micron', title=True, show=False
 
 def plot_template_amplitude_sample_chain(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Sample index', ylabel='Amplitude',\
 									 convert_to_MJy_sr_fac=None, smooth_fac = None):
+
+	''' This function takes a chain of template amplitude samples from PCAT and makes a trace plot. '''
 
 	ylabel_unit = None
 	if convert_to_MJy_sr_fac is None:
@@ -460,12 +499,15 @@ def plot_template_amplitude_sample_chain(template_samples, band='250 micron', te
 
 def plot_template_median_std(template, template_samples, band='250 micron', template_name='cirrus dust', title=True, show=False, convert_to_MJy_sr_fac=None):
 
+	''' This function takes a template and chain of template amplitudes samples from PCAT. 
+	These are used to compute the median template estimate as well the pixel-wise standard deviation on the template.
+	'''
 
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
-		xlabel_unit = ' [Jy/beam]'
+		xlabel_unit = '[Jy/beam]'
 	else:
-		xlabel_unit = ' [MJy/sr]'
+		xlabel_unit = '[MJy/sr]'
 
 	f = plt.figure(figsize=(10, 5))
 
@@ -475,13 +517,15 @@ def plot_template_median_std(template, template_samples, band='250 micron', temp
 	mean_t, std_t = np.mean(template_samples), np.std(template_samples)
 
 	plt.subplot(1,2,1)
-	plt.title('Median'+xlabel_unit)
+	plt.title('Median')
 	plt.imshow(mean_t*template/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_t*template, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(mean_t*template, 95)/convert_to_MJy_sr_fac)
-	plt.colorbar()
+	cbar = plt.colorbar(fraction=0.046, pad=0.04)
+	cbar.set_label(xlabel_unit, fontsize=14)
 	plt.subplot(1,2,2)
 	plt.title('Standard deviation'+xlabel_unit)
 	plt.imshow(std_t*np.abs(template)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_t*np.abs(template), 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_t*np.abs(template), 95)/convert_to_MJy_sr_fac)
-	plt.colorbar()
+	cbar = plt.colorbar(fraction=0.046, pad=0.04)
+	cbar.set_label(xlabel_unit, fontsize=14)
 
 	if show:
 		plt.show()
@@ -603,8 +647,10 @@ def plot_last_fc_map(fourier_coeffs, imsz, ref_img=None, fourier_templates=None,
 
 	return f
 
-def plot_flux_vs_fluxerr(fluxes, flux_errs, show=False, alpha=0.1, xlim=[1, 1e3], ylim=[0.1, 2e2]):
+def plot_flux_vs_fluxerr(fluxes, flux_errs, show=False, alpha=0.1, snr_levels = [2., 5., 10., 20., 50.], xlim=[1, 1e3], ylim=[0.1, 2e2]):
 
+	''' This takes a list of fluxes and flux uncertainties and plots them against each other, along with selection of SNR levels for reference. '''
+	
 	f = plt.figure()
 	plt.title('Flux errors', fontsize=16)
 	plt.scatter(fluxes, flux_errs, alpha=alpha, color='k', label='Condensed catalog')
@@ -616,11 +662,8 @@ def plot_flux_vs_fluxerr(fluxes, flux_errs, show=False, alpha=0.1, xlim=[1, 1e3]
 	plt.xlim(xlim)
 	plt.yscale('log')
 	plt.ylim(ylim)
-	plt.plot(xspace, xspace/2., label='SNR = 2', color='C0', linestyle='dashed')
-	plt.plot(xspace, xspace/5., label='SNR = 5', color='C1', linestyle='dashed')
-	plt.plot(xspace, xspace/10., label='SNR = 10', color='C2', linestyle='dashed')
-	plt.plot(xspace, xspace/20., label='SNR = 20', color='C3', linestyle='dashed')
-	plt.plot(xspace, xspace/50., label='SNR = 50', color='C4', linestyle='dashed')
+	for s, snr in enumerate(snr_levels):
+		plt.plot(xspace, xspace/snr, label='SNR = '+str(np.round(snr)), color='C'+str(s), linestyle='dashed')
 
 	plt.legend(fontsize=14)
 	plt.tight_layout()
@@ -1362,7 +1405,7 @@ def plot_completeness_vs_flux(pos_thresh, frac_flux_thresh, fluxbins, completene
 
 	return f
 
-def plot_src_number_posterior(nsrc_fov, show=False, title=False):
+def plot_src_number_posterior(nsrc_fov, show=False, title=False, nsrc_truth=None, fmin=4.0, units='mJy'):
 
 	f = plt.figure()
 	
@@ -1371,6 +1414,8 @@ def plot_src_number_posterior(nsrc_fov, show=False, title=False):
 	
 	plt.hist(nsrc_fov, histtype='step', label='Posterior', color='b', bins=15)
 	plt.axvline(np.median(nsrc_fov), label='Median=' + str(np.median(nsrc_fov)), color='b', linestyle='dashed')
+	if nsrc_truth is not None:
+		plt.axvline(nsrc_truth, label='N (F > '+str(fmin)+' mJy) = '+str(nsrc_truth), linestyle='dashed', color='k', linewidth=1.5)
 	plt.xlabel('$N_{src}$', fontsize=16)
 	plt.ylabel('Number of samples', fontsize=16)
 	plt.legend()
@@ -1507,7 +1552,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				accept_fraction_plots=True, chi2_plots=True, dc_background_plots=True, fourier_comp_plots=True, \
 				template_plots=True, flux_dist_plots=True, flux_color_plots=False, flux_color_color_plots=False, \
 				comp_resources_plot=True, source_number_plots=True, residual_plots=True, condensed_catalog_plots=False, condensed_catalog_fpath=None, generate_condensed_cat=False, \
-				n_condensed_samp=None, prevalence_cut=None, mask_hwhm=None, search_radius=None, matching_dist=None):
+				n_condensed_samp=None, prevalence_cut=None, mask_hwhm=None, search_radius=None, matching_dist=None, truth_catalog=None):
 
 	
 	title_band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
@@ -1524,6 +1569,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	else:
 		gdat.filepath = gdat.result_path + gdat.timestr
+
+	if truth_catalog is None:
+		if gdat.truth_catalog is not None:
+			truth_catalog = gdat.truth_catalog
 
 	if matching_dist is not None:
 		gdat.matching_dist = matching_dist
@@ -1570,11 +1619,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			print(condensed_cat[:, 6])
 
 	gdat.show_input_maps=False
-	# result_path = '/Users/richardfeder/Documents/multiband_pcat/spire_results/'
-	# filepath = result_path + timestr
-	# gdat.float_background = None
-
-	#roc = cross_match_roc(filetype='.npy')
 	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
 
 	for i, band in enumerate(gdat.bands):
@@ -1881,19 +1925,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				print(xp)
 				print(yp)
 
-			def compute_degradation_fac(condensed_cat, err, flux_err_idx, smooth_fac=5, xidx=0, yidx=2, psf_fwhm=3.):
-				optimal_ferr_map = np.sqrt(err**2/(4*np.pi*(psf_fwhm/2.355)**2))
-				smoothed_optimal_ferr_map = gaussian_filter(optimal_ferr_map, 5)
-				flux_deg_fac = np.zeros_like(condensed_cat[:,0])
-				# plt.figure()
-				# plt.imshow(smoothed_optimal_ferr_map)
-				# plt.colorbar()
-				# plt.show()
-				for s, src in enumerate(condensed_cat):
-					flux_deg_fac[s] = src[flux_err_idx]/smoothed_optimal_ferr_map[int(src[xidx]), int(src[yidx])]
-				
-				return flux_deg_fac
-
 
 			psf_fwhm = 3.
 			optimal_ferr_map = np.sqrt(dat.errors[b]**2/(4*np.pi*(psf_fwhm/2.355)**2))
@@ -2037,7 +2068,11 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	if source_number_plots:
 
-		f_nsrc = plot_src_number_posterior(nsrc_fov)
+		nsrc_fov_truth = None
+		if truth_catalog is not None:
+			nsrc_fov_truth = len(truth_catalog)
+
+		f_nsrc = plot_src_number_posterior(nsrc_fov, nsrc_truth=nsrc_fov_truth, fmin=1e3*gdat.trueminf, units='mJy')
 		f_nsrc.savefig(gdat.filepath +'/posterior_histogram_nstar.'+plttype, bbox_inches='tight', dpi=dpi)
 
 		f_nsrc_trace = plot_src_number_trace(nsrc_fov)

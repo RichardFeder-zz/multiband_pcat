@@ -3,11 +3,10 @@ from diffuse_gen import *
 from spire_plotting_fns import *
 import pandas as pd
 
-''' this script is for testing the iterative background estimation suggested by Mike. the main idea is to 
-gradually reduce the minimum flux threshold of the cataloger while fitting fourier coefficients to observations at 
-250 micron. as Fmin gets reduced, the fourier coefficients shift as they do not need to model previously sub-Fmin sources.
-After a few iterations, the best fit template is saved and used to model the background of all three bands. once the multiband fitting begins, 
-the colors of the background model are fixed and so are its fourier coefficients.'''
+''' This script contains the pcat_test_suite module, which is meant to be a container for various tests run with PCAT. Because different tests require
+different PCAT parameter configurations, and because there are now many tunable knobs incorporated into the code, separating into different tests should 
+help reduce the confusion in fine-tuning runs of PCAT. Over time it would be nice to include more validation tests for input data like validate_astrometry(), 
+since much of the work is properly feeding in the various data products.  '''
 
 class pcat_test_suite():
 
@@ -34,39 +33,6 @@ class pcat_test_suite():
 		self.openblas=openblas
 
 		self.sz_filename = self.base_path+'Data/spire/'+cluster_name+'_sz_templates/'+sz_tail_name+'.fits'
-
-
-	def empirical_parsimony_prior_estimate(self, band0=0, band1=None, band2=None, fmin=0.005, nsamp=2000, \
-											 residual_samples=200, tail_name='rxj1347_PSW_sim0300', dataname='v3_sides_sims_corrected'):
-
-		# run pcat in fixed dimensional mode for a range of source numbers
-		# then collect average log-likelihood from last residual_samples samples
-
-
-		ob = lion(band0=band0, band1=band1, band2=band2, nsrc_init=N, alph=0.0, birth_death_moveweight=0., merge_split_moveweight=0., \
-			base_path=self.base_path, result_path=self.result_path, burn_in_frac=0.7, float_background=True, \
-			  bkg_sample_delay=0, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-			  tail_name=tail_name, dataname=dataname, use_mask=use_mask, max_nsrc=N, trueminf=fmin, nregion=5, \
-			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples)
-
-		ob.main()
-
-		_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
-		timestr = ob.gdat.timestr
-		chain = np.load(filepath+'/chain.npz')
-
-		nb = 0 
-		for band in [band0, band1, band2]:
-			if band is not None:
-				nb += 1
-
-
-		last_chi2_vals = chain['chi2']
-
-		av_logLs = [np.mean(chain['chi2'][b, -residual_samples:]) for b in range(nb)]
-		
-		return av_logLs
-
 
 
 	def procure_cirrus_realizations(self, nsims, cirrus_tail_name='rxj1347_cirrus_sim_idx_', dataname='new_gen3_sims', \
@@ -116,15 +82,36 @@ class pcat_test_suite():
 			np.savez(self.base_path+'/Data/spire/cirrus_gen/'+cirrus_tail_name+str(i)+'.npz', S=al[0], M=al[1], L=al[2])
 		print('we are done now!')
 
+	
 	def validate_astrometry(self, band0=0, band1=1, band2=2, tail_name='rxj1347_PSW_nr_1_ext', dataname='rxj1347_831', use_mask=False, nregion=5, auto_resize=True,\
 						ngrid=20, return_validation_figs=True, image_extnames=['IMAGE'], use_zero_point=False, correct_misaligned_shift=False):
 
+		''' 
+
+		This function validates that the fast astrometric transformations approximated by PCAT are consistent with transformations of the WCS header,
+		and also can be used to visually confirm that the WCS header is properly aligned with the input images. 
+
+		Parameters
+		----------
+
+		band0, band1, band2 : integers
+			indices of bands to test astrometry for
+
+		use_mask : boolean, optional
+			If True, applies mask to observations first. Default is 'False'.
+
+		ngrid : integer, optional
+			Specifies the gridding of test points that get transformed using both WCS and fast astrometric transforms. 
+
+		Returns
+		-------
+
+		validation_figs : list of matplotlib Figures
+
+		'''
+
 		ob = lion(band0=band0, band1=band1, band2=band2, base_path=self.base_path, result_path=self.result_path, cblas=self.cblas, openblas=self.openblas, \
 			  tail_name=tail_name, dataname=dataname, use_mask=use_mask, nregion=nregion, image_extnames=image_extnames, use_zero_point=use_zero_point, correct_misaligned_shift=correct_misaligned_shift)
-
-		# ob.data.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
-		# ob.data.fast_astrom.load_wcs_header_and_dim(file_path, round_up_or_down=gdat.round_up_or_down)
-		# separate for 
 
 		if ob.gdat.nbands > 1:
 			for b in range(ob.gdat.nbands - 1):
@@ -134,18 +121,14 @@ class pcat_test_suite():
 					pos0_pivot = [ob.gdat.x0_list[0], ob.gdat.y0_list[0]]
 					pos0 = [ob.gdat.x0_list[b], ob.gdat.y0_list[b]]
 
-
 				print('BOUNDS[b+1] is ', ob.gdat.bounds[b+1])
 				print('BOUNDS[0] is ', ob.gdat.bounds[0])
 
 				ob.data.fast_astrom.fit_astrom_arrays(b+1, 0, bounds0=ob.gdat.bounds[b+1], bounds1=ob.gdat.bounds[0], pos0_pivot=pos0_pivot, pos0=pos0, correct_misaligned_shift=True)
 
-		
-		xr = np.arange(0, ob.gdat.imszs[0][0], ngrid)
-		yr = np.arange(0, ob.gdat.imszs[0][1], ngrid)
-
+		xr = np.linspace(0, ob.gdat.imszs[0][0], ngrid)
+		yr = np.linspace(0, ob.gdat.imszs[0][1], ngrid)
 		xv, yv = np.meshgrid(xr, yr)
-
 
 		validation_figs = []
 
@@ -158,20 +141,15 @@ class pcat_test_suite():
 
 			# xnew -= np.min(xnew)
 			# ynew -= np.min(ynew)
-
 			# print(np.min(xnew), np.min(ynew))
 
 			xv_rt, yv_rt = ob.data.fast_astrom.transform_q(xnew, ynew, ob.gdat.nbands-1+b)
-
 			xnew_wcs, ynew_wcs = ob.data.fast_astrom.obs_to_obs(0, b+1, xv, yv)
 
 			f = plt.figure(figsize=(12,5))
 			plt.subplot(1,2,1)
 			plt.title('band 0')
 			plt.imshow(ob.data.data_array[0]-np.median(ob.data.data_array[0]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
-			# plt.xlim(0, ob.data.data_array[0].shape[0])
-			# plt.ylim(0, ob.data.data_array[0].shape[1])
-
 			plt.colorbar()
 			plt.scatter(xv, yv, marker='x', color='r')
 			plt.subplot(1,2,2)
@@ -181,9 +159,6 @@ class pcat_test_suite():
 			plt.scatter(xnew, ynew, marker='x', color='r', label='Fast astrom')
 			plt.scatter(xnew_wcs, ynew_wcs, marker='x', color='g', label='WCS')
 			plt.legend()
-			# plt.xlim(0, ob.data.data_array[b+1].shape[0])
-			# plt.ylim(0, ob.data.data_array[b+1].shape[1])
-
 			plt.show()
 
 			validation_figs.append(f)
@@ -192,29 +167,12 @@ class pcat_test_suite():
 			return validation_figs
 
 
-	def run_mocks_and_compare_numbercounts(self, visual=False, show_input_maps=False, fmin=0.007, dataname='sims_12_2_20', tail_name='rxj1347_PSW_nr_1_ext', \
-		use_mask=False, bias=[0.002, 0.002, 0.002], max_nsrc=1000, make_post_plots=True, nsamp=2000, residual_samples=300, image_extnames=['SIG_PRE_LENSE', 'NOISE'], \
-		add_noise=False, sim_idx=None, mockcat_path=None):
-
-		mockcat_fpath = None
-		if mockcat_path is not None:
-			mockcat_fpath = gdat.base_path+mockcat_path
-
-		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=0.7, float_background=True, \
-			  bkg_sample_delay=0, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=5, \
-			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, \
-			  image_extnames=image_extnames, add_noise=add_noise, mockcat_fpath=mockcat_fpath)
-
-		ob.main()
-
-
 	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
 				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
 				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=50):
 
-
+		''' Function for tests involving injecting SZ signals into mock data '''
 
 		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
 
@@ -228,13 +186,59 @@ class pcat_test_suite():
 		ob.main()
 
 
-	def artificial_star_test(self, n_src_perbin=10, inject_fmin=0.01, inject_fmax=0.2, nbins=20, fluxbins=None, frac_flux_thresh=0.2, pos_thresh=0.5,\
+	def artificial_star_test(self, n_src_perbin=10, inject_fmin=0.01, inject_fmax=0.2, nbins=20, fluxbins=None, frac_flux_thresh=2., pos_thresh=0.5,\
 		band0=0, band1=None, band2=None, fmin=0.01, nsamp=500, load_timestr=None, dataname='SMC_HERITAGE', tail_name='SMC_HERITAGE_mask2_PSW', \
 		bias = None, max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, make_post_plots=True, \
 		residual_samples=50, float_background=True, timestr_list_file=None, \
 		nbands=None, mask_file=None, use_mask=True, image_extnames=['IMAGE'], float_fourier_comps=False, n_fc_terms=10, fc_sample_delay=0, \
 		point_src_delay=0, nsrc_init=None, fc_prop_alpha=None, fourier_comp_moveweight=200., fc_amp_sig=0.001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
 		bkg_moore_penrose_inv=True, MP_order=5, ridge_fac=2., inject_catalog_path=None, save=True, inject_color_means=[1.0, 0.7], inject_color_sigs=[0.25, 0.25], cond_cat_fpath=None):
+
+		'''
+		This function injects a population of artificial sources into a given image and provides diagnostics on what artificial sources PCAT recovers and to what accuracy fluxes are estimated.
+
+		Unique parameters
+		-----------------
+		
+		n_src_perbin : int, optional
+			Number of injected sources per flux bin. Default is 10.
+
+		inject_fmin : float, optional
+			Minimum flux density of injected sources. Default is 0.01 [Jy].
+
+		inject_fmax : float, optional
+			Maximum flux density of injected sources. Default is 0.2 [Jy].
+
+		nbins : int, optional
+			Number of flux bins to create between inject_fmin and inject_fmax. Default is 20.
+
+		fluxbins : list or `~numpy.ndarray', optional
+			fluxbins can be specified if custom flux bins are desired. Default is None.
+
+		frac_flux_thresh : float, optional
+			When matching PCAT sources to injected sources, frac_flux_thresh defines part of the cross-matching criteria, 
+			in which the fractional error of the PCAT source w.r.t. the injected source must be less than frac_flux_thresh. 
+			Default is 2.0.
+
+		pos_thresh : float, optional
+			Same idea as frac_flux_thresh, but applies a position cross matching criterion. 
+			Default is 0.5 [pixels].
+
+		inject_color_means, inject_color_sigs : lists, optional
+			Mean colors for injected sources. The colors of sources are drawn from a Gaussian distribution with mean injected_color_means[b] and  
+			Default assumes bands are ordered as 250, 350, 500 micron, colors of S350/S250 = 1.0, S500/S200 = 0.7 and scatters of [0.25, 0.25]. 
+
+		cond_cat_fpath : string, optional
+			If PCAT has already been run and one wishes to use results from a condensed catalog, it can be specified here to bypass running PCAT again. 
+			Default is 'None'.
+
+
+		Returns 
+		-------
+
+		Nothing! 
+
+		'''
 
 		if nbands is None:
 			nbands = 0
@@ -255,7 +259,7 @@ class pcat_test_suite():
 		 				tail_name=tail_name, dataname=dataname, bias=bias, max_nsrc=max_nsrc,\
 		 				trueminf=fmin, nregion=5, make_post_plots=make_post_plots, nsamp=nsamp, use_mask=use_mask,\
 		 				residual_samples=residual_samples, float_fourier_comps=float_fourier_comps, \
-		 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
+		 				n_fourier_terms=n_fc_terms, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
 		 				alph=alph, dfc_prob=1.0, nsrc_init=nsrc_init, mask_file=mask_file, \
 		 				point_src_delay=point_src_delay, n_frames=n_frames, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
 		 				im_fpath=im_fpath, err_fpath=err_fpath, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
@@ -635,8 +639,10 @@ class pcat_test_suite():
 		template_moveweight=40., template_filename=None, psf_fwhms=None, \
 		bkg_sample_delay=0, birth_death_sample_delay=0, movestar_sample_delay=0, merge_split_sample_delay=0, \
 		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, fc_amp_sig=0.0001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
-		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False):
+		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False, \
+		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, nominal_nsrc = 1000):
 
+		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
 			nbands = 0
 			if band0 is not None:
@@ -645,7 +651,6 @@ class pcat_test_suite():
 				nbands += 1
 			if band2 is not None:
 				nbands += 1
-
 
 		if nbands > 1 and float_fourier_comps:
 			print("WERE USING THE DUST")
@@ -659,25 +664,56 @@ class pcat_test_suite():
 	 				template_names=template_names, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=bias, load_state_timestr=load_state_timestr, max_nsrc=max_nsrc,\
 	 				trueminf=fmin, nregion=nregion, make_post_plots=make_post_plots, nsamp=nsamp, use_mask=use_mask,\
 	 				residual_samples=residual_samples, float_fourier_comps=float_fourier_comps, fc_rel_amps=fc_rel_amps,\
-	 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
+	 				n_fourier_terms=n_fc_terms, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
 	 				alph=alph, dfc_prob=1.0, nsrc_init=nsrc_init, mask_file=mask_file, birth_death_sample_delay=birth_death_sample_delay, movestar_sample_delay=movestar_sample_delay,\
 	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, raw_counts=False, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
 	 				 im_fpath=im_fpath, err_fpath=err_fpath, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
-	 				 correct_misaligned_shift=correct_misaligned_shift)
+	 				 correct_misaligned_shift=correct_misaligned_shift, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, panel_list=panel_list, \
+	 				 F_statistic_alph=F_statistic_alph, nominal_nsrc = 1000)
 
 		ob.main()
 
 
-
-
 	def iter_fourier_comps(self, n_fc_terms=10, fmin_levels=[0.05, 0.02, 0.01, 0.007], final_fmin=0.007, \
 							nsamps=[50, 100, 200, 500], final_nsamp=2000, \
-							template_names=['sze'], nlast_fc=20, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
+							template_names=['sze'], nlast_fc=5, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 							bias=[-0.004, -0.007, -0.008], max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, \
 							inject_sz_frac=0.0, residual_samples=200, external_sz_file=False, timestr_list_file=None, \
 							inject_diffuse_comp=False, nbands=3, mask_file=None, weighted_residual=False, diffuse_comp_path=None, float_templates=True, use_mask=True, image_extnames=['SIGNAL']):
 
 
+		''' 
+
+		This function can be used to run PCAT with successive Fmin thresholds to enable stable estimation of structured background. From tests, I didn't see much of a difference
+		using this approach versus just estimating background with no sources at all for some number of samples and then letting background parameters float. They usually converge to the same solution.
+
+		Unique parameters
+		-----------------
+
+		fmin_levels : list, optional
+			Specifies minimum flux density at each iteration of burn-in. Default is [0.05, 0.02, 0.01, 0.007] (in Jy).
+
+		final_fmin : float, optional
+			Final minimum flux density after iterative background estimation. Default is 0.007 [Jy].
+
+		nsamps : list, optional
+			Number of thinned samples for each step of the iteration. 
+			Default is [50, 100, 200, 500]. 
+
+		final_nsamp : float, optional
+			Once iterative procedure completed, final_nsamp specifies number of thinned samples to run. Default is 2000.
+
+		nlast_fc : int, optional
+			Number of thinned samples from previous iteration to use to estimate current background level. Default is 5.
+			(To be honest, this could probably just be 1, where the last state of the chain at a given Fmin is passed ot the next step.)
+
+
+		Returns
+		-------
+
+		Nothing! This function is an inplace operation aside from normal PCAT outputs which are stored in the result_path.
+
+		'''
 
 		if residual_samples > final_nsamp:
 			residual_samples = final_nsamp // 2
@@ -705,7 +741,7 @@ class pcat_test_suite():
 		 				template_names=template_names, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=None, load_state_timestr=timestr, max_nsrc=max_nsrc,\
 		 				trueminf=fmin, nregion=5, make_post_plots=False, nsamp=nsamps[i], use_mask=use_mask,\
 		 				residual_samples=5, init_fourier_coeffs=median_fc, n_frames=3, float_fourier_comps=True, \
-		 				n_fourier_terms=n_fc_terms, show_fc_temps=False, fc_sample_delay=0, fourier_comp_moveweight=200.,\
+		 				n_fourier_terms=n_fc_terms, fc_sample_delay=0, fourier_comp_moveweight=200.,\
 		 				alph=alph, dfc_prob=1.0, nsrc_init=0, mask_file=mask_file, birth_death_sample_delay=50, movestar_sample_delay=50, merge_split_sample_delay=50, \
 		 				inject_sz_frac=1.0, raw_counts=True, weighted_residual=weighted_residual, image_extnames=image_extnames, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
 
@@ -732,254 +768,10 @@ class pcat_test_suite():
 					tail_name=tail_name, dataname=dataname, max_nsrc=max_nsrc, \
 					init_fourier_coeffs=median_fc, template_filename=template_filename, trueminf=final_fmin, nregion=5, \
 				    make_post_plots=False, nsamp=final_nsamp, use_mask=use_mask, residual_samples=residual_samples, \
-				    float_fourier_comps=True, show_fc_temps=False, n_fourier_terms=n_fc_terms, fc_sample_delay=0, \
+				    float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0, \
 				    fourier_comp_moveweight=0., movestar_sample_delay=0, merge_split_sample_delay=0, birth_death_sample_delay=0,\
 				    alph=alph, dfc_prob=0.0, fc_rel_amps=fc_rel_amps, inject_sz_frac=1.0, timestr_list_file=timestr_list_file, \
 				     inject_diffuse_comp=inject_diffuse_comp, mask_file=mask_file, image_extnames=image_extnames, diffuse_comp_path=diffuse_comp_path, bias=[last_bkg_sample_250, 0.003, 0.003], load_state_timestr=timestr)
 
 		ob.main()
-
-base_path='/Users/luminatech/Documents/multiband_pcat/'
-result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/'
-
-
-# mask_file = base_path+'data/spire/gps_0/gps_0_PSW_mask.fits'
-# mask_file = 'Data/spire/SMC_HERITAGE/SMC_HERITAGE_mask2_PSW.fits'
-# mask_file = base_path+'/data/spire/GOODSN/GOODSN_PSW_mask_011721.fits'
-# mask_file = base_path+'/data/spire/GOODSN/GOODSN_PSW_mask_011721.fits'
-
-# mask_file=None
-# mask_file= None
-# timestr_list_file='lensed_no_dust_gen3sims_rxj1347_11_10_20_timestrs.npz'
-# started_idx_list_file = 'lensed_no_dust_gen3sims_rxj1347_11_10_20_simidxs.npz' 
-# started_idx_list_file = 'simidxs.npz' 
-
-sim_idx = 350
-# pcat_test = pcat_test_suite(cluster_name='SMC_HERITAGE', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
-pcat_test = pcat_test_suite(cluster_name='conley_sims_20200202', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
-
-# figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0'+str(sim_idx), dataname='sims_12_2_20', ngrid=10, return_validation_figs=True)
-# figs[0].savefig('test0.pdf')
-# figs[1].savefig('test1.pdf')
-
-# pcat_test.run_sims_with_injected_sz(dataname='gen_2_sims', add_noise=True, temp_sample_delay=10, image_extnames=['SIGNAL'], tail_name='rxj1347_PSW_sim0'+str(sim_idx), visual=True, show_input_maps=False)
-# color_prior_sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5})
-
-color_prior_sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5})
-
-# pcat_test.iter_fourier_comps(dataname='GOODSN', tail_name='GOODSN_image_SMAP_PSW',nsamps=[50, 100, 200], float_templates=False, template_names=None, visual=False, show_input_maps=False, fmin_levels=[0.02,0.01, 0.005], final_fmin=0.003, alph=0.0, use_mask=True, image_extnames=['IMAGE'], max_nsrc=2500)
-# pcat_test.real_dat_run(band0=0, band1=1, band2=2, nbands=3, dataname='GOODSN', tail_name='GOODSN_image_SMAP_PSW', float_fourier_comps=False,\
-# 						 use_mask=True, bias=None, mask_file=mask_file, nsamp=3000, weighted_residual=False,\
-# 						  float_templates=False, template_names=None, visual=True, show_input_maps=True, fmin=0.003, image_extnames=['IMAGE'],\
-# 						   max_nsrc=3000, movestar_sample_delay=0, color_sigs=color_prior_sigs, alph=0.0, n_frames=30, birth_death_sample_delay=0, merge_split_sample_delay=0)
-
-
-# pcat_test.iter_fourier_comps(dataname='gps_0', tail_name='gps_0_PSW', use_mask=True, bias=None, mask_file=mask_file, nsamps=[50], n_fc_terms=20, weighted_residual=False, float_templates=False, template_names=None, visual=True, show_input_maps=False, fmin_levels=[1.0], final_fmin=0.5, image_extnames=['IMAGE'], max_nsrc=200)
-# color_prior_sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5})
-# pcat_test.real_dat_run(nbands=1, dataname='gps_0', tail_name='gps_0_PSW', nsrc_init=0, float_fourier_comps=True,\
-# 						 use_mask=True, bias=None, mask_file=mask_file, nsamp=2000, n_fc_terms=20, weighted_residual=False,\
-# 						  float_templates=False, template_names=None, visual=False, show_input_maps=False, fmin=0.2, image_extnames=['IMAGE'],\
-# 						   max_nsrc=300, movestar_sample_delay=50, color_sigs=color_prior_sigs, n_frames=3, birth_death_sample_delay=50, merge_split_sample_delay=50, fc_prop_alpha=-1.)
-# pcat_test.artificial_star_test(n_src_perbin=20, nbins=15, nsamp=2000, residual_samples=200, visual=True,\
-# 								  dataname='gps_0',tail_name='gps_0_PSW', use_mask=True, mask_file=mask_file, \
-# 								  float_fourier_comps=True, n_fc_terms=10, n_frames=10, point_src_delay=10, nsrc_init=0, \
-# 								  frac_flux_thresh=0.5, pos_thresh=1., inject_fmax=0.4, max_nsrc=500, show_input_maps=True)
-
-# im_fpath = 'Data/spire/SMC_HERITAGE/cutouts/SMC_HERITAGE_cutsize200_199_PSW.fits'
-# im_fpath = 'Data/spire/LMC_HERITAGE/cutouts/LMC_HERITAGE_cutsize200_36_PSW.fits'
-
-# im_fpath = 'Data/spire/SMC_HERITAGE/cutouts/SMC_HERITAGE_cutsize200_162_PSW.fits'
-
-# load_timestr='20210105-042450'
-# load_timestr = '20210105-142743'
-# load_timestr = '20210105-162254'
-# load_timestr = '20210106-012646'
-# load_timestr = '20210106-230414'
-# load_timestr = '20210109-134459'
-# load_timestr = '20210109-050110'
-# load_timestr = '20210111-133739'
-# load_timestr = '20210114-054614'
-# load_timestr = '20210117-193600'
-# load_timestr = None
-
-fluxbins = np.logspace(np.log10(0.015), np.log10(1.0), 10)
-fluxbins_bright = np.logspace(np.log10(0.1), np.log10(3.0), 8)
-fluxbins_goodsn = np.logspace(np.log10(0.005), np.log10(0.5), 10)
-fluxbins_goodsn_deep = np.logspace(np.log10(0.002), np.log10(0.5), 12)
-
-# print('flux bins are :', fluxbins)
-# print('flux bins bright : ', fluxbins_bright)
-
-n_src_perbin = [100, 50, 50, 20, 20, 5, 3, 2, 2]
-n_src_perbin_brightdust = [100, 50, 20, 20, 5, 5, 5]
-n_src_perbin_goodsn = [100, 100, 50, 50, 10, 5, 5, 5, 5]
-n_src_perbin_goodsn_deep = [100, 100, 50, 50, 40, 30, 20, 2, 2, 2, 1]
-
-# inject_catalog_path = 'spire_results/20210114-054614/inject_catalog.npz'
-# inject_catalog_path = 'spire_results/'+load_timestr+'/inject_catalog.npz'
-
-# inject_catalog_path = 'spire_results/20210117-193600/inject_catalog.npz'
-# inject_catalog_path = None
-
-
-# n_src_perbin = 30
-
-
-# pcat_test.artificial_star_test(n_src_perbin=20, inject_fmin=0.015, inject_fmax=1.0, nbins=15, nsamp=200, residual_samples=40, visual=True,\
-# 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_168_PSW', im_fpath=im_fpath, use_mask=False, \
-# 								  float_fourier_comps=True, n_fc_terms=10, n_frames=10, point_src_delay=10, nsrc_init=0, \
-# 								  frac_flux_thresh=0.5, pos_thresh=1.0, max_nsrc=1000, load_timestr=load_timestr, show_input_maps=False, fmin=0.01)
-
-# pcat_test.artificial_star_test(n_src_perbin=n_src_perbin, fluxbins=fluxbins, nbins=None, nsamp=2000, residual_samples=200, visual=False,\
-# 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_168_PSW', im_fpath=im_fpath, use_mask=False, \
-# 								  float_fourier_comps=True, n_fc_terms=10, n_frames=10, point_src_delay=10, nsrc_init=0, \
-# 								  frac_flux_thresh=2.5, pos_thresh=0.0, max_nsrc=1500, load_timestr=load_timestr, show_input_maps=False, fmin=0.01)
-
-# pcat_test.artificial_star_test(n_src_perbin=n_src_perbin_goodsn_deep, fluxbins=fluxbins_goodsn_deep, nbins=None, nsamp=3000, residual_samples=200, visual=True,\
-# 								  dataname='GOODSN',tail_name='GOODSN_image_SMAP_PSW', use_mask=True, fc_amp_sig=0.0002, \
-# 								  float_fourier_comps=False, n_fc_terms=5, n_frames=10, point_src_delay=0, nsrc_init=0, \
-# 								  frac_flux_thresh=100., pos_thresh=1.0, max_nsrc=3000, mask_file=mask_file, inject_catalog_path=inject_catalog_path, load_timestr=load_timestr, show_input_maps=False, fmin=0.002)
-
-# multiband GOODS-N
-# pcat_test.artificial_star_test(band0=0, band1=1, band2=2, n_src_perbin=n_src_perbin_goodsn_deep, fluxbins=fluxbins_goodsn_deep, nbins=None, nsamp=3000, residual_samples=200, visual=True,\
-# 								  dataname='GOODSN',tail_name='GOODSN_image_SMAP_PSW', use_mask=True, fc_amp_sig=0.0002, \
-# 								  float_fourier_comps=False, n_fc_terms=5, n_frames=10, point_src_delay=0, nsrc_init=0, \
-# 								  frac_flux_thresh=100., pos_thresh=1.0, max_nsrc=3000, mask_file=mask_file, load_timestr=load_timestr, show_input_maps=False, fmin=0.002)
-# color_sigs = color_prior_sigs
-t = pcat_test.validate_astrometry(dataname='conley_sims_20200202', tail_name='rxj1347_PSW_sim0351', use_zero_point=False, correct_misaligned_shift=False, image_extnames=['SIG_PRE_LENS'], ngrid=20, return_validation_figs=True)
-
-# pcat_test.real_dat_run(nbands=1, band0=0, dataname='Conley_sims_zitrin', tail_name='rxj1347_PSW_sim0351', image_extnames=['SIG_PRE_LENS', 'NOISE'], nsrc_init=0, float_fourier_comps=False, \
-# 	use_mask=False, bias=None, nsamp=2000, weighted_residual=True, visual=True, show_input_maps=True, fmin=0.004, max_nsrc=1300, color_sigs=color_prior_sigs, \
-# 	n_frames=20)
-
-# pcat_test.real_dat_run(nbands=3, band0=0, band1=1, band2=2, dataname='Conley_sims_zitrin', tail_name='rxj1347_PSW_sim0351', image_extnames=['SIG_PRE_LENS', 'NOISE'], float_fourier_comps=False, \
-# 	use_mask=False, bias=None, nsamp=3000, weighted_residual=True, visual=False, show_input_maps=False, fmin=0.004, max_nsrc=1500, color_sigs=color_prior_sigs, \
-# 	n_frames=20, correct_misaligned_shift=True, residual_samples=200)
-# pcat_test.artificial_star_test(n_src_perbin=n_src_perbin, fluxbins=fluxbins, inject_catalog_path=inject_catalog_path, nbins=None, nsamp=3000, residual_samples=200, visual=True,\
-# 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_199_PSW', im_fpath=im_fpath, use_mask=False, \
-# 								  float_fourier_comps=True, n_fc_terms=15, n_frames=10, point_src_delay=10, nsrc_init=0, \
-# 								  frac_flux_thresh=2.5, bkg_moore_penrose_inv=False, pos_thresh=1.0, max_nsrc=2000, MP_order=10, ridge_fac=1., fc_amp_sig=0.0005, load_timestr=load_timestr, show_input_maps=False, fmin=0.01)
-
-# pcat_test.artificial_star_test(n_src_perbin=n_src_perbin_brightdust, fluxbins=fluxbins_bright, nbins=None, nsamp=200, residual_samples=40, visual=True,\
-# 								  dataname='SMC_HERITAGE/cutouts',tail_name='SMC_HERITAGE_cutsize200_162_PSW', im_fpath=im_fpath, use_mask=False, \
-# 								  float_fourier_comps=True, n_fc_terms=10, n_frames=10, point_src_delay=10, nsrc_init=0, \
-# 								  frac_flux_thresh=0.5, pos_thresh=1., max_nsrc=1500, load_timestr=load_timestr, show_input_maps=False, fmin=0.05)
-
-
-# ---------------------------- runs on SMC/LMC --------------------------
-# pcat_test.real_dat_run(nbands=1, dataname='SMC_HERITAGE/cutouts', tail_name='SMC_HERITAGE_cutsize200_168_PSW', im_fpath=im_fpath, image_extnames=['IMAGE'], err_fpath=None, nsrc_init=0, float_fourier_comps=True,\
-# 						 use_mask=False, bias=None, mask_file=mask_file, nsamp=200, n_fc_terms=10, weighted_residual=True,\
-# 						  float_templates=False, template_names=None, visual=False, show_input_maps=False, fmin=0.015, \
-# 						   max_nsrc=500, movestar_sample_delay=0, color_sigs=color_prior_sigs, n_frames=20, birth_death_sample_delay=0, merge_split_sample_delay=0,\
-# 						    fc_prop_alpha=-1., fc_amp_sig=0.002, MP_order=6, bkg_moore_penrose_inv=True)
-
-
-# pcat_test.real_dat_run(nbands=1, dataname='LMC_HERITAGE/cutouts', tail_name='LMC_HERITAGE_cutsize200_36_PSW', im_fpath=im_fpath, image_extnames=['IMAGE'], err_fpath=None, nsrc_init=0, float_fourier_comps=True,\
-# 						 use_mask=False, bias=None, mask_file=None, nsamp=3000, n_fc_terms=15, weighted_residual=True, residual_samples=300,\
-# 						  float_templates=False, template_names=None, visual=True, show_input_maps=False, fmin=0.01, \
-# 						   max_nsrc=1200, point_src_delay=0, color_sigs=color_prior_sigs, n_frames=20, \
-# 						    fc_amp_sig=0.0005, bkg_moore_penrose_inv=True, MP_order=15, ridge_fac=1., nregion=10)
-
-psf_fwhms_arcsec = [18, 24.9, 36.0]
-pixel_size_arcsec = [6, 10., 14.]
-psf_pix_fwhms = [psf_fwhms_arcsec[i]/pixel_size_arcsec[i] for i in range(len(pixel_size_arcsec))]
-print("psf pix fwhms are ", psf_pix_fwhms)
-# pcat_test.real_dat_run(nbands=3, band0=0, band1=1, band2=2, dataname='LMC_HERITAGE/cutouts', tail_name='test_lmc_PSW_100', image_extnames=['IMAGE'], err_fpath=None, nsrc_init=0, float_fourier_comps=True,\
-# 						 use_mask=False, bias=None, mask_file=None, psf_fwhms=psf_pix_fwhms, nsamp=3000, n_fc_terms=10, weighted_residual=True, residual_samples=300,\
-# 						  float_templates=False, template_names=None, visual=True, show_input_maps=True, fmin=0.01, \
-# 						   max_nsrc=1200, ridge_fac=1., bkg_moore_penrose_inv=False, point_src_delay=20, color_sigs=color_prior_sigs, n_frames=20, \
-# 						    fc_amp_sig=0.0005, nregion=5)
-
-# pcat_test.validate_astrometry(dataname='LMC_HERITAGE/cutouts', tail_name='test_lmc_PSW_100', ngrid=10, return_validation_figs=True)
-# figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0'+str(sim_idx), dataname='sims_12_2_20', ngrid=10, return_validation_figs=True)
-
-# --------- condensed catalog results ----------------
-# cond_cat_fpath = 'spire_results/20210111-133739/condensed_catalog_nsamp=100_prevcut=0.8_searchradius=0.75_maskhwhm=2.txt'
-# cond_cat_fpath = 'spire_results/20210114-054614/condensed_catalog_nsamp=100_prevcut=0.8_searchradius=0.75_maskhwhm=2.txt'
-# cond_cat_fpath = 'spire_results/20210117-193600/condensed_catalog_nsamp=100_prevcut=0.5_searchradius=0.75_maskhwhm=5.txt'
-# # cond_cat_fpath = None
-# result_plots(timestr='20210114-054614',cattype=None, burn_in_frac=0.7, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None, \
-# 			fourier_comp_plots=False, condensed_catalog_plots=True, condensed_catalog_fpath = cond_cat_fpath, generate_condensed_cat=False, \
-# 			n_condensed_samp=100, prevalence_cut=0.5, mask_hwhm=5, search_radius=0.75, matching_dist=0.75, residual_plots=False, flux_color_color_plots=True)
-
-# -----------------------------------------
-# result_plots(timestr='20210202-004937',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
-# result_plots(timestr='20201221-010751',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
-# result_plots(timestr='20201221-010006',cattype=None, burn_in_frac=0.75, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
-
-# # def run_pcat_dust_and_sz_test(sim_idx=200, inject_dust=False, show_input_maps=False, inject_sz_frac=1.0):
-
-
-# 	# ob = lion(band0=0, band1=1, band2=2, base_path=base_path, result_path=result_path, round_up_or_down='down', bolocam_mask=True, float_background=True, burn_in_frac=0.6, bkg_sig_fac=5.0, bkg_sample_delay=10, temp_sample_delay=20, \
-# 	# 		 cblas=True, openblas=False, visual=False, show_input_maps=show_input_maps, float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, tail_name='rxj1347_PSW_sim0'+str(sim_idx)+'_dust',\
-# 	# 		  dataname='sim_w_dust', bias=None, max_nsrc=1500, auto_resize=True, trueminf=0.005, nregion=5, weighted_residual=True,\
-# 	# 		   make_post_plots=True, nsamp=50, delta_cp_bool=True, use_mask=True, residual_samples=100, template_filename=t_filenames, inject_dust=inject_dust, inject_sz_frac=inject_sz_frac)
-# 	# ob.main()
-
-
-
-
-# ------------------------------- old code from artificial star test plots ------------------------------
-
-	# g = plt.figure(figsize=(9, 6))
-		# plt.title('Blank field test', fontsize=18)
-		# plt.title('GOODS N', fontsize=18)
-		# plt.title('HERITAGE Survey - SMC', fontsize=18)
-
-		# plt.axhline(1.0, linestyle='dashed', color='b')
-
-		# plt.axhline(0.0, linestyle='solid', color='grey', alpha=0.4, linewidth=3, zorder=-10)
-		# plt.errorbar(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
-		# 				 yerr=yerrs, color='k', c=prevalences[nonzero_ferridx], marker='.', fmt='.', capsize=2, alpha=0.2)
-		# plt.errorbar(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
-		# 				 yerr=yerrs, color='k', marker='.', markersize=80*prevalences[nonzero_ferridx], fmt='.', capsize=2, alpha=0.2)
-		# plt.errorbar(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
-		# 				 yerr=yerrs, color='k', marker='.',  fmt='none', capsize=2, alpha=0.4)
-		# # plt.scatter(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
-		# 				 c=prevalences[nonzero_ferridx], marker='.', s=80, label='PCAT x Truth catalog (GOODS-N)')
-		# plt.scatter(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
-						 # c=prevalences[nonzero_ferridx], alpha=0.7, marker='.', s=80, label='PCAT x Injected catalog (SMC)')
-		# plt.scatter(catalog_inject[nonzero_ferridx,2]*1e3, mean_frac_flux_error[nonzero_ferridx],\
-		# 				 s=160*prevalences[nonzero_ferridx], alpha=0.4, marker='.', color='k', label='PCAT x Injected catalog (SMC, 15th order FCs)')
-		# # cbar = plt.colorbar()
-		# cbar.set_label('Prevalence', fontsize=14)
-		# geom_mean = np.sqrt(fluxbins[1:]*fluxbins[:-1])
-		# xerrs = [[1e3*(geom_mean[f] - fluxbins[f]) for f in range(len(geom_mean))], [1e3*(fluxbins[f+1] - geom_mean[f]) for f in range(len(geom_mean))]]
-
-
-		# # plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
-		# # 				 yerr=[mean_frac_flux_error_binned-pct16_frac_flux_error_binned, pct84_frac_flux_error_binned-mean_frac_flux_error_binned], fmt='.', color='C3', \
-		# # 				 linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (GOODS-N) \n single band fit, averaged', markersize=15)
-
-		# yerr = [(mean_frac_flux_error_binned-pct16_frac_flux_error_binned)/np.sqrt(len(mean_frac_flux_error_binned)), (pct84_frac_flux_error_binned-mean_frac_flux_error_binned)/np.sqrt(len(mean_frac_flux_error_binned))]
-
-		# plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
-		# 				 yerr=yerr, fmt='.', color='C3', \
-		# 				 linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (GOODS-N) three-band fit \n mean, error on mean', markersize=15)
-		
-		# np.savez('goodsn_singleband_fluxbias_vs_flux.npz', mean_frac_flux_error_binned=mean_frac_flux_error_binned, yerr=yerr, geom_mean=geom_mean)
-
-		# np.savez('goodsn_multiband_fluxbias_vs_flux_nbands='+str(nbands)+'.npz', mean_frac_flux_error_binned=mean_frac_flux_error_binned, yerr=yerr, geom_mean=geom_mean)
-		
-		# plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
-						 # yerr=[mean_frac_flux_error_binned-pct16_frac_flux_error_binned, pct84_frac_flux_error_binned-mean_frac_flux_error_binned], fmt='.', color='C3', \
-						 # linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (SMC, 15th order FCs) \n single band fit, averaged', markersize=15)
-		
-		# heritage_pcat = np.load('spire_results/20210109-134459/fracflux_errs_dpos='+str(np.round(pos_thresh, 1))+'_heritage.npz')
-		# geom_mean = heritage_pcat['geom_mean']
-		# mean_frac_flux_error_binned = heritage_pcat['mean_frac_flux_error_binned']
-		# pct16_frac_flux_error_binned = heritage_pcat['pct16_frac_flux_error_binned']
-		# pct84_frac_flux_error_binned = heritage_pcat['pct84_frac_flux_error_binned']
-		# fluxbins = heritage_pcat['fluxbins']
-		# xerrs = [[1e3*(geom_mean[f] - fluxbins[f]) for f in range(len(geom_mean))], [1e3*(fluxbins[f+1] - geom_mean[f]) for f in range(len(geom_mean))]]
-
-
-		# plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
-		# 				 yerr=[mean_frac_flux_error_binned-pct16_frac_flux_error_binned, pct84_frac_flux_error_binned-mean_frac_flux_error_binned], fmt='.', color='k', \
-		# 				 linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (SMC, 10th order FCs) \n single band fit, averaged', markersize=15)
-
-
-		# np.savez('spire_results/'+load_timestr+'/fracflux_errs_dpos='+str(np.round(pos_thresh, 1))+'_heritage.npz', geom_mean=geom_mean, mean_frac_flux_error_binned=mean_frac_flux_error_binned, \
-		# 		pct16_frac_flux_error_binned=pct16_frac_flux_error_binned, pct84_frac_flux_error_binned=pct84_frac_flux_error_binned, fluxbins=fluxbins)
-
 
