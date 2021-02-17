@@ -1601,9 +1601,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			xmatch_roc = cross_match_roc(timestr=gdat.timestr, nsamp=gdat.n_condensed_samp)
 			xmatch_roc.load_chain(result_path+'/'+timestr+'/chain.npz')
 			xmatch_roc.load_gdat_params(gdat=gdat)
-			condensed_cat, seed_cat = xmatch_roc.condense_catalogs(prevalence_cut=gdat.prevalence_cut, save_cats=True, make_seed_bool=True, mask_hwhm=gdat.mask_hwhm, search_radius=gdat.search_radius)
+			condensed_cat, seed_cat, column_names = xmatch_roc.condense_catalogs(prevalence_cut=gdat.prevalence_cut, save_cats=True, make_seed_bool=True, \
+																				mask_hwhm=gdat.mask_hwhm, search_radius=gdat.search_radius)
 
-			np.savetxt(gdat.result_path+'/'+gdat.timestr+'/condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_prevcut='+str(gdat.prevalence_cut)+'_searchradius='+str(gdat.search_radius)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt', condensed_cat)
+			# np.savetxt(gdat.result_path+'/'+gdat.timestr+'/condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_prevcut='+str(gdat.prevalence_cut)+'_searchradius='+str(gdat.search_radius)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt', condensed_cat)
 			np.savetxt(gdat.result_path+'/'+gdat.timestr+'/raw_seed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_matching_dist='+str(gdat.matching_dist)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt', seed_cat)
 
 		else:
@@ -1907,8 +1908,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 		
 		pixel_sizes_nc = dict({0:6, 1:8, 2:12}) # arcseconds
 		ratio = pixel_sizes_nc[b]/pixel_sizes_nc[0]
-
-		
 
 
 		if condensed_catalog_plots:

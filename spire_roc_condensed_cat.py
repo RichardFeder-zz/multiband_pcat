@@ -66,7 +66,7 @@ def associate(a, mags_a, b, mags_b, dr, dmag, confs_b = None, sigfs_b = None, fr
             return goodmatch
 
 
-def clusterize_spire(seed_cat, cat_x, cat_y, cat_n, cat_fs, max_num_sources, nsamp, search_radius):
+def clusterize_spire(seed_cat, cat_x, cat_y, cat_n, cat_fs, max_num_sources, nsamp, search_radius, band_names=None):
 
 
     print("are there any nans in cat_x? ", np.isnan(cat_x).any())
@@ -209,14 +209,28 @@ def clusterize_spire(seed_cat, cat_x, cat_y, cat_n, cat_fs, max_num_sources, nsa
     classical_catalog[:,3] = err_y
     classical_catalog[:,4] = confidence
 
+    column_names = ['mean_x', 'err_x', 'mean_y', 'err_y', 'confidence']
+
     for b in xrange(nbands):
         classical_catalog[:,5+4*b] = mean_fs[b]
         classical_catalog[:,6+4*b] = err_fluxes[b]
         classical_catalog[:,7+4*b] = fluxes_hipct[b]
         classical_catalog[:,8+4*b] = fluxes_lopct[b]
+
+        if band_names is not None:
+            column_names.append('mean_f_'+band_names[b])
+            column_names.append('err_f_'+band_names[b])
+            column_names.append('hipct_f_'+band_names[b])
+            column_names.append('lopct_f_'+band_names[b])
+        else:
+            column_names.append('mean_f_'+str(b))
+            column_names.append('err_f_'+str(b))
+            column_names.append('hipct_f_'+str(b))
+            column_names.append('lopct_f_'+str(b))
         
 
-    return classical_catalog
+
+    return classical_catalog, column_names
 
         
 def get_completeness(test_x, test_y, test_mag, test_n, ref_x, ref_mag, ref_kd, dr=0.5, dmag=0.5, frac_flux_thresh=None):
@@ -732,7 +746,7 @@ class cross_match_roc():
 
 
     def condense_catalogs(self, make_seed_bool=True, seed_fpath=None, nsamp=None, iteration_number=2, matching_dist = None, search_radius = None, prevalence_cut=0.1, \
-                            show_figs = True, save_figs = True, save_cats = False, mask_hwhm = 5):
+                            show_figs = True, save_figs = True, save_cats = False, mask_hwhm = 5, band_names = None, catfiletype = 'npz', tail_name = None):
                  
         if matching_dist is not None:
             self.matching_dist = matching_dist
@@ -761,9 +775,7 @@ class cross_match_roc():
             np.savetxt(self.result_path+'/'+self.timestr+'/raw_seed_catalog_nsamp='+str(self.nsamp)+'_matching_dist='+str(self.matching_dist)+'_maskhwhm='+str(mask_hwhm)+'.txt', dat)
 
         if show_figs or save_figs:
-
             chist_plot = plot_confidence_hist(dat, self.nsamp, bins=50, show=show_figs, return_fig=True)
-
         if save_figs:
             chist_plot.savefig(self.result_path+'/'+self.timestr+'/confidence_histogram_base_cat.'+self.pdf_or_png)
 
@@ -780,8 +792,10 @@ class cross_match_roc():
         seed_cat[:,1] = y
         cat_len = x.size
 
-        condensed_cat = clusterize_spire(seed_cat, self.lion_cat['x'], self.lion_cat['y'], self.lion_cat['n'], lion_fs, self.gdat.max_nsrc, self.nsamp, self.search_radius)
+        # condensed_cat = clusterize_spire(seed_cat, self.lion_cat['x'], self.lion_cat['y'], self.lion_cat['n'], lion_fs, self.gdat.max_nsrc, self.nsamp, self.search_radius)
+        condensed_cat, column_names = clusterize_spire(seed_cat, self.lion_cat['x'], self.lion_cat['y'], self.lion_cat['n'], lion_fs, self.gdat.max_nsrc, self.nsamp, self.search_radius, band_names=None)
 
+        print('column names are ', column_names)
         condensed_x = condensed_cat[:,0]
         condensed_y = condensed_cat[:,1]
 
@@ -790,9 +804,16 @@ class cross_match_roc():
         print(np.amin(condensed_y), np.amax(condensed_y))
 
         if save_cats:
-            np.savetxt(self.result_path+'/'+self.timestr+'/condensed_catalog_nsamp='+str(self.nsamp)+'_prevcut='+str(prevalence_cut)+'_searchradius='+str(self.search_radius)+'_maskhwhm='+str(mask_hwhm)+'.txt', condensed_cat)
+            if catfiletype=='npz':
+                if tail_name is None:
+                    tail_name = 'condensed_catalog'
+                np.savez(self.result_path+'/'+self.timestr+'/'+tail_name+'.npz', column_names=column_names, condensed_catalog=condensed_cat, nsamp=self.nsamp,\
+                             prevalence_cut=prevalence_cut, search_radius=self.search_radius, mask_hwhm=mask_hwhm)
 
-        return condensed_cat, seed_cat
+            elif catfiletype=='txt':
+                np.savetxt(self.result_path+'/'+self.timestr+'/condensed_catalog_nsamp='+str(self.nsamp)+'_prevcut='+str(prevalence_cut)+'_searchradius='+str(self.search_radius)+'_maskhwhm='+str(mask_hwhm)+'.txt', condensed_cat)
+
+        return condensed_cat, seed_cat, column_names
 
 
 def plot_confidence_hist(dat, nsamp, bins=50, show=True, return_fig=True):
