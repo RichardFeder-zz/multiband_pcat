@@ -676,7 +676,8 @@ class pcat_test_suite():
 				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
 				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
 				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=50, initial_template_amplitude_dicts=None, \
-				      color_mus=None, color_sigs=None, panel_list=None, nregion=5, burn_in_frac=0.7, err_f_divfac=1., template_moveweight=80.):
+				      color_mus=None, color_sigs=None, panel_list=None, nregion=5, burn_in_frac=0.7, err_f_divfac=1., template_moveweight=80., \
+				      timestr_list_file=None):
 
 		''' Function for tests involving injecting SZ signals into mock data '''
 
@@ -689,7 +690,7 @@ class pcat_test_suite():
 			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
 			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=template_moveweight, \
 			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise, \
-			  color_mus=color_mus, color_sigs=color_sigs, panel_list=panel_list, err_f_divfac=err_f_divfac)
+			  color_mus=color_mus, color_sigs=color_sigs, panel_list=panel_list, err_f_divfac=err_f_divfac, timestr_list_file=timestr_list_file)
 
 		ob.main()
 
