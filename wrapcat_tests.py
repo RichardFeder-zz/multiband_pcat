@@ -84,7 +84,7 @@ class pcat_test_suite():
 
 	
 	def validate_astrometry(self, band0=0, band1=1, band2=2, tail_name='rxj1347_PSW_nr_1_ext', dataname='rxj1347_831', use_mask=False, nregion=5, auto_resize=True,\
-						ngrid=20, return_validation_figs=True, image_extnames=['IMAGE'], use_zero_point=False, correct_misaligned_shift=False):
+						ngrid=20, return_validation_figs=True, image_extnames=['IMAGE'], use_zero_point=False, correct_misaligned_shift=False, save=False):
 
 		''' 
 
@@ -132,6 +132,16 @@ class pcat_test_suite():
 
 		validation_figs = []
 
+		f = plt.figure(figsize=(6*ob.gdat.nbands, 5))
+		plt.subplot(1,ob.gdat.nbands,1)
+		plt.title('band 0')
+		plt.imshow(ob.data.data_array[0]-np.median(ob.data.data_array[0]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
+		cbar = plt.colorbar(fraction=0.046, pad=0.04)
+		cbar.set_label('[Jy/beam]', fontsize=14)
+		plt.scatter(xv, yv, marker='x', color='r')
+		plt.xlabel('x [pix]', fontsize=16)
+		plt.ylabel('y [pix]', fontsize=16)
+
 		for b in range(ob.gdat.nbands - 1):
 
 			xnew, ynew = ob.data.fast_astrom.transform_q(xv, yv, b)
@@ -146,44 +156,32 @@ class pcat_test_suite():
 			xv_rt, yv_rt = ob.data.fast_astrom.transform_q(xnew, ynew, ob.gdat.nbands-1+b)
 			xnew_wcs, ynew_wcs = ob.data.fast_astrom.obs_to_obs(0, b+1, xv, yv)
 
-			f = plt.figure(figsize=(12,5))
-			plt.subplot(1,2,1)
-			plt.title('band 0')
-			plt.imshow(ob.data.data_array[0]-np.median(ob.data.data_array[0]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
-			plt.colorbar()
-			plt.scatter(xv, yv, marker='x', color='r')
-			plt.subplot(1,2,2)
+			# f = plt.figure(figsize=(12,5))
+			# plt.subplot(1,2,1)
+			# plt.title('band 0')
+			# plt.imshow(ob.data.data_array[0]-np.median(ob.data.data_array[0]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
+			# plt.colorbar()
+			# plt.scatter(xv, yv, marker='x', color='r')
+			plt.subplot(1,ob.gdat.nbands,b+2)
 			plt.title('band '+str(b+1))
 			plt.imshow(ob.data.data_array[b+1]-np.median(ob.data.data_array[b+1]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
-			plt.colorbar()
-			plt.scatter(xnew, ynew, marker='x', color='r', label='Fast astrom')
-			plt.scatter(xnew_wcs, ynew_wcs, marker='x', color='g', label='WCS')
+			cbar = plt.colorbar(fraction=0.046, pad=0.04)
+			cbar.set_label('[Jy/beam]', fontsize=14)
+			plt.xlabel('x [pix]', fontsize=16)
+			plt.ylabel('y [pix]', fontsize=16)
+			plt.scatter(xnew, ynew, marker='+', color='g', label='Fast astrom')
+			plt.scatter(xnew_wcs, ynew_wcs, marker='x', color='r', label='WCS')
 			plt.legend()
-			plt.show()
+		plt.tight_layout()
+		plt.show()
 
-			validation_figs.append(f)
+		validation_figs.append(f)
+
+		if save:
+			f.savefig(self.base_path+'/Data/spire/'+dataname+'/astrometry_validation.pdf', bbox_inches='tight')
 
 		if return_validation_figs:
 			return validation_figs
-
-
-	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
-				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
-				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
-				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=50):
-
-		''' Function for tests involving injecting SZ signals into mock data '''
-
-		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
-
-		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=0.7, float_background=True, \
-			  bkg_sample_delay=0, temp_sample_delay=temp_sample_delay, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-			  float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
-			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=5, \
-			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=40., \
-			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise)
-
-		ob.main()
 
 
 	def artificial_star_test(self, n_src_perbin=10, inject_fmin=0.01, inject_fmax=0.2, nbins=20, fluxbins=None, frac_flux_thresh=2., pos_thresh=0.5,\
@@ -640,7 +638,8 @@ class pcat_test_suite():
 		bkg_sample_delay=0, birth_death_sample_delay=0, movestar_sample_delay=0, merge_split_sample_delay=0, \
 		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, fc_amp_sig=0.0001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
 		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False, \
-		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, nominal_nsrc = 1000):
+		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, nominal_nsrc = 1000, raw_counts=False, generate_condensed_catalog=False, \
+		err_f_divfac=1.):
 
 		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
@@ -666,20 +665,42 @@ class pcat_test_suite():
 	 				residual_samples=residual_samples, float_fourier_comps=float_fourier_comps, fc_rel_amps=fc_rel_amps,\
 	 				n_fourier_terms=n_fc_terms, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight,\
 	 				alph=alph, dfc_prob=1.0, nsrc_init=nsrc_init, mask_file=mask_file, birth_death_sample_delay=birth_death_sample_delay, movestar_sample_delay=movestar_sample_delay,\
-	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, raw_counts=False, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
+	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
 	 				 im_fpath=im_fpath, err_fpath=err_fpath, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
 	 				 correct_misaligned_shift=correct_misaligned_shift, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, panel_list=panel_list, \
-	 				 F_statistic_alph=F_statistic_alph, nominal_nsrc = 1000)
+	 				 F_statistic_alph=F_statistic_alph, nominal_nsrc = 1000, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac)
+
+		ob.main()
+
+	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
+				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
+				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
+				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=50, initial_template_amplitude_dicts=None, \
+				      color_mus=None, color_sigs=None, panel_list=None, nregion=5, burn_in_frac=0.7, err_f_divfac=1., template_moveweight=80.):
+
+		''' Function for tests involving injecting SZ signals into mock data '''
+
+		if initial_template_amplitude_dicts is None:
+			initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
+
+		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=burn_in_frac, float_background=True, \
+			  bkg_sample_delay=0, temp_sample_delay=temp_sample_delay, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
+			  float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
+			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
+			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=template_moveweight, \
+			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise, \
+			  color_mus=color_mus, color_sigs=color_sigs, panel_list=panel_list, err_f_divfac=err_f_divfac)
 
 		ob.main()
 
 
-	def iter_fourier_comps(self, n_fc_terms=10, fmin_levels=[0.05, 0.02, 0.01, 0.007], final_fmin=0.007, \
+	def iter_fourier_comps(self, n_fc_terms=10, fc_amp_sig=0.0005, fmin_levels=[0.05, 0.02, 0.01, 0.007], final_fmin=0.007, \
 							nsamps=[50, 100, 200, 500], final_nsamp=2000, \
 							template_names=['sze'], nlast_fc=5, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 							bias=[-0.004, -0.007, -0.008], max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, \
 							inject_sz_frac=0.0, residual_samples=200, external_sz_file=False, timestr_list_file=None, \
-							inject_diffuse_comp=False, nbands=3, mask_file=None, weighted_residual=False, diffuse_comp_path=None, float_templates=True, use_mask=True, image_extnames=['SIGNAL']):
+							inject_diffuse_comp=False, nbands=3, mask_file=None, weighted_residual=False, diffuse_comp_path=None, float_templates=True, use_mask=True, image_extnames=['SIGNAL'], \
+							n_frames_single=10, n_frames_joint=50, F_statistic_alph=False, nominal_nsrc = 700):
 
 
 		''' 
@@ -723,9 +744,10 @@ class pcat_test_suite():
 			template_filename=dict({'sze': self.sz_filename})
 		else:
 			template_filename = None
+
 		timestr = None
 
-		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
+		initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.002, 'L':0.025})})
 
 		init_fc = np.zeros(shape=(n_fc_terms, n_fc_terms, 4))
 
@@ -733,17 +755,22 @@ class pcat_test_suite():
 			if i==0:
 				print('initial fourier coefficients set to zero')
 				median_fc = init_fc
+				point_src_delay = 30
+			else:
+				point_src_delay = 0
+			
+			panel_list = ['data0', 'model0', 'residual0', 'fourier_bkg0', 'residual_zoom0', 'dNdS0']
 
 			# start with 250 micron image only
-			ob = lion(band0=0, base_path=self.base_path, result_path=self.result_path, round_up_or_down='down', bolocam_mask=False, \
+			ob = lion(band0=0, base_path=self.base_path, result_path=self.result_path, round_up_or_down='up', bolocam_mask=False, \
 						float_background=True, burn_in_frac=0.75, bkg_sample_delay=0, float_templates=float_templates, template_moveweight=0.,\
 		 				cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, init_template_amplitude_dicts=initial_template_amplitude_dicts,\
 		 				template_names=template_names, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=None, load_state_timestr=timestr, max_nsrc=max_nsrc,\
 		 				trueminf=fmin, nregion=5, make_post_plots=False, nsamp=nsamps[i], use_mask=use_mask,\
-		 				residual_samples=5, init_fourier_coeffs=median_fc, n_frames=3, float_fourier_comps=True, \
+		 				residual_samples=5, init_fourier_coeffs=median_fc, float_fourier_comps=True, \
 		 				n_fourier_terms=n_fc_terms, fc_sample_delay=0, fourier_comp_moveweight=200.,\
-		 				alph=alph, dfc_prob=1.0, nsrc_init=0, mask_file=mask_file, birth_death_sample_delay=50, movestar_sample_delay=50, merge_split_sample_delay=50, \
-		 				inject_sz_frac=1.0, raw_counts=True, weighted_residual=weighted_residual, image_extnames=image_extnames, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
+		 				alph=alph, dfc_prob=1.0, nsrc_init=0, mask_file=mask_file, point_src_delay=point_src_delay, \
+		 				inject_sz_frac=0.0, raw_counts=True,nominal_nsrc = nominal_nsrc, F_statistic_alph=F_statistic_alph, fc_amp_sig=fc_amp_sig,n_frames=n_frames_single, panel_list=panel_list, weighted_residual=weighted_residual, image_extnames=image_extnames, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path)
 
 			ob.main()
 
@@ -761,7 +788,9 @@ class pcat_test_suite():
 		dust_rel_SED = [self.dust_I_lams[self.band_dict[i]]/self.dust_I_lams[self.band_dict[0]] for i in range(nbands)]
 		fc_rel_amps = [dust_rel_SED[i]*self.flux_density_conversion_dict[self.band_dict[i]]/self.flux_density_conversion_dict[self.band_dict[0]] for i in range(nbands)]
 
-		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, round_up_or_down='down', \
+		panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
+
+		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, round_up_or_down='up', \
 					bolocam_mask=False, float_background=True, burn_in_frac=0.75, bkg_sample_delay=0,\
 					cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps,\
 					float_templates=float_templates, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
@@ -769,9 +798,9 @@ class pcat_test_suite():
 					init_fourier_coeffs=median_fc, template_filename=template_filename, trueminf=final_fmin, nregion=5, \
 				    make_post_plots=False, nsamp=final_nsamp, use_mask=use_mask, residual_samples=residual_samples, \
 				    float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0, \
-				    fourier_comp_moveweight=0., movestar_sample_delay=0, merge_split_sample_delay=0, birth_death_sample_delay=0,\
-				    alph=alph, dfc_prob=0.0, fc_rel_amps=fc_rel_amps, inject_sz_frac=1.0, timestr_list_file=timestr_list_file, \
-				     inject_diffuse_comp=inject_diffuse_comp, mask_file=mask_file, image_extnames=image_extnames, diffuse_comp_path=diffuse_comp_path, bias=[last_bkg_sample_250, 0.003, 0.003], load_state_timestr=timestr)
+				    fourier_comp_moveweight=0., point_src_delay=0, temp_sample_delay=20, \
+				    alph=alph, dfc_prob=0.0, fc_rel_amps=fc_rel_amps, inject_sz_frac=inject_sz_frac, timestr_list_file=timestr_list_file, \
+				     inject_diffuse_comp=inject_diffuse_comp,F_statistic_alph=F_statistic_alph, nominal_nsrc = nominal_nsrc, n_frames=n_frames_joint, panel_list=panel_list, mask_file=mask_file, image_extnames=image_extnames, diffuse_comp_path=diffuse_comp_path, bias=[last_bkg_sample_250, 0.003, 0.003], load_state_timestr=timestr)
 
 		ob.main()
 

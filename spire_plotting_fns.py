@@ -89,6 +89,61 @@ def compute_degradation_fac(condensed_cat, err, flux_err_idx, smooth_fac=5, xidx
 	
 	return flux_deg_fac
 
+def condensed_catalog_overlaid_data(images, all_xs, all_ys, all_fs=None, bands=None, show=False, return_fig=True, unit='Jy/beam', plot_src_mask=None, flux_cut_idx=0, flux_cut=None, \
+	red_cut = False, red_color_idx_order = [0, 1, 2]):
+	
+	nbands = len(all_xs)
+	print('NBANDS is .... ', nbands)
+	print('bands are... ', bands)
+
+	f = plt.figure(figsize=(5.*nbands, 5))
+
+	if red_cut:
+		print('RED CUT HAPPENING BABY')
+		red_src_mask = (all_fs[red_color_idx_order[0]]/all_fs[red_color_idx_order[1]] > 1.)*(all_fs[red_color_idx_order[1]]/all_fs[red_color_idx_order[2]] > 1.)
+
+		print(red_src_mask)
+
+
+	elif flux_cut is not None:
+		print('FLUX CUT IS NOT NONE')
+		print(all_fs[flux_cut_idx])
+		plot_src_mask = (all_fs[flux_cut_idx] > flux_cut)
+		print(plot_src_mask)
+		print(np.sum(plot_src_mask))
+
+	for b in range(nbands):
+		print('b == ', b)
+		plt.subplot(1, nbands, 1+b)
+		if bands is not None:
+			plt.title(bands[b], fontsize=20)
+		plt.imshow(images[b], vmin=np.percentile(images[b], 5), vmax=np.percentile(images[b], 95), cmap='Greys', origin='lower')
+		cbar = plt.colorbar(fraction=0.046, pad=0.04)
+		cbar.set_label(unit, fontsize=14)
+		plt.xlim(0, images[b].shape[0])
+		plt.ylim(0, images[b].shape[1])
+		plt.xlabel('x [pix]', fontsize=16)
+		plt.ylabel('y [pix]', fontsize=16)
+
+		sizes = None
+		if all_fs is not None:
+			sizes = 1.5e3*all_fs[b]
+
+		if red_cut:
+			plt.scatter(all_xs[b][red_src_mask], all_ys[b][red_src_mask], s=sizes[red_src_mask], marker='x', color='r')
+
+		elif plot_src_mask is not None:
+			plt.scatter(all_xs[b][plot_src_mask], all_ys[b][plot_src_mask], s=sizes[plot_src_mask], marker='x', color='r')
+		else:
+			plt.scatter(all_xs[b], all_ys[b], s=sizes, marker='x', color='r')
+
+	plt.tight_layout()
+	if show:
+		plt.show()
+
+	if return_fig:
+		return f
+
 def plot_atcr(listsamp, title):
 
 	numbsamp = listsamp.shape[0]
@@ -112,6 +167,7 @@ def plot_atcr(listsamp, title):
 	plt.tight_layout()
 
 	return figr
+
 
 
 def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', 'residual0','residual1','residual2','residual2zoom'], \
@@ -166,7 +222,6 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.title('Data (band '+str(band_idx)+')')
 				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
 				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
-
 
 		elif 'model' in panels[i]:
 
@@ -250,7 +305,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 		elif 'dNdS' in panels[i]:
 
-			if obj.n > 0:
+			if obj.n > 1:
 				logSv, dSz, dNdS = compute_dNdS(obj.trueminf, obj.stars, obj.n, _F=2+band_idx)
 
 				if obj.gdat.raw_counts:
@@ -269,7 +324,8 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.yscale('log')
 				plt.legend()
 				plt.xlabel('log($S_{\\nu}$) (mJy)')
-				plt.xlim(np.log10(obj.trueminf)+3.-0.5, 2.5)
+				if not obj.gdat.raw_counts:
+					plt.xlim(np.log10(obj.trueminf)+5.-0.5, 2.5)
 
 
 	if frame_dir_path is not None:
@@ -557,8 +613,6 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 
 	if ref_img is not None:
 		f = plt.figure(figsize=(15, 5))
-		# if title:
-			# plt.suptitle('Best fit Fourier component model', y=1.02)
 
 		plt.subplot(1,3,1)
 		plt.title('Data', fontsize=14)
@@ -573,14 +627,8 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 		plt.subplot(1,3,3)
 		plt.title('Data - median background model', fontsize=14)
 		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 99)/convert_to_MJy_sr_fac)
-		# plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img-mean_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img-mean_fc_temp, 95)/convert_to_MJy_sr_fac)
 		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
 		cb.set_label(xlabel_unit)
-		# plt.subplot(2,2,4)
-		# plt.title('Std. dev. of background model')
-		# plt.imshow(std_fc_temp/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_fc_temp, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(std_fc_temp, 95)/convert_to_MJy_sr_fac)
-		# cb = plt.colorbar(orientation='horizontal', pad=0.04, fraction=0.046)
-		# cb.set_label(xlabel_unit, fontsize='small')
 
 	else:
 
@@ -673,9 +721,14 @@ def plot_flux_vs_fluxerr(fluxes, flux_errs, show=False, alpha=0.1, snr_levels = 
 	return f
 
 
-
 def plot_degradation_factor_vs_flux(fluxes, deg_fac, show=False, deg_fac_mode='Flux', alpha=0.1, xlim=[1, 1e3], ylim=[0.5, 60]):
 
+	'''
+
+	alpha : float, optional
+		scatter point transparency variable. Default is 0.1
+
+	'''
 	f = plt.figure()
 	plt.title(deg_fac_mode+' degradation factor', fontsize=16)
 	plt.scatter(fluxes, deg_fac, alpha=alpha, color='k', label='Condensed catalog')
@@ -696,8 +749,6 @@ def plot_degradation_factor_vs_flux(fluxes, deg_fac, show=False, deg_fac_mode='F
 		plt.show()
 
 	return f
-
-
 
 def plot_fourier_coeffs_covariance_matrix(fourier_coeffs, show=False):
 
@@ -774,7 +825,6 @@ def plot_fourier_coeffs_sample_chains(fourier_coeffs, show=False):
 	return f
 
 
-
 def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
 
 	n_terms = fourier_coeffs.shape[1]
@@ -815,12 +865,6 @@ def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
 		plt.show()
 
 	return f
-
-# TODO -- this will show whether the posteriors are converged on the coefficients
-# def plot_fourier_coeff_posteriors(fourier_coeffs):
-# 	f = plt.figure()
-
-# 	return f
 
 
 def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None):
@@ -895,14 +939,11 @@ def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=
 		plt.title('Posterior Flux Density Distribution - ' +str(band))
 
 	plt.errorbar(logSv+3, mean_number_cts, yerr=np.array([np.abs(mean_number_cts-lower), np.abs(upper - mean_number_cts)]),fmt='.', label='Posterior')
-	# plt.xscale('log')
 	plt.legend()
 	plt.yscale('log', nonposy='clip')
 
 	plt.xlabel('$S_{\\nu}$ - ' + str(band) + ' [mJy]')
 	plt.ylim(5e-1, 5e2)
-	# plt.ylim(1.8, 5)
-	# plt.xlim(0.5, 300)
 
 	if show:
 		plt.show()
@@ -910,7 +951,8 @@ def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=
 	return f
 
 
-def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, nsamp=None, band='250 micron', title=True, show=False):
+def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, nsamp=None, band='250 micron', title=True, show=False, base_path='', \
+	xlim=[0.5, 300], ylim=[1.8, 5], lablefontsize=16):
 
 	mean_number_cts = np.median(lit_number_counts, axis=0)
 	lower = np.percentile(lit_number_counts, 16, axis=0)
@@ -928,26 +970,23 @@ def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, nsamp
 
 	import pandas as pd
 	
-	ncounts_bethermin = pd.read_csv('number_counts_spire/Bethermin_et_al_'+pl_key[band]+'.csv', header=None)
+	ncounts_bethermin = pd.read_csv(base_path+'number_counts_spire/Bethermin_et_al_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_bethermin[0]), np.array(ncounts_bethermin[1]), marker='.', markersize=10, label='Bethermin et al. (2012a)', color='cyan')
 
-	ncounts_oliver = pd.read_csv('number_counts_spire/Oliver_et_al_'+pl_key[band]+'.csv', header=None)
+	ncounts_oliver = pd.read_csv(base_path+'number_counts_spire/Oliver_et_al_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_oliver[0]), np.array(ncounts_oliver[1]), marker='3', markersize=10, label='Oliver et al. (2010)', color='b')
 
-	ncounts_Glenn = pd.read_csv('number_counts_spire/Glenn_et_al_'+pl_key[band]+'.csv', header=None)
+	ncounts_Glenn = pd.read_csv(base_path+'number_counts_spire/Glenn_et_al_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_Glenn[0]), np.array(ncounts_Glenn[1]), marker='+', markersize=10, label='Glenn et al. (2010)', color='limegreen')
 
-	ncounts_SIDES_srcextract = pd.read_csv('number_counts_spire/SIDES_srcextract_'+pl_key[band]+'.csv', header=None)
+	ncounts_SIDES_srcextract = pd.read_csv(base_path+'number_counts_spire/SIDES_srcextract_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_SIDES_srcextract[0]), np.array(ncounts_SIDES_srcextract[1]), marker='^', markersize=10, label='SIDES Source Extraction (2017)', color='r')
 
-	# if pl_key[band]=='PSW':
-	ncounts_XIDp_srcextract = pd.read_csv('number_counts_spire/Wang_2019_XIDplus_'+pl_key[band]+'.csv', header=None)
+	ncounts_XIDp_srcextract = pd.read_csv(base_path+'number_counts_spire/Wang_2019_XIDplus_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_XIDp_srcextract[0]), np.array(ncounts_XIDp_srcextract[1]), marker='4', markersize=10, label='XID+ (Wang et al. 2019)', color='y')
 
-	ncounts_SIDES_model = pd.read_csv('number_counts_spire/SIDES_'+pl_key[band]+'.csv', header=None)
+	ncounts_SIDES_model = pd.read_csv(base_path+'number_counts_spire/SIDES_'+pl_key[band]+'.csv', header=None)
 	plt.plot(np.array(ncounts_SIDES_model[0]), np.array(ncounts_SIDES_model[1]), marker='o', markersize=5, label='SIDES empirical model', color='royalblue')
-
-
 
 	# plt.text(0.7, 4.6, 'PRELIMINARY', fontsize=20)
 
@@ -959,20 +998,12 @@ def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, nsamp
 		yerrs /= np.sqrt(nsamp)
 		print('yerrs standard err is ', yerrs)
 	plt.errorbar(10**(logSv+3), np.log10(mean_number_cts), yerr=yerrs, marker='x', markersize=10, capsize=5, label='PCAT posterior $\\mathcal{P}(S_{\\nu}|D)$ (uncorrected)', color='k', linewidth=2)
-
-	# plt.yscale('log')
 	plt.legend()
-	plt.xlabel('$S_{\\nu}$ [mJy]', fontsize=16)
-	plt.ylabel('log dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)', fontsize=16)
-	# plt.ylim(1e-1, 1e5)
-	# plt.xlim(np.log10(trueminf)+3.-0.5-1.0, 2.5)
-
-
-	plt.ylim(1.8, 5)
-	plt.xlim(0.5, 300)
+	plt.xlabel('$S_{\\nu}$ [mJy]', fontsize=labelfontsize)
+	plt.ylabel('log dN/dS.$S^{2.5}$ ($Jy^{1.5}/sr$)', fontsize=labelfontsize)
+	plt.ylim(ylim)
+	plt.xlim(xlim)
 	plt.xscale('log')
-
-
 	plt.tight_layout()
 
 	if show:
@@ -1003,10 +1034,6 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 
 	colormask = (colors < colormax)
 
-	print('lennanmask:', len(nanmask))
-	print('zeromask:', zeromask)
-
-	print('sums are ', np.sum(nanmask), np.sum(zeromask), np.sum(colormask))
 
 	f = plt.figure()
 	if title:
@@ -1014,14 +1041,9 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 
 	if flux_sizes is not None:
 		pt_sizes = (2e2*flux_sizes[nanmask*zeromask*colormask])**2
-		print('pt sizes heere is ', pt_sizes)
 		c = np.log10(flux_sizes[nanmask*zeromask*colormask])
 
-		print('minimum c is ', np.min(flux_sizes[nanmask*zeromask*colormask]))
-		# c = flux_sizes[nanmask*zeromask*colormask]
-
 		alpha=0.1
-
 		ylims = [0, 3.0]
 		xlims = [0, 3.0]
 
@@ -1031,20 +1053,12 @@ def plot_flux_color_posterior(fsrcs, colors, band_strs, title='Posterior Flux-de
 		alpha=0.01
 
 
-	# bright_src_mask = (flux_sizes > 0.05)
-	# not_bright_src_mask = ~bright_src_mask
-
 	if flux_sizes is not None:
-		# plt.scatter(colors[nanmask*zeromask*colormask*not_bright_src_mask], fsrcs[nanmask*zeromask*colormask*not_bright_src_mask], alpha=alpha, c=np.log10(flux_sizes[nanmask*zeromask*colormask*not_bright_src_mask]), s=(2e2*flux_sizes[nanmask*zeromask*colormask*not_bright_src_mask])**2, marker='+', label='PCAT ($F_{250} > 5$ mJy')
-		# plt.scatter(colors[nanmask*zeromask*colormask*bright_src_mask], fsrcs[nanmask*zeromask*colormask*bright_src_mask], alpha=0.5, c=np.log10(flux_sizes[nanmask*zeromask*colormask*bright_src_mask]), s=(2e2*flux_sizes[nanmask*zeromask*colormask*bright_src_mask])**2, marker='+')
 		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, s=pt_sizes, marker='.', label='PCAT ($F_{250} > 5$ mJy)')
-
 	else:
 		plt.scatter(colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=alpha, c=c, cmap='viridis_r', s=pt_sizes, marker='+', label='PCAT ($F_{250} > 5$ mJy)')
 
-
 	if flux_sizes is not None:
-
 		plt.scatter(0.*colors[nanmask*zeromask*colormask], fsrcs[nanmask*zeromask*colormask], alpha=1.0, c=c, s=pt_sizes, marker='+')
 
 		cbar = plt.colorbar()
@@ -1144,8 +1158,6 @@ def plot_residual_1pt_function(resid, mode='median', band='S', noise_model=None,
 	else:
 		density=False
 
-
-
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
 		xlabel_unit = '[Jy/beam]'
@@ -1187,11 +1199,41 @@ def plot_residual_1pt_function(resid, mode='median', band='S', noise_model=None,
 	return f
 
 
-def plot_chi_squared(chi2, sample_number, band='S', show=False):
+def plot_multiband_chi_squared(chi2_list, sample_number, band_list, show=False, ndof_list=None):
+
+	burn_in = sample_number[0]
+
+	f = plt.figure()
+
+	for b, band in enumerate(band_list):
+		if ndof_list is not None:
+			red_chi2= np.array(chi2_list[b]).astype(np.float32)/np.array(ndof_list[b]).astype(np.float32)
+			plt.plot(sample_number, red_chi2[burn_in:], label=band_list[b])
+		else:	
+			plt.plot(sample_number, chi2_list[b][burn_in:], label=band_list[b])
+
+	plt.xlabel('Sample')
+	if ndof_list is not None:
+		plt.ylabel('Reduced chi-squared')
+	else:
+		plt.ylabel('Chi-squared')
+
+	plt.legend()
+
+	if show:
+		plt.show()
+
+	return f
+
+def plot_chi_squared(chi2, sample_number, band='S', show=False, ndof=None):
 
 	burn_in = sample_number[0]
 	f = plt.figure()
-	plt.plot(sample_number, chi2[burn_in:], label=band)
+	if ndof is not None:
+		plt.plot(sample_number, chi2[burn_in:]/ndof, label=band)
+	else:
+		plt.plot(sample_number, chi2[burn_in:], label=band)
+
 	plt.axhline(np.min(chi2[burn_in:]), linestyle='dashed',alpha=0.5, label=str(np.min(chi2[burn_in:]))+' (' + str(band) + ')')
 	plt.xlabel('Sample')
 	plt.ylabel('Chi-Squared')
@@ -1201,7 +1243,6 @@ def plot_chi_squared(chi2, sample_number, band='S', show=False):
 		plt.show()
 
 	return f
-
 
 def plot_comp_resources(timestats, nsamp, labels=['Proposal', 'Likelihood', 'Implement'], show=False):
 	time_array = np.zeros(3, dtype=np.float32)
@@ -1227,16 +1268,12 @@ def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birt
 		if bad_idxs is not None:
 			if x in bad_idxs:
 				continue
-		print(accept_stats[0,x])
 		accept_stats[:,x][np.isnan(accept_stats[:,x])] = 0.
 
-	# if smooth_fac is not None:
-		# bkg_samples = np.convolve(bkg_samples, np.ones((smooth_fac,))/smooth_fac, mode='valid')
 		if smooth_fac is not None:
 			accept_stat_chain = np.convolve(accept_stats[:,x], np.ones((smooth_fac,))/smooth_fac, mode='valid')
 		else:
 			accept_stat_chain = accept_stats[:,x]
-		# plt.plot(samp_range, accept_stats[:,x], label=proposal_types[x])
 
 		plt.plot(np.arange(len(accept_stat_chain)), accept_stat_chain, label=proposal_types[x])
 	plt.legend()
@@ -1250,14 +1287,11 @@ def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birt
 def plot_fluxbias_vs_flux(mean_frac_flux_error_binned, pct16_frac_flux_error_binned, pct84_frac_flux_error_binned, fluxbins,\
 						 band=0, nsrc_perfbin=None, xlim = [2, 700], ylim=[-1.5, 2.5], title=None, titlefontsize=18, verbose=True, load_jank_txts=True, fractional_bias=False):
 
-
-
 	g = plt.figure(figsize=(9, 6))
 	if title is not None:
 		plt.title(title, fontsize=titlefontsize)
 
 	plt.axhline(0.0, linestyle='solid', color='grey', alpha=0.4, linewidth=1.5, zorder=-10)
-
 
 	geom_mean = np.sqrt(fluxbins[1:]*fluxbins[:-1])
 	xerrs = [[1e3*(geom_mean[f] - fluxbins[f]) for f in range(len(geom_mean))], [1e3*(fluxbins[f+1] - geom_mean[f]) for f in range(len(geom_mean))]]
@@ -1269,15 +1303,12 @@ def plot_fluxbias_vs_flux(mean_frac_flux_error_binned, pct16_frac_flux_error_bin
 		print('sqrt nsrc perfbin :', sqrt_nsrc_perfbin)
 	yerr = [(mean_frac_flux_error_binned-pct16_frac_flux_error_binned)/sqrt_nsrc_perfbin, (pct84_frac_flux_error_binned-mean_frac_flux_error_binned)/sqrt_nsrc_perfbin]
 
-
 	plt.errorbar(geom_mean*1e3, mean_frac_flux_error_binned, xerr=xerrs, \
 				 yerr=yerr, fmt='.', color='C3', \
 				 linewidth=3, capsize=5, alpha=1., capthick=2, label='PCAT (GOODS-N) three-band fit \n mean, error on mean', markersize=15)
 
-
 	plt.fill_between(geom_mean*1e3, pct16_frac_flux_error_binned, pct84_frac_flux_error_binned, color='C3', \
 				 alpha=0.3, label='PCAT (GOODS-N) three-band fit \n 1$\\sigma$ scatter')
-
 
 	lamstrs = ['250', '350', '500']
 
@@ -1327,18 +1358,14 @@ def plot_fluxbias_vs_flux(mean_frac_flux_error_binned, pct16_frac_flux_error_bin
 	plt.xscale('log')
 	plt.ylim(ylim)
 	plt.xlim(xlim)
-
 	plt.tight_layout()
-
 	plt.show()
 
-
 	return g, mean_frac_flux_error_binned, yerr, geom_mean
-	# g.savefig(filepath+'/fluxerr_vs_fluxdensity_dx='+str(pos_thresh)+'_dS-S='+str(frac_flux_thresh)+'_mindist.pdf', bbox_inches='tight')
-
 
 def plot_completeness_vs_flux(pos_thresh, frac_flux_thresh, fluxbins, completeness_vs_flux, cvf_stderr, image=None, catalog_inject=None, xstack=None, ystack=None, fstack=None, multiband=True, band=None, nbands=3, \
-								title=None, titlefontsize=16, maxp=95, minp=5, colorbar=True, cbar_label='MJy/sr', show=True):
+								title=None, titlefontsize=16, maxp=95, minp=5, colorbar=True, cbar_label='MJy/sr', show=True, \
+								xlim=[2, 1e3], ylim=[-0.05, 1.05], labelfontsize=14):
 
 	if image is not None:
 		f = plt.figure(figsize=(10, 5.5))
@@ -1362,7 +1389,6 @@ def plot_completeness_vs_flux(pos_thresh, frac_flux_thresh, fluxbins, completene
 			plt.scatter(xstack, ystack, marker='x', color='r', s=5e2*fstack, alpha=0.05)
 			plt.scatter([0], [0], marker='x', color='r', label='PCAT')
 
-
 		plt.legend(loc=1)
 		plt.xlim(0, image.shape[0]-5)
 		plt.ylim(0, image.shape[0]-5)
@@ -1383,21 +1409,17 @@ def plot_completeness_vs_flux(pos_thresh, frac_flux_thresh, fluxbins, completene
 			plt.errorbar(1e3*np.sqrt(fluxbins[:-1]*fluxbins[1:]), completeness_vs_flux[b], yerr=cvf_stderr[b], color='C'+str(b), marker='x', capsize=5, label='PCAT ($\\lambda = $'+lamstrs[b]+'$\\mu m$)')
 
 
-
-	plt.plot([10, 20, 30, 40, 50, 60, 200, 500], [0.14, 0.3, 0.67, 0.91,0.99, 0.995, 1.0, 1.0], marker='.', markersize=10, label='SPIRE PSC (COSMOS) \n250 $\\mu m$', color='k')
-	plt.plot([10, 20, 30, 40, 50, 60, 200, 500], [0.25, 0.5, 0.81, 0.95, 0.99, 0.995, 1.0, 1.0], marker='.', markersize=10, label='350 $\\mu m$', color='k', linestyle='dashdot')
-	plt.plot([10, 20, 30, 40, 50, 60, 200, 500], [0.15, 0.35, 0.66, 0.87, 0.96, 0.99, 1.0, 1.0], marker='.', markersize=10, label='500 $\\mu m$', color='k', linestyle='dashed')
-	
-
+	psc_fluxes = [10, 20, 30, 40, 50, 60, 200, 500]
+	plt.plot(psc_fluxes, [0.14, 0.3, 0.67, 0.91,0.99, 0.995, 1.0, 1.0], marker='.', markersize=10, label='SPIRE PSC (COSMOS) \n250 $\\mu m$', color='k')
+	plt.plot(psc_fluxes, [0.25, 0.5, 0.81, 0.95, 0.99, 0.995, 1.0, 1.0], marker='.', markersize=10, label='350 $\\mu m$', color='k', linestyle='dashdot')
+	plt.plot(psc_fluxes, [0.15, 0.35, 0.66, 0.87, 0.96, 0.99, 1.0, 1.0], marker='.', markersize=10, label='500 $\\mu m$', color='k', linestyle='dashed')
 
 	plt.xscale('log')
-	plt.xlabel('$S$ [mJy]', fontsize=14)
-	# plt.xlabel('$S_{250}$ [mJy]', fontsize=14)
-	plt.ylabel('Completeness', fontsize=14)
-	plt.xlim(2, 1e3)
-	# plt.xlim(15, 1e3)
+	plt.xlabel('$S$ [mJy]', fontsize=labelfontsize)
+	plt.ylabel('Completeness', fontsize=labelfontsize)
 	plt.legend()
-	plt.ylim(-0.05, 1.05)
+	plt.xlim(xlim)
+	plt.ylim(ylim)
 	plt.tight_layout()
 
 	if show:
@@ -1545,18 +1567,22 @@ def grab_atcr(timestr, paramstr='template_amplitudes', band=0, result_dir=None, 
 	if return_fig:
 		return f
 
-
-
 def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, \
 				plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4, dpi=150, flux_density_unit='MJy/sr', \
 				accept_fraction_plots=True, chi2_plots=True, dc_background_plots=True, fourier_comp_plots=True, \
 				template_plots=True, flux_dist_plots=True, flux_color_plots=False, flux_color_color_plots=False, \
 				comp_resources_plot=True, source_number_plots=True, residual_plots=True, condensed_catalog_plots=False, condensed_catalog_fpath=None, generate_condensed_cat=False, \
-				n_condensed_samp=None, prevalence_cut=None, mask_hwhm=None, search_radius=None, matching_dist=None, truth_catalog=None):
+				n_condensed_samp=None, prevalence_cut=None, mask_hwhm=None, search_radius=None, matching_dist=None, truth_catalog=None, \
+				title_band_dict=None, temp_mock_amps_dict=None, lam_dict=None, pixel_sizes=None):
 
-	
-	title_band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
-	lam_dict = dict({0:250, 1:350, 2:500})
+	if title_band_dict is None:
+		title_band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+	if temp_mock_amps_dict is None:
+		temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912}) # MJy/sr
+	if lam_dict is None:
+		lam_dict = dict({0:250, 1:350, 2:500}) # microns
+	if pixel_sizes is None:
+		pixel_sizes = dict({'S':6, 'M':8, 'L':12}) # arcseconds
 	
 	if gdat is None:
 		gdat, filepath, result_path = load_param_dict(timestr)
@@ -1599,7 +1625,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			print('mask_hwhm = '+str(mask_hwhm))
 
 			xmatch_roc = cross_match_roc(timestr=gdat.timestr, nsamp=gdat.n_condensed_samp)
-			xmatch_roc.load_chain(result_path+'/'+timestr+'/chain.npz')
+			xmatch_roc.load_chain(gdat.result_path+'/'+gdat.timestr+'/chain.npz')
 			xmatch_roc.load_gdat_params(gdat=gdat)
 			condensed_cat, seed_cat, column_names = xmatch_roc.condense_catalogs(prevalence_cut=gdat.prevalence_cut, save_cats=True, make_seed_bool=True, \
 																				mask_hwhm=gdat.mask_hwhm, search_radius=gdat.search_radius)
@@ -1609,15 +1635,21 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 		else:
 			if condensed_catalog_fpath is None:
-				condensed_catalog_fpath = gdat.result_path+'/'+gdat.timestr+'/condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_prevcut='+str(gdat.prevalence_cut)+'_searchradius='+str(gdat.search_radius)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt'
+				
+				tail_name = 'condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_prevcut='+str(gdat.prevalence_cut)+'_searchradius='+str(gdat.search_radius)+'_maskhwhm='+str(gdat.mask_hwhm)
+				condensed_catalog_fpath = gdat.result_path+'/'+gdat.timestr+'/'+tail_name+'.npz'
+				
+				# condensed_catalog_fpath = gdat.result_path+'/'+gdat.timestr+'/condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_prevcut='+str(gdat.prevalence_cut)+'_searchradius='+str(gdat.search_radius)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt'
 
-			condensed_cat = np.loadtxt(condensed_catalog_fpath)
+			print('loading condensed catalog from ', condensed_catalog_fpath)
+			condensed_cat = np.load(condensed_catalog_fpath)['condensed_catalog']
+			# condensed_cat = np.loadtxt(condensed_catalog_fpath)
 
 			print('condensed_cat has shape ', condensed_cat.shape)
-			print(condensed_cat[:, 5])
-			print(condensed_cat[:, 9])
-			print(condensed_cat[:, 13])
-			print(condensed_cat[:, 6])
+			# print(condensed_cat[:, 5])
+			# print(condensed_cat[:, 9])
+			# print(condensed_cat[:, 13])
+			# print(condensed_cat[:, 6])
 
 	gdat.show_input_maps=False
 	datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
@@ -1698,8 +1730,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			f_last = plot_residual_map(residz[-1], mode='last', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
 			f_last.savefig(resid_map_dir +'/last_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
+			f_median = plot_residual_map(median_resid, mode='median', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=None)
 
-			f_median = plot_residual_map(median_resid, mode='median', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=fd_conv_fac)
+			# f_median = plot_residual_map(median_resid, mode='median', band=title_band_dict[bands[b]], minmax_smooth=[minpct_smooth, maxpct_smooth], minmax=[minpct, maxpct], show=boolplotshow, convert_to_MJy_sr_fac=fd_conv_fac)
 			f_median.savefig(resid_map_dir +'/median_residual_and_smoothed_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			median_resid_rav = median_resid[dat.weights[b] != 0.].ravel()
@@ -1719,11 +1752,17 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 		chi2_dir = add_directory(gdat.filepath+'/chi2')
 
+
+		ndof_list = [dat.fracs[b]*dat.errors[b].shape[0]*dat.errors[b].shape[1] for b in range(gdat.nbands)]
+
+		f_multi_chi2_reduced = plot_multiband_chi_squared([chi2[:,b] for b in range(chi2.shape[1])], sample_number, band_list=[title_band_dict[band] for band in bands], show=False, \
+			ndof_list=ndof_list)
+		f_multi_chi2_reduced.savefig(chi2_dir+'/multiband_reduced_chi2.'+plttype, bbox_inches='tight', dpi=dpi)
 		
 		for b in range(gdat.nbands):
 
-			fchi = plot_chi_squared(chi2[:,b], sample_number, band=title_band_dict[bands[b]], show=False)
-			fchi.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+			fchi2 = plot_chi_squared(chi2[:,b], sample_number, band=title_band_dict[bands[b]], show=False)
+			fchi2.savefig(chi2_dir + '/chi2_sample_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			plt.close()
 
@@ -1749,6 +1788,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			f_bkg_post = plot_posterior_bkg_amplitude(bkgs[burn_in:,b], band=title_band_dict[bands[b]], show=False, convert_to_MJy_sr_fac=None)
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
+			plt.close()
 
 	# ------------------------- FOURIER COMPONENTS ----------------------
 
@@ -1806,7 +1846,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 					else:
 						mock_truth = None
 						if gdat.template_order[t]=='sze':
-							temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
 							mock_truth = None
 							if gdat.inject_sz_frac is not None:
 								mock_truth = temp_mock_amps_dict[gdat.band_dict[bands[b]]]*gdat.inject_sz_frac
@@ -1814,8 +1853,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 
 						if gdat.integrate_sz_prof:
-
-							pixel_sizes = dict({'S':6, 'M':8, 'L':12}) # arcseconds
 
 							npix = dat.template_array[b][t].shape[0]*dat.template_array[b][t].shape[1]
 							geom_fac = (np.pi*pixel_sizes[gdat.band_dict[bands[b]]]/(180.*3600.))**2
@@ -1892,6 +1929,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 	fov_sources = [[] for x in range(gdat.nbands)]
 
+	if condensed_catalog_plots:
+		all_xs, all_ys = [condensed_cat[:,0]], [condensed_cat[:,2]]
+		all_fs = [condensed_cat[:,5]]
+
 	ndeg = None
 
 	for b in range(gdat.nbands):
@@ -1917,12 +1958,14 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				dat.fast_astrom.fit_astrom_arrays(0, b, bounds0=gdat.bounds[0], bounds1=gdat.bounds[b])
 
 				xp, yp = dat.fast_astrom.transform_q(condensed_cat[:,0], condensed_cat[:,2], b-1)
-
 				xp[xp > dat.errors[b].shape[0]] = dat.errors[b].shape[0]-1.
 				yp[yp > dat.errors[b].shape[1]] = dat.errors[b].shape[1]-1.
 
-				print(xp)
-				print(yp)
+				fs = condensed_cat[:,5+4*b]
+
+				all_xs.append(xp)
+				all_ys.append(yp)
+				all_fs.append(fs)
 
 
 			psf_fwhm = 3.
@@ -1932,7 +1975,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			flux_deg_fac = np.zeros_like(condensed_cat[:,0])
 			for s, src in enumerate(condensed_cat):
 				if b > 0:
-
 					flux_deg_fac[s] = src[flux_err_idx]/smoothed_optimal_ferr_map[int(np.floor(xp[s])), int(np.floor(yp[s]))]
 				else:
 					flux_deg_fac[s] = src[flux_err_idx]/smoothed_optimal_ferr_map[int(src[0]), int(src[1])]
@@ -1949,8 +1991,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 			flux_vs_fluxerr_plot = plot_flux_vs_fluxerr(1e3*condensed_cat[:,5+4*b], 1e3*condensed_cat[:,6+4*b])
 			flux_vs_fluxerr_plot.savefig(condensed_cat_dir+'/flux_vs_fluxerr_'+str(title_band_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
-
-
 
 
 		if flux_dist_plots:
@@ -2012,45 +2052,221 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			# f_color_post = plot_color_posterior(fsrcs, b-1, b, lam_dict, mock_truth_fluxes=cat_fluxes)
 			# f_color_post.savefig(flux_color_dir +'/posterior_color_dist_'+str(lam_dict[bands[b-1]])+'_'+str(lam_dict[bands[b]])+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
+
+	# flux_cut_idx= 2
+	flux_cut_idx = 0
+	flux_cut = 0.025
+
+	if condensed_catalog_plots:
+
+		overlaid_condensed_cat = condensed_catalog_overlaid_data(dat.data_array, all_xs, all_ys, all_fs=all_fs, bands=[title_band_dict[band] for band in bands], flux_cut_idx=flux_cut_idx, flux_cut=flux_cut)
+		overlaid_condensed_cat.savefig(condensed_cat_dir+'/condensed_catalog_overlaid_data_allbands_fluxcutidx='+str(flux_cut_idx)+'_fluxcut='+str(flux_cut)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		all_overlaid_condensed_cat = condensed_catalog_overlaid_data(dat.data_array, all_xs, all_ys, all_fs=all_fs, bands=[title_band_dict[band] for band in bands])
+		all_overlaid_condensed_cat.savefig(condensed_cat_dir+'/condensed_catalog_all_overlaid_data_allbands_maskhwhm='+str(mask_hwhm)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		red_cut = True
+		all_overlaid_condensed_cat = condensed_catalog_overlaid_data(dat.data_array, all_xs, all_ys, all_fs=all_fs, red_cut=red_cut, bands=[title_band_dict[band] for band in bands])
+		all_overlaid_condensed_cat.savefig(condensed_cat_dir+'/condensed_catalog_red_cut_overlaid_data_allbands_maskhwhm='+str(mask_hwhm)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+
 	if gdat.nbands == 3 and flux_color_color_plots:
 
-
+		flux_idxs = [5, 9, 13]
 		if condensed_catalog_plots:
-			color_color_flux_cond = plt.figure(figsize=(8, 6))
-			plt.scatter(condensed_cat[:,5]/condensed_cat[:,9], condensed_cat[:,13]/condensed_cat[:,9], s=10*condensed_cat[:, 4], c=1e3*condensed_cat[:,5], alpha=0.5, label='Condensed catalog \n prevalence > 0.5')
-			cbar = plt.colorbar(fraction=0.046, pad=0.04)
-			cbar.set_label('$F_{250}$ [mJy]', fontsize=18)
-			plt.xlabel('$F_{250}/F_{350}$', fontsize=18)
-			plt.ylabel('$F_{500}/F_{350}$', fontsize=18)
-			plt.legend()
-			# plt.xscale('log')
-			# plt.yscale('log')
-			# plt.xlim(3e-1, 50)
-			# plt.ylim(8e-2, 50)
 
-			plt.xlim(0, 3)
-			plt.ylim(0, 3)
+			def condensed_cat_color_color_plot(condensed_cat, flux_idxs, lams=[250, 350, 500], prevalence_idx=4, flux_band_cbar=2, prev_cut=0.2, \
+				xlim=None, ylim=None):
 
-			# plt.show()
+				if flux_band_cbar - 1 > len(flux_idxs):
+					flux_band_cbar = len(flux_idxs)-1
+
+				color_color_flux_cond = plt.figure(figsize=(8, 6))
+
+
+				if lams[0]==250:
+					c0idxs = [1, 0]
+					c1idxs = [2, 1]
+				elif lams[0]==500:
+					c0idxs = [1, 2]
+					c1idxs = [0, 1]
+
+				colors0 = condensed_cat[:, flux_idxs[c0idxs[0]]]/condensed_cat[:, flux_idxs[c0idxs[1]]]
+				colors1 = condensed_cat[:, flux_idxs[c1idxs[0]]]/condensed_cat[:, flux_idxs[c1idxs[1]]]
+
+				dc0_c0 = np.sqrt((condensed_cat[:,flux_idxs[c0idxs[0]]+1]/condensed_cat[:,flux_idxs[c0idxs[0]]])**2 + (condensed_cat[:,flux_idxs[c0idxs[1]]+1]/condensed_cat[:,flux_idxs[c0idxs[1]]])**2)
+				dc0 = dc0_c0*colors0
+
+				# print(dc0)
+
+				dc1_c1 = np.sqrt((condensed_cat[:,flux_idxs[c1idxs[0]]+1]/condensed_cat[:,flux_idxs[c1idxs[0]]])**2 + (condensed_cat[:,flux_idxs[c1idxs[1]]+1]/condensed_cat[:,flux_idxs[c1idxs[1]]])**2)
+				dc1 = dc1_c1*colors1
+
+				# print(dc1)
+
+				red_srcs_only = (colors0 > 1.)*(colors1 > 1.)
+
+				print(colors0)
+				plt.errorbar(colors0[red_srcs_only], colors1[red_srcs_only], xerr=dc0[red_srcs_only], yerr=dc1[red_srcs_only], capsize=5, c='k', alpha=0.2, ls='none', label='Condensed catalog \n prevalence > '+str(prev_cut))
+				plt.scatter(colors0[red_srcs_only], colors1[red_srcs_only], s=25*condensed_cat[red_srcs_only, prevalence_idx], c=1e3*condensed_cat[red_srcs_only,flux_idxs[flux_band_cbar]])
+	
+				# plt.errorbar(colors0, colors1, xerr=dc0, yerr=dc1, capsize=5, c='k', alpha=0.5, ls='none', label='Condensed catalog \n prevalence > '+str(prev_cut))
+				# plt.scatter(colors0, colors1, s=50*condensed_cat[:, prevalence_idx], c=500*condensed_cat[:,flux_idxs[flux_band_cbar]])
+				cbar = plt.colorbar(fraction=0.046, pad=0.04)
+				cbar.set_label('$F_{'+str(lams[flux_band_cbar])+'}$ [mJy]', fontsize=18)
+				plt.xlabel('$F_{'+str(lams[c0idxs[0]])+'}/F_{'+str(lams[c0idxs[1]])+'}$', fontsize=18)
+				plt.ylabel('$F_{'+str(lams[c1idxs[0]])+'}/F_{'+str(lams[c1idxs[1]])+'}$', fontsize=18)
+				plt.axhline(1, linestyle='dashed', color='grey', alpha=0.6, linewidth=3)
+				plt.axvline(1, linestyle='dashed', color='grey', alpha=0.6, linewidth=3)
+				plt.legend()
+				if xlim is not None:
+					plt.xlim(xlim)
+				if ylim is not None:
+					plt.ylim(ylim)
+
+				return color_color_flux_cond
+
+
+			def condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=[250, 350, 500], prevalence_idx=4, prev_cut=0.2, xlim=None, ylim=None, flux_cut_idx=0, flux_cut=None,\
+					 red_cut=False, red_color_idx_order = [0, 1, 2]):
+
+				# assumes lams given in microns, convert to nu in Hz
+
+				nus = [3e8/(lam*1e-6) for lam in lams]
+
+				if lams[0]==250:
+					c0idxs = [1, 0]
+					c1idxs = [2, 1]
+				elif lams[0]==500:
+					c0idxs = [1, 2]
+					c1idxs = [0, 1]
+
+				if red_cut:
+					nspec = 0
+					for i in range(len(condensed_cat)):
+						if condensed_cat[i, flux_idxs[c0idxs[0]]]/condensed_cat[i, flux_idxs[c0idxs[1]]] > 1. and condensed_cat[i, flux_idxs[c1idxs[0]]]/condensed_cat[i, flux_idxs[c1idxs[1]]] > 1:
+							
+							if flux_cut is not None:
+								if condensed_cat[i, flux_idxs[flux_cut_idx]] > flux_cut:
+									nspec += 1
+							else:
+								nspec += 1
+							print(condensed_cat[i, flux_idxs[c0idxs[0]]]/condensed_cat[i, flux_idxs[c0idxs[1]]], condensed_cat[i, flux_idxs[c1idxs[0]]]/condensed_cat[i, flux_idxs[c1idxs[1]]])
+
+				elif flux_cut is None:
+					nspec = len(condensed_cat)
+				else:
+					nspec = 0
+					for i in range(len(condensed_cat)):
+						if condensed_cat[i, flux_idxs[flux_cut_idx]] > flux_cut:
+							nspec += 1
+							print(condensed_cat[i,:])
+
+				if nspec <= 4:
+					nrow = 2
+					ncol = 2
+				elif nspec > 4 and nspec <= 6:
+					nrow = 2
+					ncol = 3
+				elif nspec > 6 and nspec <= 9:
+					nrow = 3
+					ncol = 3
+				elif nspec > 9 and nspec <= 12:
+					nrow = 3
+					ncol = 4
+				else:
+					nrow = int(np.sqrt(nspec))+1
+					ncol = int(np.sqrt(nspec))+1
+				
+				spectra_plot = plt.figure(figsize=(nrow*4, ncol*3))
+
+				if red_cut:
+					plt.suptitle('$F_{500} > F_{350} > F_{250}$', fontsize=18, y=1.04)
+				elif flux_cut is not None:
+					plt.suptitle('$F_{'+str(lams[flux_cut_idx])+'}$ > '+str(1e3*flux_cut)+' mJy', fontsize=18, y=1.04)
+
+				specidx = 1
+				for i in range(len(condensed_cat)):
+
+					if red_cut:
+						if condensed_cat[i, flux_idxs[c0idxs[0]]]/condensed_cat[i, flux_idxs[c0idxs[1]]] > 1.0 and condensed_cat[i, flux_idxs[c1idxs[0]]]/condensed_cat[i, flux_idxs[c1idxs[1]]] > 1.0:
+							if flux_cut is not None:
+								if condensed_cat[i, flux_idxs[flux_cut_idx]] > flux_cut:
+
+									plt.subplot(nrow, ncol, specidx)
+									plt.title('(x, y) = ('+str(np.round(condensed_cat[i, 0], 1))+', '+str(np.round(condensed_cat[i, 2], 1))+')')
+									plt.errorbar(nus, 1e3*np.array([condensed_cat[i,flux_idx] for flux_idx in flux_idxs]), marker='d', markersize=10, alpha=0.8, yerr=1e3*np.array([condensed_cat[i,flux_idx+1] for flux_idx in flux_idxs]), capsize=5)
+									plt.yscale('log')
+									plt.xscale('log')
+									plt.xlabel('Frequency [Hz]', fontsize=14)
+									plt.ylabel('Flux density [mJy]', fontsize=14)
+									plt.tick_params(labelsize=12)
+
+									specidx += 1
+
+									if xlim is not None:
+										plt.xlim(xlim)
+									if ylim is not None:
+										plt.ylim(ylim)
+							else:
+								plt.subplot(nrow, ncol, specidx)
+								plt.title('(x, y) = ('+str(np.round(condensed_cat[i, 0], 1))+', '+str(np.round(condensed_cat[i, 2], 1))+')')
+								plt.errorbar(nus, 1e3*np.array([condensed_cat[i,flux_idx] for flux_idx in flux_idxs]), marker='d', markersize=10, alpha=0.8, yerr=1e3*np.array([condensed_cat[i,flux_idx+1] for flux_idx in flux_idxs]), capsize=5)
+								plt.yscale('log')
+								plt.xscale('log')
+								plt.xlabel('Frequency [Hz]', fontsize=14)
+								plt.ylabel('Flux density [mJy]', fontsize=14)
+								plt.tick_params(labelsize=12)
+
+								specidx += 1
+
+								if xlim is not None:
+									plt.xlim(xlim)
+								if ylim is not None:
+									plt.ylim(ylim)
+
+					else:
+						if condensed_cat[i, flux_idxs[flux_cut_idx]] > flux_cut:
+							plt.subplot(nrow, ncol, specidx)
+							plt.title('(x, y) = ('+str(np.round(condensed_cat[i, 0], 1))+', '+str(np.round(condensed_cat[i, 2], 1))+')')
+							plt.errorbar(nus, 1e3*np.array([condensed_cat[i,flux_idx] for flux_idx in flux_idxs]), marker='d', markersize=10, alpha=0.8, yerr=1e3*np.array([condensed_cat[i,flux_idx+1] for flux_idx in flux_idxs]), capsize=5)
+							plt.yscale('log')
+							plt.xscale('log')
+							plt.xlabel('Frequency [Hz]', fontsize=14)
+							plt.ylabel('Flux density [mJy]', fontsize=14)
+							plt.tick_params(labelsize=12)
+
+							specidx += 1
+
+							if xlim is not None:
+								plt.xlim(xlim)
+							if ylim is not None:
+								plt.ylim(ylim)
+
+				plt.tight_layout()
+
+				return spectra_plot
+
+			# flux_cut_idx= 2 
+			# flux_cut = 0.025
+			xlim = [4e11, 2e12]
+			ylim = [0.5, 400]
+			# lams = [250, 350, 500]
+			flux_band_cbar = 0
+			lams = [500, 350, 250]
+			# all_spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim)
+			red_flux_cut = 0.01
+			red_spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim, red_cut=True, flux_cut_idx=flux_cut_idx, flux_cut=red_flux_cut)
+			spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim, flux_cut_idx=flux_cut_idx, flux_cut=flux_cut)
+			color_color_flux_cond = condensed_cat_color_color_plot(condensed_cat, flux_idxs, lams=lams, flux_band_cbar=flux_band_cbar, prev_cut=gdat.prevalence_cut, xlim=[0.5, 3.5], ylim=[0.5, 2.5])
+
+			# all_spectra_plot.savefig(condensed_cat_dir+'/source_spectra_all_maskhwhm='+str(mask_hwhm)+'_panels.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			red_spectra_plot.savefig(condensed_cat_dir+'/red_source_spectra_panels.'+plttype, bbox_inches='tight', dpi=dpi)
+
+			spectra_plot.savefig(condensed_cat_dir+'/source_spectra_fluxcutidx='+str(flux_cut_idx)+'_fluxcut='+str(flux_cut)+'_panels.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			color_color_flux_cond.savefig(condensed_cat_dir+'/color_color_flux_diagram_SM_LM_S.'+plttype, bbox_inches='tight', dpi=dpi)
-
-
-			color_flux_cond = plt.figure(figsize=(8, 6))
-			plt.scatter(1e3*condensed_cat[:, 5], condensed_cat[:,5]/condensed_cat[:,9], alpha=0.5, label='Condensed catalog \n prevalence > 0.5')
-			# cbar = plt.colorbar(fraction=0.046, pad=0.04)
-			# cbar.set_label('$F_{250}$ [mJy]')
-			plt.xlabel('$F_{250}$ [mJy]', fontsize=18)
-			plt.ylabel('$F_{250}/F_{350}$', fontsize=18)
-			plt.legend()
-			plt.xscale('log')
-			# plt.yscale('log')
-			plt.xlim(5, 500)
-			# plt.ylim(8e-2, 50)
-			plt.ylim(0, 3.5)
-			# plt.show()
-
-			color_flux_cond.savefig(condensed_cat_dir+'/color_color_flux_diagram_SM_S.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 		# f_color_color = plot_flux_color_posterior(np.array(fov_sources[0])/np.array(fov_sources[1]), np.array(fov_sources[1])/np.array(fov_sources[2]), [title_band_dict[0]+' / '+title_band_dict[1], title_band_dict[1]+' / '+title_band_dict[2]], colormax=60, xmin=1e-2, xmax=60, ymin=1e-2, ymax=80, fmin=0.005, title='Posterior Color-Color Distribution', flux_sizes=np.array(fov_sources[0]))

@@ -172,7 +172,6 @@ def idx_parity(x, y, n, offsetx, offsety, parity_x, parity_y, regsize):
 	match_y = (get_region(y[0:n], offsety, regsize) % 2) == parity_y
 	return np.flatnonzero(np.logical_and(match_x, match_y))
 
-
 class Proposal:
 	_X = 0
 	_Y = 1
@@ -298,13 +297,10 @@ class Model:
 	def __init__(self, gdat, dat, libmmult=None, samp_idx=None):
 
 		self.dat = dat
-		
 		self.err_f = gdat.err_f
 		self.gdat = gdat
 
 		self.pixel_per_beam = [2*np.pi*(psf_pixel_fwhm/2.355)**2 for psf_pixel_fwhm in self.gdat.psf_fwhms] # variable pixel fwhm
-		# self.pixel_per_beam = 2*np.pi*(self.gdat.psf_pixel_fwhm/2.355)**2
-
 		self.linear_flux = gdat.linear_flux
 
 		self.imsz0 = gdat.imsz0 # this is just for first band, where proposals are first made
@@ -325,7 +321,7 @@ class Model:
 
 		self.n_templates = gdat.n_templates
 
-		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.03})
+		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.0005})
 		if self.gdat.sz_amp_sig is not None:
 			self.temp_amplitude_sigs['sze'] = self.gdat.sz_amp_sig
 		if self.gdat.fc_amp_sig is not None:
@@ -750,8 +746,7 @@ class Model:
 			rtype = rtype_array[i]
 			
 			verbprint(self.verbtype, 'rtype = '+str(rtype), verbthresh=1)
-			# if self.verbtype > 1:
-			# 	print('rtype: ', rtype)
+
 			if self.nregion > 1:
 				self.parity_x = xparities[i] # should regions be perturbed randomly or systematically?
 				self.parity_y = yparities[i]
@@ -1695,8 +1690,6 @@ class lion():
 			x0 = 0, \
 			y0 = 0, \
 
-			use_zero_point = False, \
-
 			# if there is a shift offset in the astrometry but the images are themselves aligned, can use this to subtract a zero point off of the astrometric solution.
 			# if True, the fast_astrom module this takes the coordinate (0, 0), transforms them into the other bands using the provided WCS header/s, and then subtracts these new coordinates
 			# from the fast_astrom solution.
@@ -1720,6 +1713,8 @@ class lion():
 
 			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
 			noise_thresholds=None, \
+
+			err_f_divfac = 2., \
 
 			merge_split_sample_delay=0, \
 			merge_split_moveweight = 60., \
@@ -2073,7 +2068,6 @@ class lion():
 				else:
 					self.gdat.fourier_band_idxs[b] = None
 
-
 		if self.gdat.bias is None:
 			self.gdat.bias = np.zeros((self.gdat.nbands,))
 			for b, band in enumerate(self.gdat.bands):
@@ -2081,6 +2075,12 @@ class lion():
 				self.gdat.bias[b] = median_val - 0.003 # subtract by 3 mJy/beam since background level is biased high by sources
 
 			print('Initial background levels set to ', self.gdat.bias)
+
+		else:
+			for b, band in enumerate(self.gdat.bands):
+				if band is None:
+					median_val = np.median(self.data.data_array[b])
+					self.gdat.bias[b] = median_val - 0.003
 
 		if self.gdat.save:
 			#create directory for results, save config file from run
@@ -2193,7 +2193,7 @@ class lion():
 																	 mask_hwhm=self.gdat.mask_hwhm, search_radius=self.gdat.search_radius, matching_dist=self.gdat.matching_dist)
 
 		if self.gdat.make_post_plots:
-			result_plots(gdat = self.gdat)
+			result_plots(gdat = self.gdat, generate_condensed_cat=False, n_condensed_samp=100, prevalence_cut=0.1, mask_hwhm=0, condensed_catalog_plots=False)
 
 		dt_total = time.time() - start_time
 		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)

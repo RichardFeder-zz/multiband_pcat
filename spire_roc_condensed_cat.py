@@ -18,7 +18,6 @@ import networkx as nx
 import os
 
 
-
 def mag_from_fluxes(fluxes):
     return -2.5*np.log10(fluxes)
 
@@ -228,8 +227,6 @@ def clusterize_spire(seed_cat, cat_x, cat_y, cat_n, cat_fs, max_num_sources, nsa
             column_names.append('hipct_f_'+str(b))
             column_names.append('lopct_f_'+str(b))
         
-
-
     return classical_catalog, column_names
 
         
@@ -806,7 +803,7 @@ class cross_match_roc():
         if save_cats:
             if catfiletype=='npz':
                 if tail_name is None:
-                    tail_name = 'condensed_catalog'
+                    tail_name = 'condensed_catalog_nsamp='+str(self.nsamp)+'_prevcut='+str(prevalence_cut)+'_searchradius='+str(self.search_radius)+'_maskhwhm='+str(mask_hwhm)
                 np.savez(self.result_path+'/'+self.timestr+'/'+tail_name+'.npz', column_names=column_names, condensed_catalog=condensed_cat, nsamp=self.nsamp,\
                              prevalence_cut=prevalence_cut, search_radius=self.search_radius, mask_hwhm=mask_hwhm)
 

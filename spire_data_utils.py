@@ -176,9 +176,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 
 	x0 = None
 	y0 = None
-	if gdat.use_zero_point:
-		x0 = spire_dat[image_extnames[0]].header['x0']
-		y0 = spire_dat[image_extnames[0]].header['y0']
+
 
 	if gdat.err_fpath is None:
 		error = np.nan_to_num(spire_dat['ERROR'].data)
@@ -186,6 +184,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 		hdu = fits.open(gdat.err_fpath)[0]
 		# error = np.nan_to_num(hdu.data/hdu.header['JANSCALE'])
 		error = np.nan_to_num(hdu.data)
+
 	# main functionality is following eight lines
 	if gdat.use_mask:
 
@@ -200,11 +199,6 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 			mask = spire_dat['MASK'].data
 	else:
 		print('Not using mask..')
-		# plt.figure()
-		# plt.title('image')
-		# plt.imshow(image)
-		# plt.colorbar()
-		# plt.show()
 		mask = np.ones_like(image)
 
 	# this is for gen_2_sims, which don't have same FITS structure as new sims
@@ -289,13 +283,6 @@ def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_
 	filen = open(filepath+'/params.txt','rb')
 	if encoding is not None:
 		pdict = pickle.load(filen, encoding=encoding)
-		# try:
-		# 	pdict = pickle.load(filen, encoding='bytes')
-		# except:
-		# 	try:
-		# 		pdict = pickle.load(filen, encoding='latin1')
-		# 	except:
-		# 		print('failed')
 	else:
 		pdict = pickle.load(filen)
 	opt = objectview(pdict)
@@ -325,20 +312,27 @@ class pcat_data():
 			self.widths, self.heights, self.fracs, self.template_array, self.injected_diffuse_comp = [[] for x in range(14)]
 		self.fast_astrom = wcs_astrometry(auto_resize, nregion=nregion)
 
-	def load_in_data(self, gdat, map_object=None, tail_name=None, show_input_maps=False):
+	def load_in_data(self, gdat, map_object=None, tail_name=None, show_input_maps=False, \
+		temp_mock_amps_dict=None, flux_density_conversion_dict=None, sed_cirrus=None):
 
 		'''
 		This function does the heavy lifting for parsing input data products and setting up variables in pcat_data class. At some point, template section should be cleaned up.
 		'''
 
-		gdat.imszs, gdat.regsizes, gdat.margins, gdat.bounds = [[] for x in range(4)]
-		gdat.x_max_pivot_list, gdat.y_max_pivot_list = [], []
+		if flux_density_conversion_dict is None:
+			flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
 
-		if gdat.use_zero_point:
-			gdat.x0_list, gdat.y0_list = [], []
+		if temp_mock_amps_dict is None:
+			temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
+
+		if sed_cirrus is None:
+			sed_cirrus = dict({100:1.7, 250:3.5, 350:1.6, 500:0.85}) # MJy/sr
+
+		relative_dust_sed_dict = dict({'S':sed_cirrus[250]/sed_cirrus[100], 'M':sed_cirrus[350]/sed_cirrus[100], 'L':sed_cirrus[500]/sed_cirrus[100]}) # relative to 100 micron
+
+		gdat.imszs, gdat.regsizes, gdat.margins, gdat.bounds, gdat.x_max_pivot_list, gdat.y_max_pivot_list = [[] for x in range(6)]
 
 		for i, band in enumerate(gdat.bands):
-
 
 			if map_object is not None:
 
@@ -363,9 +357,7 @@ class pcat_data():
 			elif gdat.mock_name is None:
 
 				image, error, mask, file_name, x0, y0 = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps, image_extnames=gdat.image_extnames)
-				if gdat.use_zero_point:
-					gdat.x0_list.append(x0)
-					gdat.y0_list.append(y0)
+
 				# bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
 				bounds = get_rect_mask_bounds(mask)
 
@@ -382,13 +374,6 @@ class pcat_data():
 
 				template_list = [] 
 
-				sed_cirr = dict({100:1.7, 250:3.5, 350:1.6, 500:0.85}) # MJy/sr
-				relative_dust_sed_dict = dict({'S':sed_cirr[250]/sed_cirr[100], 'M':sed_cirr[350]/sed_cirr[100], 'L':sed_cirr[500]/sed_cirr[100]}) # relative to 100 micron
-				temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
-				temp_mock_amps = [0.0111, 0.1249, 0.6912] # MJy/sr
-
-				flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
-				flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
 
 				if gdat.n_templates > 0:
 
@@ -410,8 +395,6 @@ class pcat_data():
 								print('template file name is ', template_file_name)
 
 								template = fits.open(template_file_name)[0].data
-
-								print(template.shape)
 
 								if show_input_maps:
 									plt.figure()
@@ -532,8 +515,8 @@ class pcat_data():
 					if template is not None:
 
 						resized_template = np.zeros(shape=(gdat.width, gdat.height))
-
-						template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+						# template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
+						template = template[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1]
 
 						resized_template[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = template[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 
@@ -543,14 +526,16 @@ class pcat_data():
 							plt.title('resized template -- '+gdat.template_order[t])
 							plt.imshow(resized_template, cmap='Greys', origin='lower')
 							plt.colorbar()
-							plt.axhline(x_max_pivot, color='r', linestyle='solid')
-							plt.axvline(y_max_pivot, color='r', linestyle='solid')
+							if i > 0:
+								plt.axhline(x_max_pivot, color='r', linestyle='solid')
+								plt.axvline(y_max_pivot, color='r', linestyle='solid')
 							plt.subplot(1,2,2)
 							plt.title('image + '+gdat.template_order[t])
 							plt.imshow(resized_image, origin='lower', cmap='Greys')
 							plt.colorbar()
-							plt.axhline(x_max_pivot, color='r', linestyle='solid')
-							plt.axvline(y_max_pivot, color='r', linestyle='solid')
+							if i > 0:
+								plt.axhline(x_max_pivot, color='r', linestyle='solid')
+								plt.axvline(y_max_pivot, color='r', linestyle='solid')
 							plt.tight_layout()
 							plt.show()
 
@@ -737,7 +722,8 @@ class pcat_data():
 		# gdat.N_eff = 4*np.pi*(gdat.psf_pixel_fwhm/2.355)**2 # 2 instead of 4 for spire beam size
 		gdat.N_eff = 4*np.pi*(gdat.psf_fwhms[0]/2.355)**2 # variable psf pixel fwhm, use pivot band fwhm
 
-		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/10
+		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/gdat.err_f_divfac
+		# gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)
 
 
 
