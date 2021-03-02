@@ -187,6 +187,7 @@ class Proposal:
 		self.change_bkg_bool = False
 		self.change_template_amp_bool = False
 		self.change_fourier_comp_bool = False
+		self.perturb_band_idx = None
 		
 		self.dback = np.zeros(gdat.nbands, dtype=np.float32)
 		self.dtemplate = None
@@ -253,13 +254,17 @@ class Proposal:
 			starsk = starsk.reshape((starsk.shape[0], starsk.shape[1]*starsk.shape[2]))
 		self.__add_phonions_stars(starsk, remove=True)
 
-	def change_bkg(self):
+	def change_bkg(self, perturb_band_idx=None):
 		self.goodmove = True
 		self.change_bkg_bool = True
+		if perturb_band_idx is not None:
+			self.perturb_band_idx = perturb_band_idx
 
-	def change_template_amplitude(self):
+	def change_template_amplitude(self, perturb_band_idx=None):
 		self.goodmove = True
 		self.change_template_amp_bool = True
+		if perturb_band_idx is not None:
+			self.perturb_band_idx = perturb_band_idx
 
 	def change_fourier_comp(self):
 		self.goodmove = True
@@ -560,14 +565,21 @@ class Model:
 		return timestat_array, accept_fracs
 
 
-	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None, rtype=None, dfc=None, idxvec=None, precomp_temps=None, fc_rel_amps=None):
+	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None, rtype=None, dfc=None, idxvec=None, precomp_temps=None, fc_rel_amps=None, \
+		perturb_band_idx=None):
 		''' Wrapper for multiband likelihood evaluation given model parameters.'''
 
 		dmodels = []
 		dt_transf = 0
+		nb = 0
 
 		for b in range(self.nbands):
 			dtemp = None
+
+			if perturb_band_idx is not None:
+				if b != perturb_band_idx:
+					dmodels.append(None)
+					continue
 
 			if dtemplate is not None:
 				dtemp = []
@@ -623,7 +635,7 @@ class Model:
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 
-				diff2s += diff2
+				# diff2s += diff2
 			else:    
 				xp=x
 				yp=y
@@ -633,7 +645,13 @@ class Model:
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 			
+				# diff2s = diff2
+
+			if nb==0:
 				diff2s = diff2
+				nb += 1
+			else:
+				diff2s += diff2
 
 			dmodels.append(dmodel)
 
@@ -789,12 +807,13 @@ class Model:
 
 					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 																bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
-																beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps)
+																beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps, \
+																perturb_band_idx=proposal.perturb_band_idx)
 
 					logL = -0.5*diff2s_nomargin
 
 					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
-													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype)
+													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, perturb_band_idx=proposal.perturb_band_idx)
 	
 				
 
@@ -802,11 +821,13 @@ class Model:
 
 					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 															bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
-															beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=dtemplate, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps)
+															beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=dtemplate, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps, \
+															perturb_band_idx=proposal.perturb_band_idx)
 					logL = -0.5*diff2s_nomargin
 
 					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
-													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=proposal.dtemplate, rtype=rtype)
+													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=proposal.dtemplate, rtype=rtype, \
+													perturb_band_idx=proposal.perturb_band_idx)
 	
 
 				elif rtype == 5: # fourier comp
@@ -893,8 +914,15 @@ class Model:
 						acceptreg = np.zeros(shape=(self.nregy, self.nregx)).astype(np.int32)
 
 				
+				nb = 0 # index used for perturb_band_idx stuff
+
 				''' for each band compute the delta log likelihood between states, then add these together'''
 				for b in range(self.nbands):
+
+					if proposal.perturb_band_idx is not None:
+						if b != proposal.perturb_band_idx:
+							continue
+
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
@@ -910,13 +938,18 @@ class Model:
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
 					resids[b] -= dmodel_acpt
-
 					models[b] += dmodel_acpt
 
-					if b==0:
+					if nb==0:
 						diff2_total1 = diff2_acpt
+						nb += 1
 					else:
 						diff2_total1 += diff2_acpt
+
+					# if b==0:
+					# 	diff2_total1 = diff2_acpt
+					# else:
+					# 	diff2_total1 += diff2_acpt
 
 				logL = -0.5*diff2_total1
 
@@ -1060,6 +1093,7 @@ class Model:
 		# I want this proposal to return the original dback + the proposed change. If the proposal gets approved later on
 		# then model.dback will be set to the updated state
 		bkg_idx = np.random.choice(self.nbands)
+
 		dback = np.random.normal(0., scale=self.bkg_prop_sigs[bkg_idx])
 
 		proposal.dback[bkg_idx] = dback
@@ -1069,7 +1103,7 @@ class Model:
 			bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_prior_mus[bkg_idx])**2/(2*self.bkg_prior_sig**2)
 			proposal.set_factor(bkg_factor)
 		
-		proposal.change_bkg()
+		proposal.change_bkg(perturb_band_idx=bkg_idx)
 
 		return proposal
 
@@ -1150,6 +1184,9 @@ class Model:
 			band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
 
 			proposal.dtemplate[template_idx, band_idx] = d_amp
+
+			proposal.perturb_band_idx = band_idx
+
 		# update: now using a non-negativity prior on SZ amplitudes (might be good for dust as well at some point).
 		# the lines below are implementing a step function prior where the ln(prior) = -np.inf when the amplitude is negative
 		if self.gdat.template_order[template_idx] == 'sze' and self.gdat.sz_positivity_prior:
