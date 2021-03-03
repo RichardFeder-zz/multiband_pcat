@@ -205,22 +205,66 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	# image = np.nan_to_num(spire_dat[1].data)
 	# error = np.nan_to_num(spire_dat[2].data)
 
-	# if gdat.add_noise:
+	if gdat.add_noise:
 
-	# 	noise_realization = np.zeros_like(error)
-	# 	for rowidx in range(error.shape[0]):
-	# 		for colidx in range(error.shape[1]):
-	# 			if not np.isnan(error[rowidx,colidx]):
-	# 				noise_realization[rowidx,colidx] = np.random.normal(0, error[rowidx,colidx])
+		if gdat.scalar_noise_sigma is not None:
+			if type(gdat.scalar_noise_sigma)==float:
+				noise_sig = gdat.scalar_noise_sigma
+			else:
+				noise_sig = gdat.scalar_noise_sigma[band]
 
-	# 	if show_input_maps:
-	# 		plt.figure()
-	# 		plt.imshow(noise_realization, vmin=np.nanpercentile(noise_realization, 5), vmax=np.nanpercentile(noise_realization, 95))
-	# 		plt.title('noise raelization')
-	# 		plt.colorbar()
-	# 		plt.show()
+			noise_realization = np.random.normal(0, noise_sig, (image.shape[0], image.shape[1]))
+			image[error != 0] += noise_realization[error != 0]
 
-	# 	image += noise_realization
+			if gdat.show_input_maps:
+				plt.figure(figsize=(15, 5))
+				plt.subplot(1,3,1)
+				plt.title('noise realization')
+
+				plt.imshow(noise_realization)
+				plt.colorbar()
+				plt.subplot(1,3,2)
+				plt.title('image + gaussian noise')
+
+				showim = image.copy()
+				showim[error != 0] += noise_realization[error != 0]
+
+				plt.imshow(showim)
+				plt.colorbar()
+				plt.subplot(1,3,3)
+				plt.title('old error')
+				plt.imshow(error, vmin=np.percentile(error, 5), vmax=np.percentile(error, 95))
+				plt.colorbar()
+				plt.show()
+
+			old_error = error.copy()
+			old_variance = old_error**2
+			old_variance[error != 0] += noise_sig**2
+
+			error = np.sqrt(old_variance)
+
+			if gdat.show_input_maps:
+				plt.figure()
+				plt.imshow(error, vmin=np.percentile(error, 5), vmax=np.percentile(error, 95))
+				plt.colorbar()
+				plt.title('new error')
+				plt.show()
+
+		else:
+			noise_realization = np.zeros_like(error)
+			for rowidx in range(error.shape[0]):
+				for colidx in range(error.shape[1]):
+					if not np.isnan(error[rowidx,colidx]):
+						noise_realization[rowidx,colidx] = np.random.normal(0, error[rowidx,colidx])
+
+			if show_input_maps:
+				plt.figure()
+				plt.imshow(noise_realization, vmin=np.nanpercentile(noise_realization, 5), vmax=np.nanpercentile(noise_realization, 95))
+				plt.title('noise raelization')
+				plt.colorbar()
+				plt.show()
+
+			image += noise_realization
 	# mask = fits.open(gdat.base_path+'/data/spire/GOODSN/GOODSN_P'+str(gdat.band_dict[band])+'W_mask.fits')[0].data
 	# mask = fits.open(gdat.base_path+'/data/spire/gps_0/gps_0_P'+str(gdat.band_dict[band])+'W_mask.fits')[0].data
 	# mask = fits.open(gdat.base_path+'/data/spire/rxj1347_831/rxj1347_P'+str(gdat.band_dict[band])+'W_nr_1_ext.fits')['MASK'].data
@@ -323,7 +367,7 @@ class pcat_data():
 			flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
 
 		if temp_mock_amps_dict is None:
-			temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
+			temp_mock_amps_dict = dict({'S':0.03, 'M': 0.2, 'L': 0.8}) # MJy/sr
 
 		if sed_cirrus is None:
 			sed_cirrus = dict({100:1.7, 250:3.5, 350:1.6, 500:0.85}) # MJy/sr

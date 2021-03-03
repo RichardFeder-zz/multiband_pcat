@@ -25,6 +25,7 @@ class pcat_test_suite():
 				sz_tail_name='rxj1347_PSW_nr_sze', \
 				cblas=True, \
 				openblas=False):
+	
 		self.base_path = base_path
 		self.result_path = result_path
 		self.cluster_name=cluster_name
@@ -639,7 +640,7 @@ class pcat_test_suite():
 		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, fc_amp_sig=0.0001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
 		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False, \
 		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, nominal_nsrc = 1000, raw_counts=False, generate_condensed_catalog=False, \
-		err_f_divfac=1.):
+		err_f_divfac=1., bkg_sig_fac=5.0):
 
 		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
@@ -668,7 +669,8 @@ class pcat_test_suite():
 	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
 	 				 im_fpath=im_fpath, err_fpath=err_fpath, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
 	 				 correct_misaligned_shift=correct_misaligned_shift, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, panel_list=panel_list, \
-	 				 F_statistic_alph=F_statistic_alph, nominal_nsrc = 1000, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac)
+	 				 F_statistic_alph=F_statistic_alph, nominal_nsrc = 1000, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac, \
+	 				 bkg_sig_fac=bkg_sig_fac)
 
 		ob.main()
 
@@ -677,7 +679,7 @@ class pcat_test_suite():
 				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
 				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=50, initial_template_amplitude_dicts=None, \
 				      color_mus=None, color_sigs=None, panel_list=None, nregion=5, burn_in_frac=0.7, err_f_divfac=1., template_moveweight=80., \
-				      timestr_list_file=None):
+				      timestr_list_file=None, bkg_sig_fac=5.0, temp_prop_sig_fudge_facs=None, scalar_noise_sigma=None):
 
 		''' Function for tests involving injecting SZ signals into mock data '''
 
@@ -690,7 +692,8 @@ class pcat_test_suite():
 			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
 			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=template_moveweight, \
 			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise, \
-			  color_mus=color_mus, color_sigs=color_sigs, panel_list=panel_list, err_f_divfac=err_f_divfac, timestr_list_file=timestr_list_file)
+			  color_mus=color_mus, color_sigs=color_sigs, panel_list=panel_list, err_f_divfac=err_f_divfac, timestr_list_file=timestr_list_file, bkg_sig_fac=bkg_sig_fac, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, \
+			  scalar_noise_sigma=scalar_noise_sigma)
 
 		ob.main()
 

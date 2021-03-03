@@ -408,13 +408,13 @@ class Model:
 
 		self.verbtype = gdat.verbtype
 
-		self.bkg_prop_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
-		
+		# self.bkg_prop_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
+		self.bkg_prop_sigs = np.array([self.gdat.bkg_sig_fac[b]*np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
+
 		if gdat.bkg_prior_mus is not None:
 			self.bkg_prior_mus = gdat.bkg_prior_mus
 		else:
 			self.bkg_prior_mus = self.bkg.copy()
-
 		self.bkg_prior_sig = gdat.bkg_prior_sig
 
 		self.dback = np.zeros_like(self.bkg)
@@ -532,7 +532,7 @@ class Model:
 
 		return normalized_weights
    
-	def print_sample_status(self, dts, accept, outbounds, chi2, movetype):  
+	def print_sample_status(self, dts, accept, outbounds, chi2, movetype, bkg_perturb_band_idxs=None, temp_perturb_band_idxs=None):  
 		''' 
 		This function prints out some information at the end of each thinned sample, 
 		namely acceptance fractions for the different proposals and some time performance statistics as well. 
@@ -540,11 +540,28 @@ class Model:
 		fmtstr = '\t(all) %0.3f (P) %0.3f (B-D) %0.3f (M-S) %0.3f'
 		print('Background '+str(np.round(self.bkg, 5)) + ', N_star '+str(self.n)+' chi^2 '+str(list(np.round(chi2, 2))), file=self.gdat.flog)
 		print('Reduced chi^2 ', [np.round(chi2[b]/(self.dat.fracs[b]*self.dat.data_array[b].shape[0]*self.dat.data_array[b].shape[1]), 2) for b in range(self.gdat.nbands)])
+
 		dts *= 1000
 		accept_fracs = []
 		timestat_array = np.zeros((6, 1+len(self.moveweights)), dtype=np.float32)
 		statlabels = ['Acceptance', 'Out of Bounds', 'Proposal (s)', 'Likelihood (s)', 'Implement (s)', 'Coordinates (s)']
 		statarrays = [accept, outbounds, dts[0,:], dts[1,:], dts[2,:], dts[3,:]]
+
+		if bkg_perturb_band_idxs is not None:
+			per_band_bkg_acpt = []
+			bkg_all_acpts = np.array(statarrays[0][movetype==3])
+			for b in range(self.gdat.nbands):
+				per_band_bkg_acpt.append(np.mean(bkg_all_acpts[bkg_perturb_band_idxs==b]))
+			print('Per band background accept : ', np.round(per_band_bkg_acpt, 3))
+
+		if temp_perturb_band_idxs is not None:
+			per_band_temp_acpt = []
+			temp_all_acpts = np.array(statarrays[0][movetype==4])
+			for b in range(self.gdat.nbands):
+				per_band_temp_acpt.append(np.mean(temp_all_acpts[temp_perturb_band_idxs==b]))
+			print('Per band SZ accept : ', np.round(per_band_temp_acpt, 3))
+
+
 		for j in range(len(statlabels)):
 			timestat_array[j][0] = np.sum(statarrays[j])/1000
 			if j==0:
@@ -759,6 +776,8 @@ class Model:
 
 		movetype = rtype_array
 
+		bkg_perturb_band_idxs, temp_perturb_band_idxs = [], [] # used for per-band acceptance fractions
+
 		for i in range(self.nloop):
 			t1 = time.time()
 			rtype = rtype_array[i]
@@ -804,6 +823,8 @@ class Model:
 
 				if rtype == 3: # background
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
+					
+					bkg_perturb_band_idxs.append(proposal.perturb_band_idx)
 
 					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 																bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
@@ -819,6 +840,7 @@ class Model:
 
 				elif rtype == 4: # template
 
+					temp_perturb_band_idxs.append(proposal.perturb_band_idx)
 					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 															bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 															beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=dtemplate, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps, \
@@ -1009,7 +1031,6 @@ class Model:
 			
 			else:
 				verbprint(self.verbtype, 'Out of bounds..', verbthresh=1)
-
 				outbounds[i] = 1
 
 			for b in range(self.nbands):
@@ -1032,7 +1053,7 @@ class Model:
 			print('so self.template_amplitudes are now ', self.template_amplitudes)
 			self.dtemplate = np.zeros_like(self.template_amplitudes)
 
-		if self.gdat.float_fourier_comps: 
+		if self.gdat.float_fourier_comps:
 			self.fourier_coeffs += self.dfc 
 			self.fc_rel_amps += self.dfc_rel_amps
 			print('At the end of nloop, self.dfc_rel_amps is ', self.dfc_rel_amps)
@@ -1045,7 +1066,7 @@ class Model:
 		print('At the end of nloop, self.dback is', np.round(self.dback, 4), 'so self.bkg is now ', np.round(self.bkg, 4))
 		self.dback = np.zeros_like(self.bkg)
 
-		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype)
+		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype, bkg_perturb_band_idxs=np.array(bkg_perturb_band_idxs), temp_perturb_band_idxs=np.array(temp_perturb_band_idxs))
 
 		if self.gdat.visual:
 			if sample_idx%(self.gdat.nsamp // self.gdat.n_frames)==0:
@@ -1175,15 +1196,15 @@ class Model:
 					band_weights.append(1.)
 
 			# uncomment to institute DELTA FN PRIOR SZE @ 250 micron
-			# if self.gdat.template_order[template_idx] == 'sze':
+			if self.gdat.template_order[template_idx] == 'sze':
 				# print('setting weight to zero')
-				# band_weights[0] = 0.
+				band_weights[0] = 0.
 
 			band_weights /= np.sum(band_weights)
 
 			band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
 
-			proposal.dtemplate[template_idx, band_idx] = d_amp
+			proposal.dtemplate[template_idx, band_idx] = d_amp*self.gdat.temp_prop_sig_fudge_facs[band_idx] # added fudge factor for more efficient sampling
 
 			proposal.perturb_band_idx = band_idx
 
@@ -1827,6 +1848,7 @@ class lion():
 
 			diffuse_comp_path = None, \
 
+
 			# ---------------------------------- FOURIER COMPONENT PARAMS ----------------------------------------
 
 			# number of thinned samples before fourier components are included in the fit
@@ -1897,6 +1919,9 @@ class lion():
 
 			# if set to true, Gaussian noise realization of error model is added to signal image
 			add_noise=False, \
+			
+			# if specified, error map assumed to be gaussian with variance scalar_noise_sigma**2
+			scalar_noise_sigma=None, \
 
 			# if true catalog provided, passes on to posterior analysis
 			truth_catalog = None, \
@@ -1933,6 +1958,8 @@ class lion():
 			# these two, if specified, should be dictionaries with the color prior mean and width (assuming Gaussian)
 			color_mus = None, \
 			color_sigs = None, \
+
+			temp_prop_sig_fudge_facs = None, \
 
 			# the scheduling within a chain does not work, use iter_fourier_comps() instead (10/13/20)
 			trueminf_schedule_vals = [0.1, 0.05, 0.02, 0.01, 0.005],\
@@ -2034,6 +2061,13 @@ class lion():
 
 		if self.gdat.mean_offsets is None:
 			self.gdat.mean_offsets = np.zeros_like(np.array(self.gdat.bands))
+
+		if type(bkg_sig_fac)==float: # if single number, make bkg_sig_fac an array length nbands where each band has same factor
+			sigfacs = [self.gdat.bkg_sig_fac for b in range(self.gdat.nbands)]
+			self.gdat.bkg_sig_fac = np.array(sigfacs).copy()
+
+		if self.gdat.temp_prop_sig_fudge_facs is None:
+			self.gdat.temp_prop_sig_fudge_facs = [1. for b in range(self.gdat.nbands)]
 
 		template_band_idxs = dict({'sze':[0, 1, 2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2], 'planck':[0,1,2]})
 
