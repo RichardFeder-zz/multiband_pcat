@@ -295,7 +295,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	return image, error, mask, file_path, x0, y0
 
 
-def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/', encoding=None):
+def load_param_dict(timestr=None, result_path='/Users/luminatech/Documents/multiband_pcat/spire_results/', encoding=None):
 	
 	''' 
 	Loads dictionary of configuration parameters from prior run of PCAT.
@@ -322,7 +322,9 @@ def load_param_dict(timestr, result_path='/Users/luminatech/Documents/multiband_
 		file location of PCAT run results. not sure why its here
 
 	'''
-	filepath = result_path + timestr
+	filepath = result_path
+	if timestr is not None:
+		filepath += timestr
 	# Python version thing here
 	filen = open(filepath+'/params.txt','rb')
 	if encoding is not None:

@@ -1069,10 +1069,13 @@ class Model:
 		timestat_array, accept_fracs = self.print_sample_status(dts, accept, outbounds, chi2, movetype, bkg_perturb_band_idxs=np.array(bkg_perturb_band_idxs), temp_perturb_band_idxs=np.array(temp_perturb_band_idxs))
 
 		if self.gdat.visual:
-			if sample_idx%(self.gdat.nsamp // self.gdat.n_frames)==0:
-				frame_dir_path = self.gdat.frame_dir+'/sample_'+str(sample_idx)+'_of_'+str(self.gdat.nsamp)+'.png'
-			else:
-				frame_dir_path = None
+			frame_dir_path = None
+
+			if self.gdat.n_frames > 0:
+
+				if sample_idx%(self.gdat.nsamp // self.gdat.n_frames)==0:
+					frame_dir_path = self.gdat.frame_dir+'/sample_'+str(sample_idx)+'_of_'+str(self.gdat.nsamp)+'.png'
+
 
 
 			fourier_any_bool = any(['fourier_bkg' in panel_name for panel_name in self.gdat.panel_list])
@@ -2006,7 +2009,7 @@ class lion():
 			# rather than the peak normalized amplitude.
 			integrate_sz_prof=False, \
 
-			n_frames = 30, \
+			n_frames = 0, \
 
 			# ----------------------------------------- CONDENSED CATALOG --------------------------------------
 
@@ -2150,8 +2153,11 @@ class lion():
 		else:
 			for b, band in enumerate(self.gdat.bands):
 				if band is None:
-					median_val = np.median(self.data.data_array[b])
-					self.gdat.bias[b] = median_val - 0.003
+					if bias[b] is None:
+						median_val = np.median(self.data.data_array[b])
+						self.gdat.bias[b] = median_val - 0.003
+					else:
+						self.gdat.bias[b] = bias[b]
 
 		if self.gdat.save:
 			#create directory for results, save config file from run
@@ -2216,7 +2222,6 @@ class lion():
 
 		model = Model(self.gdat, self.data, libmmult)
 
-
 		verbprint(self.gdat.verbtype, 'Done initializing model..', verbthresh=1)
 
 		trueminf_schedule_counter = 0
@@ -2256,15 +2261,15 @@ class lion():
 				timestr_list = [self.gdat.timestr]
 			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
 
-		if self.gdat.generate_condensed_catalog:
+		# if self.gdat.generate_condensed_catalog:
 
-			xmatch_roc = cross_match_roc(timestr=timestr, nsamp=self.gdat.n_condensed_samp)
-			xmatch_roc.load_gdat_params(gdat=self.gdat)
-			condensed_cat, seed_cat = xmatch_roc.condense_catalogs(prevalence_cut=self.gdat.prevalence_cut, save_cats=True, make_seed_bool=True,\
-																	 mask_hwhm=self.gdat.mask_hwhm, search_radius=self.gdat.search_radius, matching_dist=self.gdat.matching_dist)
+		# 	xmatch_roc = cross_match_roc(timestr=self.gdat.timestr, nsamp=self.gdat.n_condensed_samp)
+		# 	xmatch_roc.load_gdat_params(gdat=self.gdat)
+		# 	condensed_cat, seed_cat = xmatch_roc.condense_catalogs(prevalence_cut=self.gdat.prevalence_cut, save_cats=True, make_seed_bool=True,\
+		# 															 mask_hwhm=self.gdat.mask_hwhm, search_radius=self.gdat.search_radius, matching_dist=self.gdat.matching_dist)
 
 		if self.gdat.make_post_plots:
-			result_plots(gdat = self.gdat, generate_condensed_cat=False, n_condensed_samp=100, prevalence_cut=0.1, mask_hwhm=0, condensed_catalog_plots=False)
+			result_plots(gdat = self.gdat, generate_condensed_cat=self.gdat.generate_condensed_catalog, n_condensed_samp=self.gdat.n_condensed_samp, prevalence_cut=self.gdat.prevalence_cut, mask_hwhm=self.gdat.mask_hwhm, condensed_catalog_plots=True)
 
 		dt_total = time.time() - start_time
 		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)

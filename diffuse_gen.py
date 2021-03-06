@@ -49,12 +49,12 @@ def generate_diffuse_realization(N, M, power_law_idx=-2.7):
 	ps = ell_map**power_law_idx
 	ps[0,0] = 0.
 	
-	diffuse_realiz = ifft2(ps*(np.random.normal(0, 1, size=(N, M)) + 1j*np.random.normal(0, 1, size=(N, M))))
+	diffuse_realiz = ifft2(np.sqrt(ps)*(np.random.normal(0, 1, size=(N, M)) + 1j*np.random.normal(0, 1, size=(N, M))))
 			
 	return ell_map, ps, diffuse_realiz.real
 
 def generate_spire_cirrus_realizations(n_realizations, planck_template, imdims, power_law_idx=-2.6, psf_fwhms=[3., 3., 3.],\
-									   show=False, vmin=-0.003, vmax=0.003):
+									   show=False, vmin=-0.003, vmax=0.003, psf_smooth=True, rms_scale_fac=2.2):
 	
 	'''
 	Given a power spectrum and multiband specifications, this function generates an arbitrary number of galactic cirrus FIR realizations.
@@ -96,12 +96,14 @@ def generate_spire_cirrus_realizations(n_realizations, planck_template, imdims, 
 		
 		multiband_dust_realiz = multiband_diffuse_realization(imdims, power_law_idx=power_law_idx)
 
-		norms = get_spire_diffuse_norms(planck_template)
+		norms = get_spire_diffuse_norms(planck_template, rms_scale_fac=rms_scale_fac)
 
-		smoothed_ts = psf_smooth_templates(multiband_dust_realiz, psf_sigmas=np.array(psf_fwhms)/2.355)
+		if psf_smooth:
+			multiband_dust_realiz = psf_smooth_templates(multiband_dust_realiz, psf_sigmas=np.array(psf_fwhms)/2.355)
 
-		final_ts = [norms[i]*smoothed_ts[i] for i in range(len(imdims))]
+		final_ts = [norms[i]*multiband_dust_realiz[i] for i in range(len(imdims))]
 		
+
 		if show:
 			f = show_diffuse_temps(final_ts, titles=['250 micron [Jy/beam]', '350 micron [Jy/beam]', '500 micron [Jy/beam]'], vmin=vmin, vmax=vmax)
 			fs.append(f)
@@ -154,7 +156,7 @@ def get_spire_diffuse_norms(planck_template, bands=[250., 350., 500.], rms_scale
 		norms.append(norm)
 	return norms
 
-def multiband_diffuse_realization(N_vals, M_vals=None, power_law_idx=-2.7, psf_sigmas=None, normalize=True, show=False):
+def multiband_diffuse_realization(N_vals, M_vals=None, power_law_idx=-2.7, psf_sigmas=None, relative_amplitudes=None, normalize=True, show=False):
 	
 	''' 
 	Generates multiple band diffuse realization with gaussian random fields, given some image dimensions and fluctuation information.
@@ -186,14 +188,22 @@ def multiband_diffuse_realization(N_vals, M_vals=None, power_law_idx=-2.7, psf_s
 	'''
 	if M_vals is None:
 		M_vals = N_vals
+
+	nbands = len(N_vals)
 		
 	templates = []
 	_, _, diffuse_realization = generate_diffuse_realization(N_vals[0], M_vals[0], power_law_idx=power_law_idx)
 	
 	diff_real = diffuse_realization.copy()
-	for i in range(len(N_vals)):
+	for i in range(nbands):
 
-		resized_realiz = np.array(Image.fromarray(diffuse_realization).resize((N_vals[i], M_vals[i]),resample=Image.BICUBIC))
+		if relative_amplitudes is not None:
+
+			diffuse_rel = diffuse_realization*relative_amplitudes[b]
+			resized_realiz = np.array(Image.fromarray(diffuse_rel).resize((N_vals[i], M_vals[i]),resample=Image.BICUBIC))
+
+		else:
+			resized_realiz = np.array(Image.fromarray(diffuse_realization).resize((N_vals[i], M_vals[i]),resample=Image.BICUBIC))
 		
 		if psf_sigmas is not None:
 			resized_realiz = gaussian_filter(resized_realiz, sigma=psf_sigmas[i])
@@ -201,6 +211,7 @@ def multiband_diffuse_realization(N_vals, M_vals=None, power_law_idx=-2.7, psf_s
 		if normalize:
 			resized_realiz /= np.max(np.abs(resized_realiz))
 		templates.append(resized_realiz)
+
 	if show:
 		f = show_diffuse_temps(templates)
 		
@@ -225,6 +236,143 @@ def show_diffuse_temps(templates, titles=None, return_fig=True, vmin=-0.003, vma
 
 	if return_fig:
 		return f
+
+
+def azim_average_cl2d(ps2d, l2d, nbins=29, lbinedges=None, lbins=None, weights=None, logbin=False):
+    
+    if lbinedges is None:
+        lmin = np.min(l2d[l2d!=0])
+        lmax = np.max(l2d[l2d!=0])
+        if logbin:
+            lbinedges = np.logspace(np.log10(lmin), np.log10(lmax), nbins)
+            lbins = np.sqrt(lbinedges[:-1] * lbinedges[1:])
+        else:
+            lbinedges = np.linspace(lmin, lmax, nbins)
+            lbins = (lbinedges[:-1] + lbinedges[1:]) / 2
+
+        lbinedges[-1] = lbinedges[-1]*(1.01)
+        
+    if weights is None:
+        weights = np.ones(ps2d.shape)
+        
+    Cl = np.zeros(len(lbins))
+    Clerr = np.zeros(len(lbins))
+    Nmodes = np.zeros(len(lbins),dtype=int)
+    Neffs = np.zeros(len(lbins))
+    for i,(lmin, lmax) in enumerate(zip(lbinedges[:-1], lbinedges[1:])):
+        sp = np.where((l2d>=lmin) & (l2d<lmax))
+        p = ps2d[sp]
+        w = weights[sp]
+
+        Neff = compute_Neff(w)
+
+        Cl[i] = np.sum(p*w) / np.sum(w)
+        Clerr[i] = np.std(p) / np.sqrt(len(p))
+        Nmodes[i] = len(p)
+        Neffs[i] = Neff
+        
+    return lbins, Cl, Clerr
+
+def get_power_spec(map_a, map_b=None, mask=None, pixsize=7., 
+                   lbinedges=None, lbins=None, nbins=29, 
+                   logbin=True, weights=None, return_full=False, return_Dl=False):
+    '''
+    calculate 1d cross power spectrum Cl
+    
+    Inputs:
+    =======
+    map_a: 
+    map_b:map_b=map_a if no input, i.e. map_a auto
+    mask: common mask for both map
+    pixsize:[arcsec]
+    lbinedges: predefined lbinedges
+    lbins: predefined lbinedges
+    nbins: number of ell bins
+    logbin: use log or linear ell bin
+    weights: Fourier weight
+    return_full: return full output or not
+    return_Dl: return Dl=Cl*l*(l+1)/2pi or Cl
+    
+    Outputs:
+    ========
+    lbins: 1d ell bins
+    ps2d: 2D Cl
+    Clerr: Cl error, calculate from std(Cl2d(bins))/sqrt(Nmode)
+    Nmodes: # of ell modes per ell bin
+    lbinedges: 1d ell binedges
+    l2d: 2D ell modes
+    ps2d: 2D Cl before radial binning
+    '''
+
+    if map_b is None:
+        map_b = map_a.copy()
+
+    if mask is not None:
+        map_a = map_a*mask - np.mean(map_a[mask==1])
+        map_b = map_b*mask - np.mean(map_b[mask==1])
+    else:
+        map_a = map_a - np.mean(map_a)
+        map_b = map_b - np.mean(map_b)
+        
+    l2d, ps2d = get_power_spectrum_2d(map_a, map_b=map_b, pixsize=pixsize)
+            
+    lbins, Cl, Clerr = azim_average_cl2d(ps2d, l2d, nbins=nbins, lbinedges=lbinedges, lbins=lbins, weights=weights, logbin=logbin)
+    
+    if return_Dl:
+        Cl = Cl * lbins * (lbins+1) / 2 / np.pi
+        
+    if return_full:
+        return lbins, Cl, Clerr, Nmodes, lbinedges, l2d, ps2d
+    else:
+        return lbins, Cl, Clerr
+
+
+def get_power_spectrum_2d(map_a, map_b=None, pixsize=7.):
+    '''
+    calculate 2d cross power spectrum Cl
+    
+    Inputs:
+    =======
+    map_a: 
+    map_b:map_b=map_a if no input, i.e. map_a auto
+    pixsize:[arcsec]
+    
+    Outputs:
+    ========
+    l2d: corresponding ell modes
+    ps2d: 2D Cl
+    '''
+    
+    if map_b is None:
+        map_b = map_a.copy()
+        
+    dimx, dimy = map_a.shape
+    sterad_per_pix = (pixsize/3600/180*np.pi)**2
+    V = dimx * dimy * sterad_per_pix
+    
+    ffta = np.fft.fftn(map_a*sterad_per_pix)
+    fftb = np.fft.fftn(map_b*sterad_per_pix)
+    ps2d = np.real(ffta * np.conj(fftb)) / V 
+    ps2d = np.fft.ifftshift(ps2d)
+    
+    l2d = get_l2d(dimx, dimy, pixsize)
+
+    return l2d, ps2d
+
+def get_l2d(dimx, dimy, pixsize):
+    lx = np.fft.fftfreq(dimx)*2
+    ly = np.fft.fftfreq(dimy)*2
+    lx = np.fft.ifftshift(lx)*(180*3600./pixsize)
+    ly = np.fft.ifftshift(ly)*(180*3600./pixsize)
+    ly, lx = np.meshgrid(ly, lx)
+    l2d = np.sqrt(lx**2 + ly**2)
+    
+    return l2d
+
+def compute_Neff(weights):
+    N_eff = np.sum(weights)**2/np.sum(weights**2)
+
+    return N_eff
 
 
 

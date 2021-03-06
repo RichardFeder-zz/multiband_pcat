@@ -640,7 +640,7 @@ class pcat_test_suite():
 		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, fc_amp_sig=0.0001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
 		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False, \
 		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, nominal_nsrc = 1000, raw_counts=False, generate_condensed_catalog=False, \
-		err_f_divfac=1., bkg_sig_fac=5.0):
+		err_f_divfac=1., bkg_sig_fac=5.0, n_condensed_samp=50, prevalence_cut=0.5):
 
 		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
@@ -670,21 +670,59 @@ class pcat_test_suite():
 	 				 im_fpath=im_fpath, err_fpath=err_fpath, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
 	 				 correct_misaligned_shift=correct_misaligned_shift, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, panel_list=panel_list, \
 	 				 F_statistic_alph=F_statistic_alph, nominal_nsrc = 1000, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac, \
-	 				 bkg_sig_fac=bkg_sig_fac)
+	 				 bkg_sig_fac=bkg_sig_fac, n_condensed_samp=n_condensed_samp, prevalence_cut=prevalence_cut)
 
 		ob.main()
 
 	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
 				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
-				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
+				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, float_fourier_comps=False, n_fc_terms=5, fc_amp_sig=None, inject_diffuse_comp=False, diffuse_comp_path=None, \
 				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=50, initial_template_amplitude_dicts=None, \
 				      color_mus=None, color_sigs=None, panel_list=None, nregion=5, burn_in_frac=0.7, err_f_divfac=1., template_moveweight=80., \
-				      timestr_list_file=None, bkg_sig_fac=5.0, temp_prop_sig_fudge_facs=None, scalar_noise_sigma=None):
+				      timestr_list_file=None, bkg_sig_fac=5.0, temp_prop_sig_fudge_facs=None, scalar_noise_sigma=None, \
+				      movestar_moveweight=None, birth_death_moveweight=None, merge_split_moveweight=None, \
+				      estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, point_src_delay=30):
 
 		''' Function for tests involving injecting SZ signals into mock data '''
 
 		if initial_template_amplitude_dicts is None:
 			initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
+
+
+		if estimate_dust_first:
+			
+			panel_list = ['data0', 'model0', 'residual0', 'fourier_bkg0', 'residual_zoom0', 'dNdS0']
+
+			# start with 250 micron image only
+
+			ob = lion(band0=0, base_path=self.base_path, result_path=self.result_path, burn_in_frac=burn_in_frac, float_background=True, \
+			  bkg_sample_delay=0, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
+			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
+			  make_post_plots=False, nsamp=nsamp_dustestimate, residual_samples=5, template_moveweight=template_moveweight, float_templates=False, \
+			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise, \
+			  panel_list=panel_list, err_f_divfac=err_f_divfac, bkg_sig_fac=bkg_sig_fac, \
+			  scalar_noise_sigma=scalar_noise_sigma, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
+			  float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0, fourier_comp_moveweight=200., \
+			  dfc_prob=1.0, nsrc_init=0, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig)
+
+			ob.main()
+			_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
+			timestr = ob.gdat.timestr
+
+
+		# use filepath from the last iteration to load estiamte of median background estimate
+		chain = np.load(filepath+'/chain.npz')
+		median_fc = np.median(chain['fourier_coeffs'][10:], axis=0)
+		last_bkg_sample_250 = chain['bkg'][-1,0]
+
+		print('last bkg sample is ', last_bkg_sample_250)
+
+
+		dust_rel_SED = [self.dust_I_lams[self.band_dict[i]]/self.dust_I_lams[self.band_dict[0]] for i in range(3)]
+		fc_rel_amps = [dust_rel_SED[i]*self.flux_density_conversion_dict[self.band_dict[i]]/self.flux_density_conversion_dict[self.band_dict[0]] for i in range(3)]
+
+		panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
+
 
 		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=burn_in_frac, float_background=True, \
 			  bkg_sample_delay=0, temp_sample_delay=temp_sample_delay, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
@@ -693,7 +731,8 @@ class pcat_test_suite():
 			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=template_moveweight, \
 			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise, \
 			  color_mus=color_mus, color_sigs=color_sigs, panel_list=panel_list, err_f_divfac=err_f_divfac, timestr_list_file=timestr_list_file, bkg_sig_fac=bkg_sig_fac, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, \
-			  scalar_noise_sigma=scalar_noise_sigma)
+			  scalar_noise_sigma=scalar_noise_sigma, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
+			  float_fourier_comps=float_fourier_comps, fourier_comp_moveweight=0., dfc_prob=0.0, fc_rel_amps=fc_rel_amps)
 
 		ob.main()
 
