@@ -146,6 +146,7 @@ def condensed_catalog_overlaid_data(images, all_xs, all_ys, all_fs=None, bands=N
 
 def plot_atcr(listsamp, title):
 
+
 	numbsamp = listsamp.shape[0]
 	four = fft(listsamp - np.mean(listsamp, axis=0), axis=0)
 	atcr = ifft(four * np.conjugate(four), axis=0).real
@@ -167,6 +168,46 @@ def plot_atcr(listsamp, title):
 	plt.tight_layout()
 
 	return figr
+
+def plot_atcr_multichain(listsamp, title=None, alpha=1.0):
+    
+    figr, axis = plt.subplots(figsize=(6,4))
+    if title is not None:
+        plt.title(title, fontsize=16)
+    
+    if np.ndim(listsamp) == 1:
+        listsamp = [listsamp]
+    else:
+        print('wahoo! we have many things')
+        
+    timeatcr_list = np.zeros((len(listsamp),))
+    for s, samp in enumerate(listsamp):
+        
+
+        numbsamp = samp.shape[0]
+        four = fft(samp - np.mean(samp, axis=0), axis=0)
+        atcr = ifft(four * np.conjugate(four), axis=0).real
+        atcr /= np.amax(atcr, 0)
+
+        autocorr = atcr[:int(numbsamp/2), ...]
+        indxatcr = np.where(autocorr > 0.2)
+        timeatcr = np.argmax(indxatcr[0], axis=0)
+        timeatcr_list[s] = timeatcr
+        numbsampatcr = autocorr.size
+
+        axis.plot(np.arange(numbsampatcr), autocorr, alpha=alpha, color='k')
+
+    axis.set_xlabel(r'$\tau$', fontsize=16)
+    axis.set_ylabel(r'$\xi(\tau)$', fontsize=16)
+
+    if len(listsamp) > 1:
+        axis.text(0.8, 0.8, r'$\overline{\tau}_{exp} = %.3g$' % np.median(timeatcr_list), ha='center', va='center', transform=axis.transAxes, fontsize=16)
+    else:
+        axis.text(0.8, 0.8, r'$\tau_{exp} = %.3g$' % timeatcr, ha='center', va='center', transform=axis.transAxes, fontsize=16)
+    axis.axhline(0., ls='--', alpha=0.5)
+    plt.tight_layout()
+
+    return figr
 
 
 
@@ -626,7 +667,7 @@ def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fou
 		cb.set_label(xlabel_unit)		
 		plt.subplot(1,3,3)
 		plt.title('Data - median background model', fontsize=14)
-		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 99)/convert_to_MJy_sr_fac)
+		plt.imshow((ref_img - mean_fc_temp)/convert_to_MJy_sr_fac, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5)/convert_to_MJy_sr_fac, vmax=np.percentile(ref_img, 97)/convert_to_MJy_sr_fac)
 		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
 		cb.set_label(xlabel_unit)
 
@@ -847,22 +888,36 @@ def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
 	power_spectrum_realiz = np.array(twod_power_spectrum_realiz)
 	oned_ps_realiz = np.array(oned_ps_realiz)
 
+	f = plt.figure(figsize=(5, 5))
+	# plt.subplot(1,2,1)
 
-	f = plt.figure(figsize=(10, 5))
-	plt.subplot(1,2,1)
-	plt.imshow(np.abs(np.median(power_spectrum_realiz, axis=0)), norm=matplotlib.colors.LogNorm())
-	plt.colorbar()
-	plt.subplot(1,2,2)
 	fov_in_rad = N*(pixsize/3600.)*(np.pi/180.)
 
-	plt.errorbar(2*np.pi/(fov_in_rad/np.sqrt(ps_bins[1:]*ps_bins[:-1])), np.median(oned_ps_realiz,axis=0), yerr=np.std(oned_ps_realiz, axis=0))
+	plt.errorbar(2*np.pi/(fov_in_rad/np.sqrt(ps_bins[1:]*ps_bins[:-1])), np.median(oned_ps_realiz,axis=0), yerr=np.std(oned_ps_realiz, axis=0), color='k', capsize=5)
 	plt.xlabel('$2\\pi/\\theta$ [rad$^{-1}$]', fontsize=16)
 	plt.ylabel('$C_{\\ell}$', fontsize=16)
 	plt.yscale('log')
 	plt.xscale('log')
+	plt.tick_params(labelsize=14)
 	plt.tight_layout()
 	if show:
 		plt.show()
+
+	# f = plt.figure(figsize=(10, 5))
+	# plt.subplot(1,2,1)
+	# plt.imshow(np.abs(np.median(power_spectrum_realiz, axis=0)), norm=matplotlib.colors.LogNorm())
+	# plt.colorbar()
+	# plt.subplot(1,2,2)
+	# fov_in_rad = N*(pixsize/3600.)*(np.pi/180.)
+
+	# plt.errorbar(2*np.pi/(fov_in_rad/np.sqrt(ps_bins[1:]*ps_bins[:-1])), np.median(oned_ps_realiz,axis=0), yerr=np.std(oned_ps_realiz, axis=0))
+	# plt.xlabel('$2\\pi/\\theta$ [rad$^{-1}$]', fontsize=16)
+	# plt.ylabel('$C_{\\ell}$', fontsize=16)
+	# plt.yscale('log')
+	# plt.xscale('log')
+	# plt.tight_layout()
+	# if show:
+	# 	plt.show()
 
 	return f
 
@@ -912,11 +967,12 @@ def plot_posterior_template_amplitude(template_samples, band='250 micron', templ
 	if title:
 		plt.title(template_name +' template level - '+str(band))
 
-	if len(template_samples)>50:
-		binz = scotts_rule_bins(template_samples/convert_to_MJy_sr_fac)
-	else:
-		binz = 10
-	plt.hist(np.array(template_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=binz)
+	if not np.isnan(template_samples).any() and np.std(template_samples) != 0:
+		if len(template_samples)>50:
+			binz = scotts_rule_bins(template_samples/convert_to_MJy_sr_fac)
+		else:
+			binz = 10
+		plt.hist(np.array(template_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=binz)
 	if mock_truth is not None:
 		plt.axvline(mock_truth, linestyle='dashdot', color='r', label='Mock truth')
 		plt.legend()
@@ -952,7 +1008,7 @@ def plot_posterior_flux_dist(logSv, raw_number_counts, band='250 micron', title=
 
 
 def plot_posterior_number_counts(logSv, lit_number_counts, trueminf=0.001, nsamp=None, band='250 micron', title=True, show=False, base_path='', \
-	xlim=[0.5, 300], ylim=[1.8, 5], lablefontsize=16):
+	xlim=[0.5, 300], ylim=[1.8, 5], labelfontsize=16):
 
 	mean_number_cts = np.median(lit_number_counts, axis=0)
 	lower = np.percentile(lit_number_counts, 16, axis=0)
@@ -1178,10 +1234,10 @@ def plot_residual_1pt_function(resid, mode='median', band='S', noise_model=None,
 	
 	f = plt.figure()
 	plt.title(title_mode+' 1pt function -- '+band)
-	plt.hist(median_resid_rav, bins=np.linspace(binmin, binmax, nbin), histtype='step', density=density)
+	plt.hist(median_resid_rav, bins=np.linspace(binmin, binmax, nbin), histtype='step')
 
 	if noise_model is not None:
-		plt.hist(noise_model.ravel(), bins=np.linspace(binmin, binmax, nbin), histtype='step', color='r', label='Noise model (Gaussian draw)', density=density)
+		plt.hist(noise_model.ravel(), bins=np.linspace(binmin, binmax, nbin), histtype='step', color='r', label='Noise model (Gaussian draw)')
 
 	plt.axvline(np.median(median_resid_rav), label='Median='+str(np.round(np.median(median_resid_rav), 5))+'\n $\\sigma=$'+str(np.round(np.std(median_resid_rav), 5)))
 	plt.legend(frameon=False)
@@ -1570,7 +1626,7 @@ def grab_atcr(timestr, paramstr='template_amplitudes', band=0, result_dir=None, 
 def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow=False, \
 				plttype='png', gdat=None, cattype='SIDES', min_flux_refcat=1e-4, dpi=150, flux_density_unit='MJy/sr', \
 				accept_fraction_plots=True, chi2_plots=True, dc_background_plots=True, fourier_comp_plots=True, \
-				template_plots=True, flux_dist_plots=True, flux_color_plots=False, flux_color_color_plots=False, \
+				template_plots=True, flux_dist_plots=True, flux_color_plots=False, flux_color_color_plots=True, \
 				comp_resources_plot=True, source_number_plots=True, residual_plots=True, condensed_catalog_plots=False, condensed_catalog_fpath=None, generate_condensed_cat=False, \
 				n_condensed_samp=None, prevalence_cut=None, mask_hwhm=None, search_radius=None, matching_dist=None, truth_catalog=None, \
 				title_band_dict=None, temp_mock_amps_dict=None, lam_dict=None, pixel_sizes=None):
@@ -1593,12 +1649,18 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 		gdat.result_path = result_path
 		gdat.timestr = timestr
 
+		gdat.psf_fwhms = [3., 3., 3.]
+		gdat.err_f_divfac = 1.
+		# gdat.round_up_or_down = 'down'
+		gdat.round_up_or_down = 'up'
+
 	else:
 		gdat.filepath = gdat.result_path + gdat.timestr
 
-	if truth_catalog is None:
-		if gdat.truth_catalog is not None:
-			truth_catalog = gdat.truth_catalog
+
+	# if truth_catalog is None:
+		# if gdat.truth_catalog is not None:
+			# truth_catalog = gdat.truth_catalog
 
 	if matching_dist is not None:
 		gdat.matching_dist = matching_dist
@@ -1632,6 +1694,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 			# np.savetxt(gdat.result_path+'/'+gdat.timestr+'/condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_prevcut='+str(gdat.prevalence_cut)+'_searchradius='+str(gdat.search_radius)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt', condensed_cat)
 			np.savetxt(gdat.result_path+'/'+gdat.timestr+'/raw_seed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_matching_dist='+str(gdat.matching_dist)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt', seed_cat)
+			np.savetxt(gdat.result_path+'/'+gdat.timestr+'/condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_matching_dist='+str(gdat.matching_dist)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt', condensed_cat)
 
 		else:
 			if condensed_catalog_fpath is None:
@@ -1641,11 +1704,12 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				
 				# condensed_catalog_fpath = gdat.result_path+'/'+gdat.timestr+'/condensed_catalog_nsamp='+str(gdat.n_condensed_samp)+'_prevcut='+str(gdat.prevalence_cut)+'_searchradius='+str(gdat.search_radius)+'_maskhwhm='+str(gdat.mask_hwhm)+'.txt'
 
-			print('loading condensed catalog from ', condensed_catalog_fpath)
-			condensed_cat = np.load(condensed_catalog_fpath)['condensed_catalog']
+				print('loading condensed catalog from ', condensed_catalog_fpath)
+				
+				condensed_cat = np.load(condensed_catalog_fpath)['condensed_catalog']
 			# condensed_cat = np.loadtxt(condensed_catalog_fpath)
 
-			print('condensed_cat has shape ', condensed_cat.shape)
+				print('condensed_cat has shape ', condensed_cat.shape)
 			# print(condensed_cat[:, 5])
 			# print(condensed_cat[:, 9])
 			# print(condensed_cat[:, 13])
@@ -1885,8 +1949,10 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 						f_temp_amp_chain.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_chain_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 						f_temp_amp_post.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 					if gdat.nsamp > 50:
-						f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
-						f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+						if np.std(template_amplitudes[burn_in:, t, b]) != 0:
+							f_temp_amp_atcr = plot_atcr(template_amplitudes[burn_in:, t, b], title='Template amplitude, '+gdat.template_order[t]+', '+title_band_dict[bands[b]]) # newt
+							f_temp_amp_atcr.savefig(template_dir+'/'+gdat.template_order[t]+'_template_amp_autocorr_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 
 	# ---------------------------- COMPUTATIONAL RESOURCES --------------------------------
@@ -2181,9 +2247,15 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 				spectra_plot = plt.figure(figsize=(nrow*4, ncol*3))
 
 				if red_cut:
-					plt.suptitle('$F_{500} > F_{350} > F_{250}$', fontsize=18, y=1.04)
+					suptitle = '$F_{500} > F_{350} > F_{250}$'
+					if flux_cut is not None:
+						suptitle += ', $F_{'+str(lams[flux_cut_idx])+'}$ > '+str(1e3*flux_cut)+' mJy'
+					# plt.suptitle('$F_{500} > F_{350} > F_{250}$', fontsize=18, y=1.04)
 				elif flux_cut is not None:
-					plt.suptitle('$F_{'+str(lams[flux_cut_idx])+'}$ > '+str(1e3*flux_cut)+' mJy', fontsize=18, y=1.04)
+					suptitle = '$F_{'+str(lams[flux_cut_idx])+'}$ > '+str(1e3*flux_cut)+' mJy'
+
+				if red_cut or flux_cut is not None:
+					plt.suptitle(suptitle, fontsize=18, y=1.04)
 
 				specidx = 1
 				for i in range(len(condensed_cat)):
@@ -2255,7 +2327,7 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			flux_band_cbar = 0
 			lams = [500, 350, 250]
 			# all_spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim)
-			red_flux_cut = 0.01
+			red_flux_cut = 0.025
 			red_spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim, red_cut=True, flux_cut_idx=flux_cut_idx, flux_cut=red_flux_cut)
 			spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim, flux_cut_idx=flux_cut_idx, flux_cut=flux_cut)
 			color_color_flux_cond = condensed_cat_color_color_plot(condensed_cat, flux_idxs, lams=lams, flux_band_cbar=flux_band_cbar, prev_cut=gdat.prevalence_cut, xlim=[0.5, 3.5], ylim=[0.5, 2.5])

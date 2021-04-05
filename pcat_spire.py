@@ -5,7 +5,7 @@ import ctypes
 from ctypes import c_int, c_double
 # in order for visual=True to work, interactive backend should be loaded before importing pyplot
 import matplotlib
-#matplotlib.use('TkAgg')
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import time
 import os
@@ -1077,7 +1077,6 @@ class Model:
 					frame_dir_path = self.gdat.frame_dir+'/sample_'+str(sample_idx)+'_of_'+str(self.gdat.nsamp)+'.png'
 
 
-
 			fourier_any_bool = any(['fourier_bkg' in panel_name for panel_name in self.gdat.panel_list])
 			fourier_bkg = None
 
@@ -1920,6 +1919,8 @@ class lion():
 
 			image_extnames=['SIGNAL'], \
 
+			error_extname='ERROR', \
+
 			# if set to true, Gaussian noise realization of error model is added to signal image
 			add_noise=False, \
 			
@@ -2269,7 +2270,7 @@ class lion():
 		# 															 mask_hwhm=self.gdat.mask_hwhm, search_radius=self.gdat.search_radius, matching_dist=self.gdat.matching_dist)
 
 		if self.gdat.make_post_plots:
-			result_plots(gdat = self.gdat, generate_condensed_cat=self.gdat.generate_condensed_catalog, n_condensed_samp=self.gdat.n_condensed_samp, prevalence_cut=self.gdat.prevalence_cut, mask_hwhm=self.gdat.mask_hwhm, condensed_catalog_plots=True)
+			result_plots(gdat = self.gdat, generate_condensed_cat=self.gdat.generate_condensed_catalog, n_condensed_samp=self.gdat.n_condensed_samp, prevalence_cut=self.gdat.prevalence_cut, mask_hwhm=self.gdat.mask_hwhm, condensed_catalog_plots=self.gdat.generate_condensed_catalog)
 
 		dt_total = time.time() - start_time
 		print('Full Run Time (s):', np.round(dt_total,3), file=self.gdat.flog)

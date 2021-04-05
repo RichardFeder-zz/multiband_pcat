@@ -179,7 +179,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 
 
 	if gdat.err_fpath is None:
-		error = np.nan_to_num(spire_dat['ERROR'].data)
+		error = np.nan_to_num(spire_dat[gdat.error_extname].data)
 	else:
 		hdu = fits.open(gdat.err_fpath)[0]
 		# error = np.nan_to_num(hdu.data/hdu.header['JANSCALE'])
@@ -380,27 +380,7 @@ class pcat_data():
 
 		for i, band in enumerate(gdat.bands):
 
-			if map_object is not None:
-
-				obj = map_object[band]
-				image = np.nan_to_num(obj['signal'])
-				error = np.nan_to_num(obj['error'])
-
-				exposure = obj['exp'].data
-				mask = obj['mask']
-				gdat.psf_pixel_fwhm = obj['widtha']/obj['pixsize'] # gives it in arcseconds and neet to convert to pixels
-				self.fast_astrom.load_wcs_header_and_dim(head=obj['shead'], round_up_or_down=gdat.round_up_or_down)
-				gdat.dataname = obj['name']
-
-				if i > 0:
-					self.fast_astrom.fit_astrom_arrays(0, i, pos0=None)
-
-				bounds = get_rect_mask_bounds(mask)
-
-				gdat.x0_list.append(x0)
-				gdat.y0_list.append(y0)
-
-			elif gdat.mock_name is None:
+			if gdat.mock_name is None:
 
 				image, error, mask, file_name, x0, y0 = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps, image_extnames=gdat.image_extnames)
 
@@ -522,13 +502,12 @@ class pcat_data():
 			if gdat.auto_resize:
 				# error = error[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
 				# image = image[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
-				error = error[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1]
-				image = image[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1]
+				error = error[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1] # bounds obtained from mask, error map copied from within those bounds
+				image = image[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1] # same with image
 				smaller_dim = np.min(image.shape)
 				larger_dim = np.max(image.shape)
 
-				print('smaller dim for band ', band, ' is', smaller_dim)
-				print('larger dim for band ', band, ' is ', larger_dim)
+				print('smaller dim for band ', band, ' is', smaller_dim, ' larger dim is ', larger_dim)
 
 				gdat.width = find_nearest_mod(larger_dim, gdat.nregion, mode=gdat.round_up_or_down)
 				gdat.height = gdat.width
@@ -545,6 +524,8 @@ class pcat_data():
 
 				resized_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 				resized_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
+				resized_mask[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = mask[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
+
 
 				if i > 0:
 					if int(x_max_pivot) < resized_image.shape[0]:
@@ -553,6 +534,8 @@ class pcat_data():
 						resized_image[:,int(x_max_pivot):] = 0.
 						resized_error[int(x_max_pivot):,:] = 0.
 						resized_error[:,int(x_max_pivot):] = 0.
+						resized_mask[int(x_max_pivot):,:] = 0.
+						resized_mask[:,int(x_max_pivot):] = 0.
 
 				resized_template_list = []
 
@@ -656,9 +639,19 @@ class pcat_data():
 
 
 				variance = resized_error**2
-
 				variance[variance==0.]=np.inf
 				weight = 1. / variance
+
+				# plt.figure()
+				# plt.subplot(1,2,1)
+				# plt.title(str(np.min(resized_error))+', '+str(np.max(resized_error)))
+				# plt.imshow(resized_error, vmin=0.0003, vmax=0.003, origin='lower')
+				# plt.colorbar()
+				# plt.subplot(1,2,2)
+				# plt.imshow(weight, vmin=np.nanpercentile(weight, 5), vmax=np.nanpercentile(weight, 95), origin='lower')
+				# plt.colorbar()
+				# plt.show()
+
 
 				print('GDAT.MEAN OFFSET[i] is ', gdat.mean_offsets[i])
 
@@ -666,7 +659,7 @@ class pcat_data():
 				self.errors.append(resized_error.astype(np.float32))
 				self.data_array.append(resized_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
 				self.template_array.append(resized_template_list)
-
+				self.resized_masks.append(resized_mask)
 
 			elif gdat.width > 0:
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
@@ -704,12 +697,9 @@ class pcat_data():
 				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) 
 				self.template_array.append(template_list)
 
-
-
 			if i==0:
 				gdat.imsz0 = image_size
 
-			
 			if show_input_maps:
 				plt.figure()
 				plt.title('data, '+gdat.tail_name)
@@ -783,9 +773,7 @@ class spire_data():
         self.file_path = self.base_path+filename
         
     def get_wcs_header(self):
-        
         self.wcs = WCS(self.spire_dat[1].header)
-        
     
     def load_in_maps(self, zero_nans=True):
         self.spire_dat = fits.open(self.file_path)
@@ -801,8 +789,6 @@ class spire_data():
             self.error[np.isnan(self.error)] = 0.0
             self.exposure[np.isnan(self.exposure)] = 0.0
             self.mask[np.isnan(self.mask)] = 0.0
-        
-    
         
     def show_hist(self, median_plot=True):
         plt.figure(figsize=(10, 5))
