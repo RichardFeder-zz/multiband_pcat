@@ -743,7 +743,7 @@ class cross_match_roc():
 
 
     def condense_catalogs(self, make_seed_bool=True, seed_fpath=None, nsamp=None, iteration_number=2, matching_dist = None, search_radius = None, prevalence_cut=0.1, \
-                            show_figs = True, save_figs = True, save_cats = False, mask_hwhm = 5, band_names = None, catfiletype = 'npz', tail_name = None):
+                            show_figs = False, save_figs = False, save_cats = False, mask_hwhm = 5, band_names = None, catfiletype = 'npz', tail_name = None):
                  
         if matching_dist is not None:
             self.matching_dist = matching_dist
@@ -789,7 +789,6 @@ class cross_match_roc():
         seed_cat[:,1] = y
         cat_len = x.size
 
-        # condensed_cat = clusterize_spire(seed_cat, self.lion_cat['x'], self.lion_cat['y'], self.lion_cat['n'], lion_fs, self.gdat.max_nsrc, self.nsamp, self.search_radius)
         condensed_cat, column_names = clusterize_spire(seed_cat, self.lion_cat['x'], self.lion_cat['y'], self.lion_cat['n'], lion_fs, self.gdat.max_nsrc, self.nsamp, self.search_radius, band_names=None)
 
         print('column names are ', column_names)

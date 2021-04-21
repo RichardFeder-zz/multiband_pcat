@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 from spire_data_utils import *
 import pickle
 import corner
+import os
+
 # from pcat_spire import *
 
 
@@ -18,7 +20,240 @@ def return_step_func_hist(xvals, hist_bins, hist_vals):
                 
     return all_step_vals
 
-def gather_posteriors(timestr_list, inject_sz_frac=None, tail_name='6_4_20', band_idx0=0, datatype='real', pdf_or_png='.png', save=False, dust=False, ref_dust_amp=1.):
+def handselect_residual(timestr_list_file=None, fmin_subtract=0.01, timestr_list=None, inject_sz_frac=None, tail_name='9_24_20', datatype='real', pdf_or_png ='.png', save=False, dust=False, ref_dust_amp=1.):
+
+    if timestr_list_file is not None:
+        timestr_list = np.load(timestr_list_file)['timestr_list']
+    elif timestr_list is None:
+        print('no list of runs specified, ending now')
+        return
+
+    band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+
+    temp_mock_amps = [0.0111, 0.1249, 0.6912]
+    flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
+
+    temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
+    figs = []
+    median_select_resid_list = []
+    for i in np.arange(1):
+        all_resids = []
+
+        if inject_sz_frac is not None:
+            inject_sz_amp = inject_sz_frac*temp_mock_amps[i]
+            ref_vals.append(inject_sz_amp)
+            print('inject sz amp is ', inject_sz_amp)
+
+        f = plt.figure(figsize=(10,10))
+        plt.title('median residual, $f_{min}$='+str(np.round(fmin_subtract, 4))+', '+band_dict[i], fontsize=18)
+        for j, timestr in enumerate(timestr_list):
+            if timestr=='':
+                continue
+            gdat, filepath, result_path = load_param_dict(timestr, result_path='spire_results/')
+            
+            datapath = gdat.base_path+'/Data/spire/'+gdat.dataname+'/'
+            
+#            print('filepath:', filepath)
+#            print('datapath:', datapath)
+
+            dat = pcat_data(gdat.auto_resize, nregion=gdat.nregion)
+            dat.load_in_data(gdat)
+
+
+            chain = np.load(filepath+'/chain.npz')
+
+            xsrcs = chain['x']
+            ysrcs = chain['y']
+            fsrcs = chain['f']
+            chi2modl = chain['chi2sample']
+
+#            print('Minimum chi2 is ', np.min(chi2modl, axis=0))
+#            print(np.array(xsrcs).shape, np.array(fsrcs.shape))
+
+            bkgs = chain['bkg']
+
+            template_amplitudes = chain['template_amplitudes']
+
+            print(np.array(xsrcs).shape, np.array(fsrcs.shape))
+            for s in range(100):
+            #for s in range(len(xsrcs)):
+                
+                fmask = (fsrcs[0,:,-s] > fmin_subtract)
+                print('fmask has shape', fmask.shape)
+                x_fmask = xsrcs[fmask,-s]
+                y_fmask = ysrcs[fmask,-s]
+                fs_fmask = fsrcs[0,fmask,-s]
+                print('x_fmask has shape ', x_fmask.shape)
+                print('f_fmask has shape ', fs_fmask.shape)
+                print(fs_fmask)
+                dtemp = []
+                for t, temp in enumerate(dat.template_array[i]):
+                    if temp is not None and template_amplitudes[s,t,i]:
+                        dtemp.append(template_amplitudes[s,t,i]*temp)
+
+                if len(dtemp) > 0:
+                    dtemp = np.sum(np.array(dtemp), axis=0).astype(np.float32)
+
+                libmmult = ctypes.cdll['./blas.so']
+                lib = libmmult.clib_eval_modl
+                print('imszs:', gdat.imszs[i])
+                pixel_per_beam = 2*np.pi*((3.)/2.355)**2
+                dmodel, diff2 = image_model_eval(x_fmask, y_fmask, pixel_per_beam*dat.ncs[i]*fs_fmask, bkgs[i,-s], gdat.imszs[i].astype(np.int32), dat.ncs[i],\
+                                                 np.array(dat.cfs[i]).astype(np.float32()), weights=dat.weights[i],\
+                                                 lib=lib, template=dtemp)
+            
+
+                
+                r = dat.data_array[i]-dmodel[i]
+                print('residual has shape', r.shape)
+                print(r)
+                all_resids.append(r)
+
+            median_select_resid = np.median(np.array(all_resids), axis=0)
+            median_select_resid_list.append(median_select_resid)
+
+            plt.imshow(median_select_resid, cmap='Greys', vmin=np.percentile(median_select_resid, 5), vmax=np.percentile(median_select_resid, 95))
+        plt.xlabel('x [pixel]',fontsize=16)
+        plt.ylabel('y [pixel]', fontsize=16)
+            
+
+        if save:
+            plt.savefig('agg_posts/median_residual_fminsub='+str(fmin_subtract)+'_'+tail_name+'.'+pdf_or_png)
+        figs.append(f)
+        plt.close()
+
+        return median_select_resid_list, figs
+
+#ms, figs = handselect_residual(fmin_subtract=0.01, timestr_list_file='rxj1347_mock_test_9_24_20_10sims.npz')
+
+class pcat_agg():
+    
+    flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
+    band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
+
+    def __init__(self, base_path='/home/mbzsps/multiband_pcat/', result_path='/home/mbzsps/multiband_pcat/spire_results/'):
+        self.base_path = base_path
+        self.result_path = result_path
+        self.chain = None
+
+    def load_chain(self, timestr, inplace=True):
+        chain = np.load(self.result_path+timestr+'/chain.npz')
+        if inplace:
+            self.chain = chain
+        else:
+            return chain
+
+    def load_timestr_list(self, timestr_list_file, inplace=False):
+        timestr_list = np.load(timestr_list_file)['timestr_list']
+        if inplace:
+            self.timestr_list = timestr_list
+        else:
+            return timestr_list
+
+    def grab_acceptance_fracs(self, chain=None):
+        if chain is None:
+            chain = self.chain
+        acceptance_fracs = chain['accept']
+        print('acceptance_fracs has shape', acceptance_fracs.shape)
+        return acceptance_fracs
+
+    def grab_chi2_stats(self, chain=None):
+        if chain is None:
+            chain = self.chain
+        chi2_stats = chain['chi2']
+        print('chi2 stats has shape', chi2_stats.shape)
+        return chi2_stats
+    
+    def grab_bkg_vals(self, chain=None):
+        if chain is None:
+            chain = self.chain
+            
+        bkg_vals = chain['bkg']
+        #print(bkg_vals)
+        print('bkg vals has shape', bkg_vals.shape)
+        return bkg_vals
+
+    def compile_stats(self, mode='accept', timestr_list_file=None, inplace=False):
+        
+        all_stats = []
+
+        if timestr_list_file is not None:
+            self.load_timestr_list(timestr_list_file, inplace=True)
+
+        for t, timestr in enumerate(self.timestr_list):
+            print(timestr)
+            self.load_chain(timestr, inplace=True)
+            if mode=='accept':
+                stats = self.grab_acceptance_fracs()
+            elif mode=='chi2':
+                stats = self.grab_chi2_stats()
+            elif mode=='bkg':
+                stats = self.grab_bkg_vals()
+                #if t==0:
+            #    stats_shape = stats.shape
+            #    all_stats_shape = stats_shape.copy()
+            #    all_stats_shape[0] *= len(timestr_list_file)
+            #    print('all stats shape is now ', all_stats_shape)
+            #    all_stats = np.zeros((all_stats_shape))
+            
+            all_stats.append(stats)
+
+            #if len(all_stats_shape)==2:
+            #    all_stats[i*stats_shape[0]:(i+1)*stats_shape[0],:] = stats
+            #elif len(all_stats_shape)==3:
+            #    all_stats[i*stats_shape[0]:(i+1)*stats_shape[0],:,:] = stats
+
+        all_stats = np.array(all_stats)
+
+        print('all stats has shape', all_stats.shape)
+        if inplace:
+            self.all_stats = all_stats
+        else:
+            return all_stats
+
+# for getting bkg means
+#timestr_sim_file = 'rxj1347_conley_10arcmin_041921_timestrs_fitbkg.npz'
+#pcat_agg_obj = pcat_agg()
+#burn_in = 1400
+#timestr_list = pcat_agg_obj.load_timestr_list(timestr_sim_file, inplace=False)
+
+#all_bkg_vals = pcat_agg_obj.compile_stats(mode='bkg', timestr_list_file=timestr_sim_file)
+
+#print('all_bkg_vals has shape', all_bkg_vals.shape)
+#all_bkg_vals = all_bkg_vals[:,burn_in:, :]
+
+#mean_bkg_vals = np.mean(all_bkg_vals, axis=1)
+
+#print('mean bkg vals is ', mean_bkg_vals)
+#print(mean_bkg_vals.shape)
+
+#sim_idx_list = []
+#mean_list = []
+
+#for timestr in timestr_list:
+#    gdat, filepath, result_path = load_param_dict(timestr, result_path='spire_results/')
+#    sim_idx = int(gdat.tail_name[-3:])
+#    print('sim_idx is ', sim_idx)
+    
+#    sim_idx_list.append(sim_idx)
+
+#print(sim_idx_list)
+#print(mean_bkg_vals)
+
+#np.savez('rxj1347_conley_10arcmin_041921_bkg_best_fits.npz', sim_idx_list=sim_idx_list, mean_bkg_vals=mean_bkg_vals)
+
+
+#exit()
+
+
+
+def gather_posteriors(timestr_list=None, timestr_list_file=None, inject_sz_frac=None, tail_name='6_4_20', band_idx0=0, datatype='real', pdf_or_png='.png', save=False, dust=False, ref_dust_amp=1., integrate_sz_prof=False, burn_in_frac=None):
+
+    if timestr_list_file is not None:
+        timestr_list = np.load(timestr_list_file)['timestr_list']
+    elif timestr_list is None:
+        print('no list of runs specified, ending now')
+        return
 
 #     all_temp_posteriors = []
     figs = []
@@ -26,25 +261,40 @@ def gather_posteriors(timestr_list, inject_sz_frac=None, tail_name='6_4_20', ban
     band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
 
     # temp_mock_amps = [None, 0.3, 0.5] # MJy/sr
-    temp_mock_amps = [0.0111, 0.1249, 0.6912]
+    #temp_mock_amps = [0.0111, 0.1249, 0.6912]
+    temp_mock_amps = [0.03, 0.20, 0.80] # updated values from X-ray measurement of RXJ1347
     flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
 
-    temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
-
+    #temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912})
+    temp_mock_amps_dict = dict({'S':0.03, 'M':0.20, 'L':0.80}) # udpated values from X-ray measurement
     medians = []
     pcts_5 = []
     pcts_16, pcts_84, pcts_95 = [[] for x in range(3)]
     ref_vals = []
-
+    dont_include_idxs = []
+    #dont_include_idxs = [331, 332, 333, 334]
+    #lensed_cat_idxs = np.load('lensed_cat_criteria_45arcsec_20mJy.npz')
+    #dont_include_idxs = lensed_cat_idxs['unsatisfied_idxs']
+    #print(dont_include_idxs)
     f = plt.figure(figsize=(15, 5), dpi=200)
     plt.suptitle(tail_name, fontsize=20, y=1.04)
 
+    indiv_sigmas_list = []
+    indiv_medians_list = []
+    indiv_84pcts_list = []
+    indiv_16pcts_list = []
+    list_of_posts = []
+    list_of_chains = []
     for i in np.arange(band_idx0, 3):
-
+        mocksim_names = []
         all_temp_posteriors = []
         all_temp_ravel = []
-        indiv_sigmas = []
-
+        indiv_sigmas, indiv_medians, indiv_84pcts, indiv_16pcts = [], [], [], []
+        all_temp_chains = []
+        all_bkg_chains = []
+        sim_idx_list = []
+        all_nsrc_chains = []
+        bkg_means = []
         plt.subplot(1,3, i+1)
 
         if inject_sz_frac is not None:
@@ -54,16 +304,53 @@ def gather_posteriors(timestr_list, inject_sz_frac=None, tail_name='6_4_20', ban
 
         sim_idxs = []
         for j, timestr in enumerate(timestr_list):
+  #          print('timestr issssss', timestr)
             gdat, filepath, result_path = load_param_dict(timestr, result_path='spire_results/')
-            if i==0:
+            if j==0:
                 print('gdat file name is ', gdat.tail_name, ' and injected sz frac is ', gdat.inject_sz_frac)
             # print('inject sz frac is ', inject_sz_frac, ' while in gdat it is ', gdat.inject_sz_frac)
-            chain = np.load(filepath+'/chain.npz')
+            #if gdat.tail_name in mocksim_names or '0230' in gdat.tail_name:
+            #    print('already have this one, going to next')
+            #    continue
+            #dont_include_idxs = []
+            print(gdat.bands)
+            boolvar = 0
+            for dont_include_idx in dont_include_idxs:
+                if str(dont_include_idx) == gdat.tail_name[-3:]:
+                    print('PASS!:', dont_include_idx, gdat.tail_name)
+                    boolvar = 1
+                    #print(dont_include_idx)
+                    #print('pass!')
+                    continue
 
-            band=band_dict[gdat.bands[i]]
-            sim_idxs.append(gdat.tail_name[-8:-5])
+            if gdat.tail_name[-3:] in sim_idx_list and datatype != 'real':
+                print('we already have this sim, skipping it', gdat.tail_name[-3:])
+                print(sim_idx_list)
+                boolvar = 1
+
+            if boolvar==1:
+                continue
+
+            print(gdat.tail_name)
+            print(gdat.image_extnames)
+            
+            mocksim_names.append(gdat.tail_name)
+            sim_idx_list.append(gdat.tail_name[-3:])    
+            chain = np.load(filepath+'/chain.npz')
+            #print(chain['template_amplitudes'].shape())
+            chi2modl = chain['chi2']
+            bkgs = chain['bkg']
+            
+            bkg_means.append(np.mean(bkgs, axis=0)[i])
+            #print('mean_bkg is ', np.mean(bkgs, axis[i])
+ #           print('Minimum chi2 is ', np.min(chi2modl, axis=0))
+            #print(i)
+            #print(i, gdat.bands[i])
+            #band=band_dict[gdat.bands[i]]
+            band = band_dict[i]
+            sim_idxs.append(gdat.tail_name[-3:])
             if j==0:
-            # 	plt.title(band+', $\\langle \\delta F\\rangle = $'+str(np.median(all_temp)))
+            #   plt.title(band+', $\\langle \\delta F\\rangle = $'+str(np.median(all_temp)))
                 if datatype=='real':
                     label='Indiv. chains'
                 else:
@@ -72,24 +359,57 @@ def gather_posteriors(timestr_list, inject_sz_frac=None, tail_name='6_4_20', ban
             else:
                 label = None
 
-            burn_in = int(gdat.nsamp*gdat.burn_in_frac)
+            if burn_in_frac is None:
+                burn_in_frac = gdat.burn_in_frac
+            burn_in = int(gdat.nsamp*burn_in_frac)
             # burn_in = int(gdat.nsamp*0.75)
 
+            if i==0:
+                nsrc_chains = chain['n']
+                print(nsrc_chains)
+                all_nsrc_chains.append(nsrc_chains)
             
+            bkg_chains = chain['bkg']
+            
+            all_bkg_chains.append(bkg_chains[:,i])
+
             if dust:
                 template_amplitudes = chain['template_amplitudes'][burn_in:, 1, i]
             else:
                 template_amplitudes = chain['template_amplitudes'][burn_in:, 0, i]/flux_density_conversion_facs[i]
+                full_chain_amps = chain['template_amplitudes'][:,0,i]/flux_density_conversion_facs[i]
+                
+                if integrate_sz_prof:
+                    
+                    print('INTEGRATE SZ PROF')
+                    t = 0 # use sz template                                                                                                                                                            
+                    dat = pcat_data(gdat.auto_resize, nregion=gdat.nregion)
+                    dat.load_in_data(gdat)
+                    pixel_sizes = dict({'S':6, 'M':8, 'L':12}) # arcseconds                                                                                                                        
+                    #print('max of template is ', np.max(dat.template_array[i][t]))
+                    npix = dat.template_array[i][t].shape[0]*dat.template_array[i][t].shape[1]
+                    geom_fac = (np.pi*pixel_sizes[gdat.band_dict[gdat.bands[i]]]/(180.*3600.))**2
+                    #print('geometric factor is ', geom_fac)
 
+                    print('integrating sz profiles..')
+
+                    template_amplitudes = np.array([np.sum(amp*dat.template_array[i][t]) for amp in template_amplitudes])     
+                    template_amplitudes *= geom_fac
+                    template_amplitudes *= 1e6 # MJy to Jy                                                                                                                                        
+                    #print('final template flux densities are ', template_amplitudes)
+
+                    
+   #         print('indiv median:', np.median(template_amplitudes))
+            indiv_medians.append(np.median(template_amplitudes))
             indiv_sigmas.append(np.std(template_amplitudes))
-            
-
-
+            indiv_84pcts.append(np.percentile(template_amplitudes, 84))
+            indiv_16pcts.append(np.percentile(template_amplitudes, 16))
             all_temp_posteriors.append(template_amplitudes)
             all_temp_ravel.extend(template_amplitudes)
-
-
-
+            all_temp_chains.append(full_chain_amps)
+        print('length of mocksim_names is ', len(mocksim_names))
+        print(mocksim_names)
+        print('average background for band ', i, 'is ', np.mean(np.array(bkg_means)), np.std(np.array(bkg_means)))
         print('average sig for band', i, 'is ', np.mean(np.array(indiv_sigmas)))
         all_n, bins, _  = plt.hist(all_temp_ravel, label='Aggregate Posterior', histtype='step', bins=20, color='k')
 
@@ -98,41 +418,59 @@ def gather_posteriors(timestr_list, inject_sz_frac=None, tail_name='6_4_20', ban
             n, _, _ = plt.hist(t, bins=bins, color='black', histtype='stepfilled', linewidth=1.5, alpha=0.15)
             idx = np.argmax(n)
             plt.text(bins[idx], 1.1*n[idx], sim_idxs[k], fontsize=12)
-
+            print('mean/median:', np.mean(t), np.median(t))
 
         all_temp = np.array(all_temp_ravel)
 
-        print(all_temp.shape, np.median(all_temp))
+        print(all_temp.shape, np.median(all_temp), np.std(all_temp), np.percentile(all_temp, 84)-np.median(all_temp), np.median(all_temp)-np.percentile(all_temp, 16))
         
-        if inject_sz_frac is not None:
-
-            
-            if dust:
-                median_str = str(np.round(np.median(all_temp)-1.,3))
-
-                str_plus = str(np.round(np.percentile(all_temp, 84) - 1., 3))
-                str_minus = str(np.round(1. - np.percentile(all_temp, 16), 3))
-                unit = ''
-            else:
-                median_str = str(np.round(np.median(all_temp)-float(inject_sz_amp),3))
-
-
-                str_plus = str(np.round(np.percentile(all_temp, 84) - np.median(all_temp),4))
-                str_minus = str(np.round(np.median(all_temp)-np.percentile(all_temp, 16),4))
-                unit = ' MJy/sr'
-            
-            if dust:
-                plt.title(band+', $\\langle \\delta A_{dust}\\rangle = $'+median_str+'$^{+'+str_plus+'}_{-'+str_minus+'}$'+unit)
-            else:
-                plt.title(band+', $\\langle \\delta I\\rangle = $'+median_str+'$^{+'+str_plus+'}_{-'+str_minus+'}$'+unit)
-        else:
-            plt.title(band)
-
         medians.append(np.median(all_temp_ravel))
         pcts_5.append(np.percentile(all_temp_ravel, 5))
         pcts_16.append(np.percentile(all_temp_ravel, 16))
         pcts_84.append(np.percentile(all_temp_ravel, 84))
         pcts_95.append(np.percentile(all_temp_ravel, 95))
+
+        indiv_medians_list.append(indiv_medians)
+        indiv_sigmas_list.append(indiv_sigmas)
+        indiv_84pcts_list.append(indiv_84pcts)
+        indiv_16pcts_list.append(indiv_16pcts)
+        median_str_noinj = str(np.round(np.median(all_temp_ravel), 4))
+        str_plus_noinj = str(np.round(np.percentile(all_temp_ravel, 84)-np.median(all_temp_ravel), 4))
+        str_minus_noinj = str(np.round(-np.percentile(all_temp_ravel, 16)+np.median(all_temp_ravel), 4))
+        if inject_sz_frac is not None:
+
+            
+            if dust:
+                median_str = str(np.round(np.median(all_temp)-1.,4))
+
+                str_plus = str(np.round(np.percentile(all_temp, 84) - 1., 4))
+                str_minus = str(np.round(1. - np.percentile(all_temp, 16), 4))
+                unit = ''
+            else:
+                median_str = str(np.round(np.median(all_temp)-float(inject_sz_amp),4))
+                str_plus = str(np.round(np.percentile(all_temp, 84) - np.median(all_temp),4))
+                str_minus = str(np.round(np.median(all_temp)-np.percentile(all_temp, 16),4))
+                unit = ' MJy/sr'
+                
+                if integrate_sz_prof:
+                    unit = ' Jy'
+
+            if dust:
+                plt.title(band+', $\\langle \\delta A_{dust}\\rangle = $'+median_str+'$^{+'+str_plus+'}_{-'+str_minus+'}$'+unit)
+            else:
+                plt.title(band+', $\\langle \\delta I\\rangle = $'+median_str+'$^{+'+str_plus+'}_{-'+str_minus+'}$'+unit)
+        else:
+            unit = ' MJy/sr'
+            if integrate_sz_prof:
+                unit = ' Jy'
+                plt.title(band+', $\\langle \\int \\delta I d\\Omega \\rangle = $'+median_str_noinj+'$^{+'+str_plus_noinj+'}_{-'+str_minus_noinj+'}$'+unit)
+            else:
+                plt.title(band+', $\\langle \\delta I \\rangle = $'+median_str_noinj+'$^{+'+str_plus_noinj+'}_{-'+str_minus_noinj+'}$'+unit)
+        #medians.append(np.median(all_temp_ravel))
+        #pcts_5.append(np.percentile(all_temp_ravel, 5))
+        #pcts_16.append(np.percentile(all_temp_ravel, 16))
+        #pcts_84.append(np.percentile(all_temp_ravel, 84))
+        #pcts_95.append(np.percentile(all_temp_ravel, 95))
         
         if inject_sz_frac is not None:
             if dust:
@@ -153,30 +491,41 @@ def gather_posteriors(timestr_list, inject_sz_frac=None, tail_name='6_4_20', ban
         plt.fill_between(pm_1sig_fine, 0, all_n_fine_1sig, interpolate=True, color='royalblue')    
         plt.fill_between(pm_2sig_fine, 0, all_n_fine_2sig, interpolate=True, color='royalblue', alpha=0.4)    
 
-    
+        #plt.xlim(-0.05, 0.2)
 
-        plt.legend()
+        #plt.legend()
         if dust:
             plt.xlabel('Template amplitude')
         else:
-            plt.xlabel('Template amplitude [MJy/sr]')
+            if integrate_sz_prof:
+                plt.xlabel('Integrated flux density [Jy]')
+            else:
+                plt.xlabel('Template amplitude [MJy/sr]')
 
         plt.ylabel('Number of samples')
-
-
+        if i==0:
+            list_of_chains.append(all_nsrc_chains)
+        list_of_posts.append(all_temp_posteriors)
+        list_of_chains.append(all_temp_chains)
+        list_of_chains.append(all_bkg_chains)
     if save:
         if dust:
             
-            plt.savefig('agg_post/newagg/aggregate_posterior_dust_'+tail_name+pdf_or_png, bbox_inches='tight')
+            plt.savefig('agg_posts/agg_post_dust_'+tail_name+pdf_or_png, bbox_inches='tight')
         else:
-            plt.savefig('agg_post/newagg/aggregate_posterior_sz_'+tail_name+pdf_or_png, bbox_inches='tight')
+            if integrate_sz_prof:
+                plt.savefig('agg_posts/agg_post_sz_integrated_'+tail_name+pdf_or_png, bbox_inches='tight')
+            else:
+                plt.savefig('agg_posts/agg_post_sz_'+tail_name+pdf_or_png, bbox_inches='tight')
 
 
 
     plt.show()
 
 
-    return f, medians, pcts_16, pcts_84, pcts_5, pcts_95, ref_vals
+    return f, medians, pcts_16, pcts_84, pcts_5, pcts_95, ref_vals, indiv_medians_list, indiv_sigmas_list, indiv_84pcts_list, indiv_16pcts_list, list_of_posts, list_of_chains
+
+
 
 
 
@@ -244,9 +593,12 @@ timestrs_dust_sz_1p0_delta_cp = ['20200823-034301', '20200823-005729', '20200823
 									'20200822-201010', '20200822-173252', '20200822-173142', '20200822-164134']
 # fs, _, _, _, _, _, _ = gather_posteriors(timestrs_nulldust, save=True, tail_name='731')
 
-save_figs = True
 
-fs, medians_nszd, pcts_16_nszd, pcts_84_nszd, pcts_5_nszd, pcts_95_nszd, ref_vals_nszd = gather_posteriors(timestrs_dust_sz_1p0_delta_cp, save=save_figs, tail_name='inject_dust_sz_delta_cp_dust', inject_sz_frac=1.0)
+
+
+# save_figs = True
+
+# fs, medians_nszd, pcts_16_nszd, pcts_84_nszd, pcts_5_nszd, pcts_95_nszd, ref_vals_nszd = gather_posteriors(timestrs_dust_sz_1p0_delta_cp, save=save_figs, tail_name='inject_dust_sz_delta_cp_dust', inject_sz_frac=1.0)
 
 
 # fs, medians_nszd, pcts_16_nszd, pcts_84_nszd, pcts_5_nszd, pcts_95_nszd, ref_vals_nszd = gather_posteriors(timestrs_dust_and_nullsz, save=save_figs, tail_name='inject_dust_nullsz', inject_sz_frac=0.0)
@@ -321,6 +673,65 @@ fs, medians_nszd, pcts_16_nszd, pcts_84_nszd, pcts_5_nszd, pcts_95_nszd, ref_val
 # # fs = gather_posteriors(timestr_list_sz_0p5, inject_sz_frac=0.5)
 
 # # fs = gather_posteriors(timestr_list_twoband_sz, tail_name='two_band_sz')
+
+
+#timestr_realdat_file = 'rxj1347_realdat_4arcmin_nfcterms=3_timestrs_041621_bkg_vals3.npz'
+timestr_realdat_file = 'rxj1347_realdat_10arcmin_nfcterms=6_timestrs_042021_fitbkg.npz'
+#timestr_bkg_file = 'rxj1347_conley_10arcmin_041921_timestrs_fitbkg.npz'
+
+#timestr_bkg_file = 'rxj1347_conley_4arcmin_041921_timestrs_bestfitbkgs.npz'
+#timestr_bkg_file = 'rxj1347_conley_4arcmin_unlensed_042021_timestrs_bestfitbkgs.npz'
+#timestr_sim_file = 'lensed_1xdust_nfcterms=6_simidx300_30chains_conley_rxj1347_timestrs_3_23_21_narrow_cprior_Fmin=5.npz'
+#timestr_sim_file = 'group_timestrs/unlensed_nodust_conley_rxj1347_timestrs_withnoise_3_2_21_narrow_cprior_Fmin=5.npz'
+#timestr_sim_file = 'unlensed_1xdust_nfcterms=3_conley_rxj1347_4arcmin_simidx300_withnoise_timestrs_041021.npz'
+#timestr_sim_file = 'lensed_1xdust_nfcterms=6_conley_rxj1347_timestrs_withnoise_3_31_21_smallmask_narrow_cprior_Fmin=5.npz'
+#truealpha = 2.5
+#timestr_dust_file = 'lensed_1xdust_nfcterms=6_truealpha='+str(truealpha)+'_conley_rxj1347_timestrs_3_17_21_narrow_cprior_Fmin=5.npz'
+#timestr_dust_file = 'lensed_16xdust_nfcterms='+str(n_fc_terms)+'_conley_rxj1347_timestrs_withnoise_3_22_21_narrow_cprior_Fmin=5.npz'
+
+#fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _, all_temp_posteriors, full_chains = gather_posteriors(timestr_list_file=timestr_sim_file, save=save_figs, tail_name='rxj1347_sims_nfcterms='+str(n_fc_terms)+'_unlensed_4arcmin_041021_smallmask_narrow_cprior_Fmin=5', integrate_sz_prof=False, dust=False, inject_sz_frac=1.0, datatype='real', burn_in_frac=0.5)
+
+#out_tail = '4arcmin_041021_fixbkg_errdivfac=15'
+#out_tail = '4arcmin_041021_fixbkg'
+#out_tail = '4arcmin_041221_fixbkg_nreg2_longo'
+
+#out_tail = '4arcmin_041921_bestfitbkg_unlensed'
+# out_tail = '10arcmin_042021_fitbkg_realdat'
+# dirpath = out_tail
+# if not os.path.isdir(dirpath):
+    # os.makedirs(dirpath)
+
+# pcagg = pcat_agg()
+# all_accept_stats = pcagg.compile_stats(mode='accept', timestr_list_file=timestr_realdat_file)
+# np.savez(dirpath+'/all_acceptance_stats_'+out_tail+'.npz', all_accept_stats = all_accept_stats, timestr_list_file=timestr_realdat_file)
+# all_chi2_stats = pcagg.compile_stats(mode='chi2', timestr_list_file=timestr_realdat_file)
+# np.savez(dirpath+'/all_chi2_stats_'+out_tail+'.npz', all_chi2_stats = all_chi2_stats, timestr_list_file=timestr_realdat_file)
+
+# np.savez(dirpath+'/all_stats_'+out_tail+'.npz', all_chi2_stats = all_chi2_stats, all_accept_stats = all_accept_stats, timetsr_list_file=timestr_realdat_file)
+
+# fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _, all_temp_posteriors, full_chains = gather_posteriors(timestr_list_file=timestr_realdat_file, save=save_figs, tail_name=out_tail, integrate_sz_prof=False, dust=False, inject_sz_frac=None, datatype='real', burn_in_frac=0.7)
+
+# ------------ save chains for convergence diagnostic analysis ----------------
+#np.savez('list_of_sz_chains_realdat_031621_take1_with_nsrc.npz', all_temp_posterior_sz=all_temp_posteriors, fmin=0.005, n_fc_terms=6, cprior_widths=0.5, nsrc_chains=all_temp_posteriors[-1])
+#np.savez('list_of_sz_chains_smallmask_full_realdat_033021_with_nsrc.npz', all_temp_posterior_sz=[full_chains[0], full_chains[1]], sz_band_order=['PMW', 'PLW'], fmin=0.005, n_fc_terms=6, cprior_widths=0.5, nsrc_chains=full_chains[2])
+# np.savez(dirpath+'/list_of_chains_full_'+out_tail+'.npz', chains = full_chains, fmin=0.005, n_fc_terms=6, cprior_widths=0.5)
+#np.savez('list_of_chains_full_unlensed_smallmask_041021_simidx300.npz', chains=full_chains, fmin=0.005, n_fc_terms=6, cprior_widths=0.5)
+
+#fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _, all_temp_posteriors, full_chains = gather_posteriors(timestr_list_file=timestr_dust_file, save=save_figs, tail_name='lensed_16xdust_nfcterms='+str(n_fc_terms)+'_conley_rxj1347_timestrs_withnoise_3_22_21_narrow_cprior_Fmin=5', integrate_sz_prof=False, dust=False, inject_sz_frac=1.0, datatype='mock')
+
+
+#fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _, all_temp_posteriors = gather_posteriors(timestr_list_file=timestr_dust_file, save=save_figs, tail_name=timestr_dust_file[:-4], integrate_sz_prof=False, dust=False, inject_sz_frac=1.0, datatype='mock') 
+
+#np.savez('list_of_sz_chains_realdat_nfcterms=6_031621_take2.npz', all_temp_posterior_sz=all_temp_posteriors, fmin=0.005, n_fc_terms=6, cprior_widths=0.5)
+
+#fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _ = gather_posteriors(timestr_list_file="lensed_nodust_conley_rxj1347_timestrs_withnoise_3_2_21_narrow_cprior_Fmin=2p5.npz", save=save_figs, tail_name='lensed_nodust_conley_rxj1347_timestrs_withnoise_3_2_21_narrow_cprior_Fmin=2p5', integrate_sz_prof=False, dust=False, inject_sz_frac=1.0)
+
+#fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _ = gather_posteriors(timestr_list_file="lensed_nodust_conley_rxj1347_timestrs_withnoise_3_2_21_narrow_cprior_Fmin=10.npz", save=save_figs, tail_name='lensed_nodust_conley_rxj1347_timestrs_withnoise_3_2_21_narrow_cprior_Fmin=10', integrate_sz_prof=False, dust=False, inject_sz_frac=1.0)
+
+
+
+
+
 
 
 def aggregate_posterior_corner_plot(timestr_list, temp_amplitudes=True, bkgs=True, nsrcs=True, \
