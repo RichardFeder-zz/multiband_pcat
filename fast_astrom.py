@@ -268,6 +268,7 @@ class wcs_astrometry():
             xp -= pos0[0]
             yp -= pos0[1]
 
+        print('xp is now ', xp)
         if correct_misaligned_shift:
             x0, y0 = self.obs_to_obs(idx0, idx1, np.array([0.]), np.array([0.]))
             xp -= x0
@@ -281,7 +282,6 @@ class wcs_astrometry():
             print(xp)
             print('yp:')
             print(yp)
-            
         fast_arrays = np.array([xp, yp, dxp_dx, dyp_dx, dxp_dy, dyp_dy])
         self.all_fast_arrays.append(fast_arrays)
         

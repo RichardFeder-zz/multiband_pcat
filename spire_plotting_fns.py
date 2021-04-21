@@ -903,21 +903,6 @@ def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
 	if show:
 		plt.show()
 
-	# f = plt.figure(figsize=(10, 5))
-	# plt.subplot(1,2,1)
-	# plt.imshow(np.abs(np.median(power_spectrum_realiz, axis=0)), norm=matplotlib.colors.LogNorm())
-	# plt.colorbar()
-	# plt.subplot(1,2,2)
-	# fov_in_rad = N*(pixsize/3600.)*(np.pi/180.)
-
-	# plt.errorbar(2*np.pi/(fov_in_rad/np.sqrt(ps_bins[1:]*ps_bins[:-1])), np.median(oned_ps_realiz,axis=0), yerr=np.std(oned_ps_realiz, axis=0))
-	# plt.xlabel('$2\\pi/\\theta$ [rad$^{-1}$]', fontsize=16)
-	# plt.ylabel('$C_{\\ell}$', fontsize=16)
-	# plt.yscale('log')
-	# plt.xscale('log')
-	# plt.tight_layout()
-	# if show:
-	# 	plt.show()
 
 	return f
 
@@ -1642,6 +1627,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	
 	if gdat is None:
 		gdat, filepath, result_path = load_param_dict(timestr)
+
+		print('GDAT BANDS IS ', gdat.bands)
 		gdat.burn_in_frac = burn_in_frac
 		gdat.boolplotshow = boolplotshow
 		gdat.boolplotsave = boolplotsave
@@ -1649,10 +1636,26 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 		gdat.result_path = result_path
 		gdat.timestr = timestr
 
+
+
 		gdat.psf_fwhms = [3., 3., 3.]
 		gdat.err_f_divfac = 1.
 		# gdat.round_up_or_down = 'down'
 		gdat.round_up_or_down = 'up'
+
+		# for victoria
+		gdat.image_extnames = ['SIGNAL']
+		gdat.data_path = 'Data/spire/conley_030121'
+		gdat.base_path = '/Users/luminatech/Documents/multiband_pcat/'
+
+		gdat.filepath= 'spire_results/'+gdat.timestr
+		gdat.tail_name = 'rxj1347_PSW_sim0300'
+		gdat.im_fpath = None
+		gdat.err_fpath = None
+		gdat.error_extname = 'ERROR'
+		gdat.mask_file = None
+		gdat.add_noise = None
+		gdat.correct_misaligned_shift = False
 
 	else:
 		gdat.filepath = gdat.result_path + gdat.timestr

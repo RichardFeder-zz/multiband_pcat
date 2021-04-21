@@ -170,7 +170,7 @@ class pcat_test_suite():
 		print('we are done now!')
 
 	
-	def validate_astrometry(self, band0=0, band1=1, band2=2, tail_name='rxj1347_PSW_nr_1_ext', dataname='rxj1347_831', use_mask=False, nregion=5, auto_resize=True,\
+	def validate_astrometry(self, band0=0, band1=1, band2=2, tail_name='rxj1347_PSW_nr_1_ext', dataname='rxj1347_831', use_mask=False, mask_file=None, nregion=5, auto_resize=True,\
 						ngrid=20, return_validation_figs=True, image_extnames=['IMAGE'], save=False, error_extname='ERROR'):
 
 		''' 
@@ -198,17 +198,8 @@ class pcat_test_suite():
 		'''
 
 		ob = lion(band0=band0, band1=band1, band2=band2, base_path=self.base_path, result_path=self.result_path, cblas=self.cblas, openblas=self.openblas, \
-			  tail_name=tail_name, dataname=dataname, use_mask=use_mask, nregion=nregion, image_extnames=image_extnames, error_extname=error_extname)
+			  tail_name=tail_name, dataname=dataname, use_mask=use_mask, mask_file=mask_file, nregion=nregion, image_extnames=image_extnames, error_extname=error_extname)
 
-		if ob.gdat.nbands > 1:
-			for b in range(ob.gdat.nbands - 1):
-				pos0_pivot = None
-				pos0 = None
-
-				print('BOUNDS[b+1] is ', ob.gdat.bounds[b+1])
-				print('BOUNDS[0] is ', ob.gdat.bounds[0])
-
-				ob.data.fast_astrom.fit_astrom_arrays(b+1, 0, bounds0=ob.gdat.bounds[b+1], bounds1=ob.gdat.bounds[0], pos0_pivot=pos0_pivot, pos0=pos0, correct_misaligned_shift=True)
 
 		xr = np.linspace(0, ob.gdat.imszs[0][0], ngrid)
 		yr = np.linspace(0, ob.gdat.imszs[0][1], ngrid)
@@ -228,24 +219,14 @@ class pcat_test_suite():
 
 		for b in range(ob.gdat.nbands - 1):
 
+			print('xp', ob.data.fast_astrom.all_fast_arrays[b][0])
+
 			xnew, ynew = ob.data.fast_astrom.transform_q(xv, yv, b)
 
 			x0, y0 = ob.data.fast_astrom.transform_q(np.array([0]), np.array([0]), b)
-			print(x0, y0)
 
-			# xnew -= np.min(xnew)
-			# ynew -= np.min(ynew)
-			# print(np.min(xnew), np.min(ynew))
-
-			xv_rt, yv_rt = ob.data.fast_astrom.transform_q(xnew, ynew, ob.gdat.nbands-1+b)
 			xnew_wcs, ynew_wcs = ob.data.fast_astrom.obs_to_obs(0, b+1, xv, yv)
 
-			# f = plt.figure(figsize=(12,5))
-			# plt.subplot(1,2,1)
-			# plt.title('band 0')
-			# plt.imshow(ob.data.data_array[0]-np.median(ob.data.data_array[0]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
-			# plt.colorbar()
-			# plt.scatter(xv, yv, marker='x', color='r')
 			plt.subplot(1,ob.gdat.nbands,b+2)
 			plt.title('band '+str(b+1))
 			plt.imshow(ob.data.data_array[b+1]-np.median(ob.data.data_array[b+1]), cmap='Greys', vmin=-0.005, vmax=0.02, origin='lower')
@@ -720,12 +701,12 @@ class pcat_test_suite():
 		float_fourier_comps=False, n_fc_terms=10, fc_sample_delay=0, fourier_comp_moveweight=200., \
 		template_moveweight=40., template_filename=None, psf_fwhms=None, \
 		bkg_sample_delay=0, birth_death_sample_delay=0, movestar_sample_delay=0, merge_split_sample_delay=0, temp_sample_delay=30, \
-		movestar_moveweight=80., birth_death_moveweight=60., merge_split_moveweight=60., \
+		movestar_moveweight=None, birth_death_moveweight=None, merge_split_moveweight=None, \
 		load_state_timestr=None, nsrc_init=None, fc_prop_alpha=None, fc_amp_sig=0.0001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
 		bkg_moore_penrose_inv=False, MP_order=5., ridge_fac=None, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False, \
 		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, raw_counts=False, generate_condensed_catalog=False, \
-		err_f_divfac=1., bkg_sig_fac=5.0, n_condensed_samp=50, prevalence_cut=0.5, burn_in_frac=0.7, \
-		temp_prop_sig_fudge_facs=None, estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, initial_template_amplitude_dicts=None, init_fourier_coeffs=None):
+		err_f_divfac=1., bkg_sig_fac=5.0, bkg_moveweight=10., n_condensed_samp=50, prevalence_cut=0.5, burn_in_frac=0.7, \
+		temp_prop_sig_fudge_facs=None, estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, initial_template_amplitude_dicts=None, init_fourier_coeffs=None, truealpha=3.):
 
 		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
@@ -760,13 +741,13 @@ class pcat_test_suite():
 			# start with 250 micron image only
 
 			ob = lion(band0=band0, base_path=self.base_path, result_path=self.result_path, burn_in_frac=burn_in_frac, float_background=float_background, \
-			  bkg_sample_delay=0, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, mask_file=mask_file, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
+			  bkg_sample_delay=0, bkg_moveweight=bkg_moveweight, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
+			  tail_name=tail_name, dataname=dataname, bias=[bias[0]], use_mask=use_mask, mask_file=mask_file, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
 			  make_post_plots=False, nsamp=nsamp_dustestimate, residual_samples=5, template_moveweight=template_moveweight, float_templates=False, \
-			  image_extnames=image_extnames, error_extname=error_extname, panel_list=pan_list, err_f_divfac=err_f_divfac, bkg_sig_fac=bkg_sig_fac, \
+			  image_extnames=image_extnames, error_extname=error_extname, panel_list=pan_list, err_f_divfac=err_f_divfac/np.sqrt(3.), bkg_sig_fac=bkg_sig_fac, \
 			  movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
 			  float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0, fourier_comp_moveweight=200., \
-			  dfc_prob=1.0, nsrc_init=0, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig)
+			  dfc_prob=1.0, nsrc_init=0, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, truealpha=truealpha, alph=alph)
 
 			ob.main()
 			_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
@@ -782,38 +763,38 @@ class pcat_test_suite():
 		
 		# panel_list = ['data0', 'data1', 'data2', 'fourier_bkg0', 'residual1', 'residual2']
 
-		# panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
+		panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
 
 		ob = lion(band0=band0, band1=band1, band2=band2, base_path=self.base_path, result_path=self.result_path, \
-					float_background=float_background, burn_in_frac=burn_in_frac, bkg_sample_delay=bkg_sample_delay, float_templates=float_templates, template_moveweight=template_moveweight, \
+					float_background=float_background, bkg_moveweight=bkg_moveweight, burn_in_frac=burn_in_frac, bkg_sample_delay=bkg_sample_delay, float_templates=float_templates, template_moveweight=template_moveweight, \
 	 				cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-	 				template_names=template_names, temp_sample_delay=temp_sample_delay, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=bias, load_state_timestr=load_state_timestr, max_nsrc=max_nsrc,\
+	 				template_names=template_names, temp_sample_delay=temp_sample_delay, inject_sz_frac=inject_sz_frac, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=bias, load_state_timestr=load_state_timestr, max_nsrc=max_nsrc,\
 	 				trueminf=fmin, nregion=nregion, make_post_plots=make_post_plots, nsamp=nsamp, use_mask=use_mask,\
 	 				residual_samples=residual_samples, float_fourier_comps=float_fourier_comps, fc_rel_amps=fc_rel_amps,\
 	 				n_fourier_terms=n_fc_terms, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight_main,\
 	 				alph=alph, dfc_prob=dfc_prob_main, nsrc_init=nsrc_init, mask_file=mask_file, birth_death_sample_delay=birth_death_sample_delay, movestar_sample_delay=movestar_sample_delay,\
-	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, weighted_residual=weighted_residual, image_extnames=image_extnames, error_extname=error_extname, fc_prop_alpha=fc_prop_alpha, \
+	 				 merge_split_sample_delay=merge_split_sample_delay, color_mus=color_mus, color_sigs=color_sigs, n_frames=n_frames, weighted_residual=weighted_residual, image_extnames=image_extnames, fc_prop_alpha=fc_prop_alpha, \
 	 				 im_fpath=im_fpath, err_fpath=err_fpath, init_fourier_coeffs=init_fourier_coeffs, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay_main, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
 	 				 correct_misaligned_shift=correct_misaligned_shift, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, panel_list=panel_list, \
 	 				 F_statistic_alph=F_statistic_alph, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac, \
-	 				 bkg_sig_fac=bkg_sig_fac, n_condensed_samp=n_condensed_samp, prevalence_cut=prevalence_cut, init_template_amplitude_dicts=initial_template_amplitude_dicts)
+	 				 bkg_sig_fac=bkg_sig_fac, n_condensed_samp=n_condensed_samp, prevalence_cut=prevalence_cut, init_template_amplitude_dicts=initial_template_amplitude_dicts, timestr_list_file=timestr_list_file, truealpha=truealpha, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, temp_prop_df=temp_prop_df)
 
 		ob.main()
 
-	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
-				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, max_nsrc=1000, make_post_plots=True, \
+
+	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, truealpha=3.0, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
+				      template_names=['sze'], bias=[0.002, 0.002, 0.002], use_mask=True, mask_file=None, max_nsrc=1000, make_post_plots=True, \
 				      nsamp=2000, residual_samples=200, inject_sz_frac=1.0, float_fourier_comps=False, n_fc_terms=5, fc_amp_sig=None, inject_diffuse_comp=False, diffuse_comp_path=None, \
 				      image_extnames=['SIGNAL'], add_noise=False, temp_sample_delay=30, initial_template_amplitude_dicts=None, \
 				      color_mus=None, color_sigs=None, panel_list=None, nregion=5, burn_in_frac=0.7, err_f_divfac=1., template_moveweight=80., \
 				      timestr_list_file=None, bkg_sig_fac=5.0, temp_prop_sig_fudge_facs=None, scalar_noise_sigma=None, \
-				      movestar_moveweight=80, birth_death_moveweight=60, merge_split_moveweight=60, \
-				      estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, point_src_delay=30, fc_sample_delay=0., mask_file=None):
+				      movestar_moveweight=None, birth_death_moveweight=None, merge_split_moveweight=None, \
+				      estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, point_src_delay=30, fc_sample_delay=0.):
 
 		''' Function for tests involving injecting SZ signals into mock data '''
 
 		if initial_template_amplitude_dicts is None:
 			initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00, 'M':0.001, 'L':0.018})})
-
 
 
 		if estimate_dust_first:
@@ -824,13 +805,13 @@ class pcat_test_suite():
 
 			ob = lion(band0=0, base_path=self.base_path, result_path=self.result_path, burn_in_frac=burn_in_frac, float_background=True, \
 			  bkg_sample_delay=0, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
+			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, mask_file=mask_file, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
 			  make_post_plots=False, nsamp=nsamp_dustestimate, residual_samples=5, template_moveweight=template_moveweight, float_templates=False, \
 			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise, \
 			  panel_list=panel_list, err_f_divfac=err_f_divfac, bkg_sig_fac=bkg_sig_fac, \
 			  scalar_noise_sigma=scalar_noise_sigma, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
 			  float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0., fourier_comp_moveweight=200., \
-			  dfc_prob=1.0, nsrc_init=0, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, mask_file=mask_file)
+			          dfc_prob=1.0, nsrc_init=0, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, truealpha=truealpha)
 
 			ob.main()
 			_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
@@ -844,26 +825,25 @@ class pcat_test_suite():
 
 			print('last bkg sample is ', last_bkg_sample_250)
 
-		else:
-			init_fourier_coeffs = None
 
 		dust_rel_SED = [self.dust_I_lams[self.band_dict[i]]/self.dust_I_lams[self.band_dict[0]] for i in range(3)]
 		fc_rel_amps = [dust_rel_SED[i]*self.flux_density_conversion_dict[self.band_dict[i]]/self.flux_density_conversion_dict[self.band_dict[0]] for i in range(3)]
 
-		panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
+		panel_list = ['data0', 'data1', 'data2', 'fourier_bkg0', 'residual1', 'residual2']
 
 
 		ob = lion(band0=0, band1=1, band2=2, base_path=self.base_path, result_path=self.result_path, burn_in_frac=burn_in_frac, float_background=True, \
 			  bkg_sample_delay=0, temp_sample_delay=temp_sample_delay, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
 			  float_templates=True, template_names=template_names, init_template_amplitude_dicts=initial_template_amplitude_dicts, \
-			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
+			  tail_name=tail_name, dataname=dataname, bias=bias, use_mask=use_mask, mask_file=mask_file, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
 			  make_post_plots=make_post_plots, nsamp=nsamp, residual_samples=residual_samples, inject_sz_frac=inject_sz_frac, template_moveweight=template_moveweight, \
 			  inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, image_extnames=image_extnames, add_noise=add_noise, \
 			  color_mus=color_mus, color_sigs=color_sigs, init_fourier_coeffs=init_fourier_coeffs, panel_list=panel_list, err_f_divfac=err_f_divfac, timestr_list_file=timestr_list_file, bkg_sig_fac=bkg_sig_fac, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, \
 			  scalar_noise_sigma=scalar_noise_sigma, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
-			  float_fourier_comps=float_fourier_comps, fourier_comp_moveweight=0., dfc_prob=0.0, fc_rel_amps=fc_rel_amps, fc_sample_delay=fc_sample_delay, mask_file=mask_file)
+			  float_fourier_comps=float_fourier_comps, fourier_comp_moveweight=0., dfc_prob=0.0, fc_rel_amps=fc_rel_amps, fc_sample_delay=fc_sample_delay, truealpha=truealpha)
 
 		ob.main()
+
 
 
 	def iter_fourier_comps(self, n_fc_terms=10, fc_amp_sig=0.0005, fmin_levels=[0.05, 0.02, 0.01, 0.007], final_fmin=0.007, \

@@ -317,7 +317,8 @@ class Model:
 		self.max_nsrc = gdat.max_nsrc
 		
 		self.bkg = np.array(gdat.bias)
-		
+		print('at initialization of model, self.bkg is ', self.bkg)
+
 		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
 		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
 		
@@ -524,6 +525,8 @@ class Model:
 			if j == sample_delay and proposal_bools[moveidx]:
 				print('starting '+str(key_list[val_list.index(moveidx)])+' proposals')
 				self.moveweights[moveidx] = moveweight_dict[moveidx]
+				self.moveweights[np.isnan(self.moveweights)] = 0.
+
 				print('moveweights:', self.moveweights, file=self.gdat.flog)
 
 	def normalize_weights(self, weights):
@@ -816,6 +819,9 @@ class Model:
 					fc_rel_amps=self.fc_rel_amps+self.dfc_rel_amps
 				if self.gdat.float_background:
 					bkg = self.bkg+self.dback
+
+				else:
+					bkg = self.bkg
 
 				margin_fac = 1
 				if rtype > 2:
@@ -1183,7 +1189,12 @@ class Model:
 		template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
 		temp_band_idxs = self.gdat.template_band_idxs[template_idx]
 
-		d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[self.gdat.template_order[template_idx]])
+		# d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[self.gdat.template_order[template_idx]])
+
+		if self.gdat.temp_prop_df is not None:
+			d_amp = self.temp_amplitude_sigs[self.gdat.template_order[template_idx]]*np.random.standard_t(self.gdat.temp_prop_df)
+		else:
+			d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[self.gdat.template_order[template_idx]])
 
 		if self.gdat.delta_cp_bool and self.gdat.template_order[template_idx] != 'sze':
 			if self.gdat.template_order[template_idx] == 'planck' or self.gdat.template_order[template_idx]=='dust':
@@ -1831,6 +1842,8 @@ class lion():
 			template_filename = None, \
 			# same idea here as bkg_moveweight
 			template_moveweight = 40., \
+			# heavy tailed prroposal distribution for templates, df=number of degrees of freedom
+			temp_prop_df = None, \
 			# if injecting a signal, this fraction determines amplitude of injected signal w.r.t. fiducial values at 250/350/500 micron
 			inject_sz_frac = None, \
 			# if true, prior is renormalized with zero probability for amplitudes less than zero
@@ -2066,7 +2079,7 @@ class lion():
 		if self.gdat.mean_offsets is None:
 			self.gdat.mean_offsets = np.zeros_like(np.array(self.gdat.bands))
 
-		if type(bkg_sig_fac)==float: # if single number, make bkg_sig_fac an array length nbands where each band has same factor
+		if type(self.gdat.bkg_sig_fac)==float: # if single number, make bkg_sig_fac an array length nbands where each band has same factor
 			sigfacs = [self.gdat.bkg_sig_fac for b in range(self.gdat.nbands)]
 			self.gdat.bkg_sig_fac = np.array(sigfacs).copy()
 
@@ -2224,6 +2237,7 @@ class lion():
 		model = Model(self.gdat, self.data, libmmult)
 
 		verbprint(self.gdat.verbtype, 'Done initializing model..', verbthresh=1)
+		print('background sig facs are ', self.gdat.bkg_sig_fac)
 
 		trueminf_schedule_counter = 0
 		for j in range(self.gdat.nsamp): # run sampler for gdat.nsamp thinned states

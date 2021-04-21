@@ -121,7 +121,6 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 		file_path = gdat.file_path
 
 	file_path = file_path.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
-
 	verbprint(gdat.verbtype, 'Band is '+str(gdat.band_dict[band]), verbthresh=1)
 	verbprint(gdat.verbtype, 'file path is '+str(file_path), verbthresh=1)
 
@@ -200,6 +199,12 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	else:
 		print('Not using mask..')
 		mask = np.ones_like(image)
+
+
+	# this is for Ben's masks which are interpolated oddly
+	# mask[mask > 0.4] = 1
+	# mask[mask <= 0.4] = 0
+
 
 	# this is for gen_2_sims, which don't have same FITS structure as new sims
 	# image = np.nan_to_num(spire_dat[1].data)
@@ -450,6 +455,7 @@ class pcat_data():
 							if gdat.inject_sz_frac is not None and template_name=='sze':
 								print('injecting SZ frac of ', gdat.inject_sz_frac)
 								
+								
 								template_inject = gdat.inject_sz_frac*template*temp_mock_amps_dict[gdat.band_dict[band]]*flux_density_conversion_dict[gdat.band_dict[band]]
 
 								image += template_inject
@@ -480,7 +486,6 @@ class pcat_data():
 
 					self.fast_astrom.fit_astrom_arrays(0, i, bounds0=gdat.bounds[0], bounds1=gdat.bounds[i], correct_misaligned_shift=gdat.correct_misaligned_shift)
 
-					print('EHEEEEEY gdat.imsz0 is ', gdat.imsz0)
 					x_max_pivot, y_max_pivot = self.fast_astrom.transform_q(np.array([gdat.imsz0[0]]), np.array([gdat.imsz0[1]]), i-1)
 					# x_max_pivot, y_max_pivot = self.fast_astrom.obs_to_obs(0, i, gdat.imsz0[0], gdat.imsz0[1])
 
@@ -642,16 +647,6 @@ class pcat_data():
 				variance[variance==0.]=np.inf
 				weight = 1. / variance
 
-				# plt.figure()
-				# plt.subplot(1,2,1)
-				# plt.title(str(np.min(resized_error))+', '+str(np.max(resized_error)))
-				# plt.imshow(resized_error, vmin=0.0003, vmax=0.003, origin='lower')
-				# plt.colorbar()
-				# plt.subplot(1,2,2)
-				# plt.imshow(weight, vmin=np.nanpercentile(weight, 5), vmax=np.nanpercentile(weight, 95), origin='lower')
-				# plt.colorbar()
-				# plt.show()
-
 
 				print('GDAT.MEAN OFFSET[i] is ', gdat.mean_offsets[i])
 
@@ -659,7 +654,6 @@ class pcat_data():
 				self.errors.append(resized_error.astype(np.float32))
 				self.data_array.append(resized_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
 				self.template_array.append(resized_template_list)
-				self.resized_masks.append(resized_mask)
 
 			elif gdat.width > 0:
 				image = image[gdat.x0:gdat.x0+gdat.width,gdat.y0:gdat.y0+gdat.height]
@@ -761,93 +755,5 @@ class pcat_data():
 		gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)/gdat.err_f_divfac
 		# gdat.err_f = np.sqrt(gdat.N_eff * pixel_variance)
 
-
-
-class spire_data():
-    
-    image = None
-    wcs = None
-    
-    def __init__(self, filename, base_path='/Users/richardfeder/Documents/multiband_pcat/Data/spire/'):
-        self.base_path = base_path
-        self.file_path = self.base_path+filename
-        
-    def get_wcs_header(self):
-        self.wcs = WCS(self.spire_dat[1].header)
-    
-    def load_in_maps(self, zero_nans=True):
-        self.spire_dat = fits.open(self.file_path)
-        self.image = self.spire_dat[1].data
-        self.error = self.spire_dat[2].data
-        self.exposure = self.spire_dat[3].data
-        self.mask = self.spire_dat[4].data
-        self.imsz = self.image.shape
-        print('self imsz is ', self.imsz)
-        
-        if zero_nans:
-            self.image[np.isnan(self.image)] = 0.0
-            self.error[np.isnan(self.error)] = 0.0
-            self.exposure[np.isnan(self.exposure)] = 0.0
-            self.mask[np.isnan(self.mask)] = 0.0
-        
-    def show_hist(self, median_plot=True):
-        plt.figure(figsize=(10, 5))
-        plt.subplot(1,2,1)
-        plt.hist(self.image.ravel(), bins=100)
-        if median_plot:
-            plt.axvline(np.median(self.image), label='median='+str(np.round(np.median(self.image), 3)), linestyle='dashed')
-        plt.subplot(1,2,2)
-        plt.hist(self.error, bins=100)
-        if median_plot:
-            plt.axvline(np.median(self.error), label='median='+str(np.round(np.median(self.error), 3)), linestyle='dashed')
-        plt.show()
-        
-        
-    def show_maps(self, noise_max = 0.002, err_vrange=[0., 5e-3], im_vrange_percentiles=[5, 95], wcs_project=True):
-        
-        if wcs_project:
-            if self.wcs is None:
-                self.get_wcs_header()
-            project = self.wcs
-        else:
-            project = None
-            
-        if self.image is None:
-            self.load_in_maps()
-            
-        err = self.error.copy()
-        
-        mask = (err < noise_max)*(err != 0.)
-        im = self.image.copy()
-        im[~mask] = 0
-        
-        mindim, maxdim = np.min(np.nonzero(mask)[1]), np.max(np.nonzero(mask)[1])
-        print('min/max dim:', mindim, maxdim)
-        f = plt.figure(figsize=(15,15))
-        
-        plt.subplot(2,2,1, projection=project)
-        plt.title('Raw Image')
-        plt.imshow(im[mindim:maxdim,mindim:maxdim], cmap='Greys', origin=(0,0), vmin=np.percentile(im[mindim:maxdim,mindim:maxdim], im_vrange_percentiles[0]), vmax=np.percentile(im[mindim:maxdim,mindim:maxdim], im_vrange_percentiles[1]))
-        plt.colorbar()
-        
-        plt.subplot(2,2,2, projection=project)
-        plt.title('Error')
-        err[~mask] = 0
-        plt.imshow(err[mindim:maxdim, mindim:maxdim], origin=(0,0),cmap='Greys', vmin=err_vrange[0], vmax=err_vrange[1])
-        plt.colorbar()
-        
-        plt.subplot(2,2,3, projection=project)
-        plt.title('Exposure')
-        plt.imshow(self.exposure[mindim:maxdim,mindim:maxdim],origin=(0,0), cmap='Greys')
-        plt.colorbar()
-        
-        plt.subplot(2,2,4, projection=project)
-        plt.title('Mask')
-        plt.imshow(self.mask,origin=(0,0), cmap='Greys')
-        plt.colorbar()
-        plt.savefig('maps.pdf', bbox_inches='tight')
-        plt.show()
-        
-        return f
 
 
