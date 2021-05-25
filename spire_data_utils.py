@@ -6,6 +6,9 @@ import pickle
 import matplotlib
 import matplotlib.pyplot as plt
 from astropy.wcs import WCS
+from astropy.nddata.utils import Cutout2D
+from astropy import units as u
+from astropy.io import fits
 
 
 class objectview(object):
@@ -65,6 +68,106 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 		psfnew *= nc
 	cf = psf_poly_fit(psfnew, nbin=nbin)
 	return psfnew, cf, nc, nbin
+
+def make_pcat_fits_file_simp(images, card_names, new_wcs=None, header=None, x0=None, y0=None, janscalefac=None):
+    
+    hdu = fits.PrimaryHDU(None)
+    
+    if header is not None:
+        hdu.header = header
+    temphdu = None
+
+    cards = [hdu]
+    for e, card_name in enumerate(card_names):
+        card_hdu = fits.ImageHDU(images[e], name=card_name)
+        cards.append(card_hdu)
+
+    if new_wcs is not None:
+        
+        for card_hdu in cards:
+            card_hdu.header.update(new_wcs.to_header())
+
+
+    hdulist = fits.HDUList(cards)
+    
+    return hdulist
+
+def multiband_cutout_obs(filenames, n_cut_arcsec, ra, dec, tail_names, bandstrs=['PSW', 'PMW', 'PLW'], sigkey='SIGNAL', \
+                        diff_comp_path=None, show=False, savedir='Data/spire/', save=True, \
+                        im_headers = ['SIGNAL', 'ERROR', 'SZE']):
+    sznormfacs = [0.00026, 0.003, 0.018]
+    for b, bandstr in enumerate(bandstrs):
+        
+        obs = fits.open(filenames[b])
+        
+        wcs_obs = WCS(obs[sigkey].header)
+        
+        if diff_comp_path is not None:
+            diff_comp = np.load(diff_comp_path)[bandstr[1]]
+        
+        if b==0 and show:
+            plt.figure()
+            plt.imshow(obs[sigkey].data, vmax=0.05)
+            plt.colorbar()
+            plt.show()
+            
+        xpix, ypix = wcs_obs.all_world2pix(ra, dec, 0)
+        print(xpix, ypix)
+        
+        cutouts = []
+        
+        hduheaders = []
+        
+        for h, headkey in enumerate(im_headers):
+            
+            print('h = ', h, 'headkey = ', headkey)
+            if h==0:
+                cutout_obj = Cutout2D(obs[headkey].data, (xpix, ypix), (n_cut_arcsec*u.arcsec, n_cut_arcsec*u.arcsec), wcs=wcs_obs, mode='partial', fill_value=np.nan, copy=True)
+                cutout = cutout_obj.data
+            else:
+                cutout = Cutout2D(obs[headkey].data, (xpix, ypix), (n_cut_arcsec*u.arcsec, n_cut_arcsec*u.arcsec), wcs=wcs_obs, mode='partial', fill_value=np.nan, copy=True).data
+            
+            
+            if headkey=='SZETEMP':
+                print('weere here')
+                cutout[np.isnan(cutout)] = 0.
+                cutout /= sznormfacs[b]
+                hduheaders.append('SZE')
+            else:
+                hduheaders.append(headkey)
+            
+            cutouts.append(cutout)
+            
+            if show:
+
+                plt.figure()
+                plt.title(headkey, fontsize=16)
+                plt.imshow(cutout, origin='lower', vmin=np.nanpercentile(cutout, 5), vmax=np.nanpercentile(cutout, 95))
+                plt.colorbar()
+                plt.show()
+                
+        if diff_comp_path is not None:
+            dcomp_cutout = diff_comp[:im_cutout.shape[0],:im_cutout.shape[1]]
+            
+            cutouts.append(dcomp_cutout)
+            im_headers.append('DUST')
+            
+            if show:
+
+                plt.figure()
+                plt.title('diffuse comp', fontsize=16)
+                plt.imshow(dcomp_cutout, origin='lower', vmin=np.nanpercentile(dcomp_cutout, 5), vmax=np.nanpercentile(dcomp_cutout, 95))
+                plt.colorbar()
+                plt.show()
+                
+        hdul = make_pcat_fits_file_simp(images=cutouts, card_names=hduheaders, new_wcs=cutout_obj.wcs)
+
+                
+        if save:
+            print('writing to ', savedir+'/'+tail_names[b]+'.fits')
+            hdul.writeto(savedir+'/'+tail_names[b]+'.fits', clobber=True)
+        
+
 
 
 def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames=['SIGNAL']):
@@ -178,6 +281,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 
 
 	if gdat.err_fpath is None:
+
 		error = np.nan_to_num(spire_dat[gdat.error_extname].data)
 	else:
 		hdu = fits.open(gdat.err_fpath)[0]
@@ -221,6 +325,14 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 			noise_realization = np.random.normal(0, noise_sig, (image.shape[0], image.shape[1]))
 			image[error != 0] += noise_realization[error != 0]
 
+			if not gdat.use_errmap:
+				error = noise_sig*np.ones((image.shape[0], image.shape[1]))
+			else:
+				old_error = error.copy()
+				old_variance = old_error**2
+				old_variance[error != 0] += noise_sig**2
+				error = np.sqrt(old_variance)
+
 			if gdat.show_input_maps:
 				plt.figure(figsize=(15, 5))
 				plt.subplot(1,3,1)
@@ -232,28 +344,23 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 				plt.title('image + gaussian noise')
 
 				showim = image.copy()
-				showim[error != 0] += noise_realization[error != 0]
-
+				# showim[error != 0] += noise_realization[error != 0]
 				plt.imshow(showim)
 				plt.colorbar()
 				plt.subplot(1,3,3)
-				plt.title('old error')
+				plt.title('error map')
 				plt.imshow(error, vmin=np.percentile(error, 5), vmax=np.percentile(error, 95))
 				plt.colorbar()
 				plt.show()
 
-			old_error = error.copy()
-			old_variance = old_error**2
-			old_variance[error != 0] += noise_sig**2
 
-			error = np.sqrt(old_variance)
 
-			if gdat.show_input_maps:
-				plt.figure()
-				plt.imshow(error, vmin=np.percentile(error, 5), vmax=np.percentile(error, 95))
-				plt.colorbar()
-				plt.title('new error')
-				plt.show()
+			# if gdat.show_input_maps:
+			# 	plt.figure()
+			# 	plt.imshow(error, vmin=np.percentile(error, 5), vmax=np.percentile(error, 95))
+			# 	plt.colorbar()
+			# 	plt.title('new error')
+			# 	plt.show()
 
 		else:
 			noise_realization = np.zeros_like(error)
@@ -356,7 +463,7 @@ load_in_data() loads in data, generates the PSF template and computes weights fr
 '''
 class pcat_data():
 
-	template_bands = dict({'sze':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L'], 'planck':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
+	template_bands = dict({'sze':['S', 'M', 'L'], 'szetemp':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L'], 'planck':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
 
 	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs, self.nbins, self.psfs, self.cfs, self.biases, self.data_array, self.weights, self.masks, self.errors, \

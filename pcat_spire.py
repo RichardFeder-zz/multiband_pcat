@@ -24,7 +24,6 @@ from spire_plotting_fns import *
 from fourier_bkg_modl import *
 
 
-
 np.seterr(divide='ignore', invalid='ignore')
 
 class objectview(object):
@@ -1940,6 +1939,8 @@ class lion():
 			# if specified, error map assumed to be gaussian with variance scalar_noise_sigma**2
 			scalar_noise_sigma=None, \
 
+			use_errmap = True, \
+
 			# if true catalog provided, passes on to posterior analysis
 			truth_catalog = None, \
 
@@ -2086,7 +2087,7 @@ class lion():
 		if self.gdat.temp_prop_sig_fudge_facs is None:
 			self.gdat.temp_prop_sig_fudge_facs = [1. for b in range(self.gdat.nbands)]
 
-		template_band_idxs = dict({'sze':[0, 1, 2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2], 'planck':[0,1,2]})
+		template_band_idxs = dict({'sze':[0, 1, 2], 'szetemp':[0,1,2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2], 'planck':[0,1,2]})
 
 		# fourier comp colors
 		fourier_band_idxs = [0, 1, 2]
