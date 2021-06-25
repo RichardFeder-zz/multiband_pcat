@@ -481,7 +481,6 @@ class pcat_test_suite():
 
 		completeness_ensemble = np.zeros((residual_samples, nbands, catalog_inject.shape[0]))
 		fluxerror_ensemble = np.zeros((residual_samples, nbands, catalog_inject.shape[0]))
-
 		recovered_flux_ensemble = np.zeros((residual_samples, nbands, catalog_inject.shape[0]))
 
 		for b in range(nbands):
@@ -707,7 +706,7 @@ class pcat_test_suite():
 		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, raw_counts=False, generate_condensed_catalog=False, \
 		err_f_divfac=1., bkg_sig_fac=5.0, bkg_moveweight=20., n_condensed_samp=50, prevalence_cut=0.5, burn_in_frac=0.7, \
 		temp_prop_sig_fudge_facs=None, estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, initial_template_amplitude_dicts=None, init_fourier_coeffs=None, truealpha=3., \
-		temp_prop_df=None, add_noise=False, use_errmap=True, scalar_noise_sigma=None):
+		temp_prop_df=None, add_noise=False, use_errmap=True, scalar_noise_sigma=None, width=None, height=None):
 
 		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
@@ -733,6 +732,7 @@ class pcat_test_suite():
 			dfc_prob_main = 1.0
 			fourier_comp_moveweight_main = fourier_comp_moveweight
 			point_src_delay_main = point_src_delay
+			init_fourier_coeffs = None
 
 
 		if estimate_dust_first:
@@ -749,7 +749,8 @@ class pcat_test_suite():
 			  image_extnames=image_extnames, error_extname=error_extname, panel_list=pan_list, err_f_divfac=err_f_divfac/np.sqrt(3.), bkg_sig_fac=bkg_sig_fac, \
 			  movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
 			  float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0, fourier_comp_moveweight=200., \
-			  dfc_prob=1.0, point_src_delay=point_src_delay, fc_amp_sig=fc_amp_sig, truealpha=truealpha, alph=alph, add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma)
+			  dfc_prob=1.0, point_src_delay=point_src_delay, nsrc_init=0, fc_amp_sig=fc_amp_sig, truealpha=truealpha, alph=alph, add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma, \
+			  width=width, height=height)
 
 			ob.main()
 			_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
@@ -763,7 +764,6 @@ class pcat_test_suite():
 
 
 		if panel_list is None:
-			# panel_list = ['data0', 'data1', 'data2', 'fourier_bkg0', 'residual1', 'residual2']
 			panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
 
 		ob = lion(band0=band0, band1=band1, band2=band2, data_path=data_path, base_path=self.base_path, result_path=self.result_path, \
@@ -779,7 +779,7 @@ class pcat_test_suite():
 	 				 correct_misaligned_shift=correct_misaligned_shift, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, panel_list=panel_list, \
 	 				 F_statistic_alph=F_statistic_alph, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac, \
 	 				 bkg_sig_fac=bkg_sig_fac, n_condensed_samp=n_condensed_samp, prevalence_cut=prevalence_cut, init_template_amplitude_dicts=initial_template_amplitude_dicts, timestr_list_file=timestr_list_file, truealpha=truealpha, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, temp_prop_df=temp_prop_df, \
-	 				 add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma)
+	 				 add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma, width=width, height=height)
 
 		ob.main()
 

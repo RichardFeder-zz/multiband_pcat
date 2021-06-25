@@ -11,6 +11,8 @@ template_filenames = dict({'sze': t_filenames[0]})
 
 
 color_prior_sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5})
+color_prior_sigs_narrow = dict({'S-M':0.25, 'M-L':0.25, 'L-S':0.25, 'M-S':0.25, 'S-L':0.25, 'L-M':0.25})
+
 # color_prior_sigs = dict({'S-M':5.5, 'M-L':5.5, 'L-S':5.5, 'M-S':5.5, 'S-L':5.5, 'L-M':5.5})
 
 # pcat_test = pcat_test_suite(cluster_name='rxj1347_831', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
@@ -21,16 +23,16 @@ color_prior_sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 
 # 				generate_condensed_cat=True, fourier_comp_plots=False, n_condensed_samp=100, prevalence_cut=0.5, mask_hwhm=5, condensed_catalog_plots=True)
 
 
-pcat_test = pcat_test_suite(cluster_name='pre_lense_map_021621', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
+# pcat_test = pcat_test_suite(cluster_name='pre_lense_map_021621', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
 # figs = pcat_test.validate_astrometry(tail_name='rxj1347_PSW_sim0300', dataname='conley_030121', ngrid=15, return_validation_figs=True, image_extnames=[0], save=True)
 # figs[0].savefig('Data/spire/pre_lense_map_021621/test0.pdf')
 # figs[1].savefig('Data/spire/pre_lense_map_021621/test1.pdf')
 # pcat_test.iter_fourier_comps(tail_name='rxj1347_PSW_sim0300_con', dataname='pre_lense_map_021621', nsamps=[30], float_templates=True, template_names=template_filenames, \
 	# visual=True, show_input_maps=True, fmin_levels=[0.004], final_fmin=0.004, use_mask=True, image_extnames=['SIGNAL'], n_fc_terms=5, F_statistic_alph=True, nominal_nsrc = 700)
 # panel_list = ['data0', 'data1', 'dNdS0', 'residual0', 'residual1', 'dNdS1']
-panel_list = ['data0', 'data1', 'data2', 'residual0', 'dNdS0', 'dNdS1']
+# panel_list = ['data0', 'data1', 'data2', 'residual0', 'dNdS0', 'dNdS1']
 
-# panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
+panel_list = ['data0', 'data1', 'data2', 'residual0', 'residual1', 'residual2']
 # panel_list = ['data0', 'data1', 'data_zoom1', 'residual0', 'residual1', 'residual_zoom1']
 
 
@@ -247,7 +249,7 @@ n_src_perbin_goodsn_deep = [100, 100, 50, 50, 40, 30, 20, 2, 2, 2, 1]
 pcat_test = pcat_test_suite(cluster_name='rxj1347', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
 
 # random initialization between 0.00 and 0.04 for PLW, 0.0 and 0.005 for PMW                                                                                                        
-truealpha=2.5
+truealpha=3.0
 
 initial_template_amplitude_dicts = dict({'sze': dict({'S':0.00026, 'M':0.001, 'L':0.018})})
 initial_template_amplitude_dicts['sze']['L'] = np.random.uniform(0.01, 0.03)
@@ -255,7 +257,7 @@ initial_template_amplitude_dicts['sze']['M'] = np.random.uniform(-0.003, 0.003)
 
 print('initial template amplitude dict is ', initial_template_amplitude_dicts)
 # mask_file = base_path+'/Data/spire/bolocam_masks/bolocam_mask_PSW.fits'
-mask_file = base_path+'/Data/spire/rxj1347_831/rxj1347_PSW_4arcmin_mask_040921_2.fits'
+# mask_file = base_path+'/Data/spire/rxj1347_831/rxj1347_PSW_4arcmin_mask_040921_2.fits'
 
 # pcat_test.validate_astrometry(dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', use_mask=True, mask_file=mask_file, image_extnames=['SIGNAL'], error_extname='ERROR', ngrid=10, return_validation_figs=True)
 # pcat_test.validate_astrometry(dataname='rxj1347_040921', tail_name='rxj1347_PSW_360arcsec_test', use_mask=False, image_extnames=['IMAGE'], error_extname='ERROR', ngrid=10, return_validation_figs=True)
@@ -280,23 +282,24 @@ mask_file = base_path+'/Data/spire/rxj1347_831/rxj1347_PSW_4arcmin_mask_040921_2
 #                        initial_template_amplitude_dicts=initial_template_amplitude_dicts, template_names=['sze'], nregion=1, alph=0.0, nominal_nsrc=50., truealpha=3.)
 
 # float background
-pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='rxj1347_831/rxj1347_10arcmin', tail_name='rxj1347_PSW_600arcsec_042021', image_extnames=['SIGNAL'], \
-                       bias=[-0.0037, -0.0055, -0.0085], float_background=True,  use_mask=False, max_nsrc=500, make_post_plots=True, nsamp=3000, residual_samples=200, \
+# ran this on 042021 10 arcmin x 10 arcmin data, to get catalog from real data
+pcat_test.real_dat_run(visual=False, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='rxj1347_831/rxj1347_10arcmin', tail_name='rxj1347_PSW_600arcsec_061521', image_extnames=['SIGNAL'], \
+                       bias=[-0.0037, -0.0055, -0.0085], float_background=True,  use_mask=False, max_nsrc=500, make_post_plots=True, nsamp=3000, residual_samples=400, \
                temp_sample_delay=0, color_sigs=color_prior_sigs, err_f_divfac=15., bkg_sig_fac=[10., 15., 20.], bkg_moveweight=20., fc_amp_sig=0.0005, temp_prop_sig_fudge_facs=[1., 15.0, 25.0], \
-               movestar_moveweight=60, birth_death_moveweight=15, float_templates=True, float_fourier_comps=True, n_fc_terms=6, merge_split_moveweight=15, estimate_dust_first=True, nsamp_dustestimate=50, point_src_delay=0, \
-                       initial_template_amplitude_dicts=initial_template_amplitude_dicts, template_names=['sze'], nregion=5, alph=1.0, nominal_nsrc=400., truealpha=2.5)
+               movestar_moveweight=60, birth_death_moveweight=15, float_templates=True, float_fourier_comps=True, n_fc_terms=6, merge_split_moveweight=15, estimate_dust_first=True, nsamp_dustestimate=300, point_src_delay=0, \
+                       initial_template_amplitude_dicts=initial_template_amplitude_dicts, generate_condensed_catalog=True, template_names=['sze'], nregion=5, alph=1.0, nominal_nsrc=400., truealpha=3.0)
 
 # bestfitbkg = [-0.004, -0.006, -0.008]
 
 # timestr_list_file = 'rxj1347_realdat_4arcmin_nfcterms=3_timestrs_042021_bestfitbkg.npz'
 
 # REAL data 10 arcmin x 10 arcmin tests
-#pcat_test.real_dat_run(visual=False, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='rxj1347_831/rxj1347_10arcmin', tail_name='rxj1347_PSW_600arcsec_042021', image_extnames=['SIGNAL'], bias=bkg_vals3, float_background=True, use_mask=False, max_nsrc=500, make_post_plots=True, nsamp=3000, \
+# pcat_test.real_dat_run(visual=False, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='rxj1347_831/rxj1347_10arcmin', tail_name='rxj1347_PSW_600arcsec_042021', image_extnames=['SIGNAL'], bias=bkg_vals3, float_background=True, use_mask=False, max_nsrc=500, make_post_plots=True, nsamp=3000, \
 #                       residual_samples=200, temp_sample_delay=10, color_sigs=color_prior_sigs, err_f_divfac=15., bkg_sig_fac=[10., 15., 20.], bkg_moveweight=40., temp_prop_sig_fudge_facs=[1., 20.0, 30.0], \
 #                       movestar_moveweight=60, birth_death_moveweight=20, float_templates=True, float_fourier_comps=True, fc_amp_sig=0.0005, n_fc_terms=6, merge_split_moveweight=20, \
 #                       estimate_dust_first=True, nsamp_dustestimate=300, point_src_delay=0, \
 #                       initial_template_amplitude_dicts=initial_template_amplitude_dicts, template_moveweight=60., template_names=['sze'], nregion=5, nominal_nsrc=400, \
-#timestr_list_file=timestr_list_file, truealpha=truealpha, alph=1.0)     
+# 						timestr_list_file=timestr_list_file, truealpha=truealpha, alph=1.0)     
 
 # REAL data 4 arcmin x 4 arcmin tests
 # pcat_test.real_dat_run(visual=False, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='rxj1347_040921', tail_name='rxj1347_PSW_240arcsec_test', image_extnames=['IMAGE'], \
@@ -317,6 +320,11 @@ pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=F
 
 # exit()
 
+# test on conley sims, different noise levels
+
+# pcat_test.real_dat_run(nbands=3, band0=0, band1=1, band2=2, dataname='conley_030121/conley_041921_10arcmin', tail_name='rxj1347_PSW_600_simidx300', image_extnames=['SIG_PRE_LENS'], float_fourier_comps=False, \
+# 	use_mask=False, bias=None, nsamp=2000, float_background=True, err_f_divfac=10., weighted_residual=True, visual=True, show_input_maps=False, fmin=0.004, max_nsrc=1000, color_sigs=color_prior_sigs, \
+# 	n_frames=20, residual_samples=200, panel_list=panel_list, add_noise=True, scalar_noise_sigma=[0.005, 0.005, 0.005], use_errmap=False)
 
 
 # ---------------------- test on Conley_sims_zitrin, both without and with injected cirrus signal ------------------------------
@@ -334,7 +342,7 @@ pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=F
 # 	use_mask=False, bias=None, nsamp=2000, weighted_residual=True, visual=True, show_input_maps=True, fmin=0.004, max_nsrc=1300, color_sigs=color_prior_sigs, \
 # 	n_frames=20)
 
-# pcat_test.real_dat_run(nbands=3, band0=0, band1=1, band2=2, dataname='conley_030121', tail_name='rxj1347_PSW_sim0300', image_extnames=['SIG_POST_LENS', 'NOISE'], float_fourier_comps=False, \
+# pcat_test.real_dat_run(nbands=3, band0=0, band1=1, band2=2, dataname='conley_030121', tail_name='rxj1347_PSW_sim0300', image_extnames=['SIG_PRE_LENS', 'NOISE'], float_fourier_comps=False, \
 # 	use_mask=True, bias=None, nsamp=2000, weighted_residual=True, visual=True, show_input_maps=False, fmin=0.004, max_nsrc=1000, color_sigs=color_prior_sigs, \
 # 	n_frames=20, correct_misaligned_shift=True, residual_samples=200, panel_list=panel_list)
 
@@ -344,13 +352,16 @@ pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=F
 #	bias=None, use_mask=True, max_nsrc=1000, make_post_plots=True, nsamp=2000, residual_samples=200, inject_sz_frac=1.0, inject_diffuse_comp=False, diffuse_comp_path=None, \
 #	temp_sample_delay=20, color_sigs=color_prior_sigs, panel_list=panel_list, err_f_divfac=10.)
 
+# pcat_test = pcat_test_suite(cluster_name='rxj1347', base_path=base_path, result_path=result_path, cblas=True, openblas=False)
 
 
-# pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='conley_030121/conley_030121_10arcmin/', tail_name='rxj1347_PSW_600_simidx300', image_extnames=['SIG_PRE_LENS', 'NOISE', 'DUST'], \
-#                        bias=[-0.0037, -0.0055, -0.0085], float_background=True, inject_sz_frac=1.0, use_mask=False, mask_file=mask_file, max_nsrc=500, make_post_plots=True, nsamp=3000, residual_samples=200, \
+# fname = pcat_test.base_path + '/'+dataname +'/'+tail_name+'.fits'
+
+# pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='sig_0p5_sims/sig_0p5_cutout_sims', tail_name='rxj1347_PSW_600_simidx300', image_extnames=['SIG_POST_LENS', 'NOISE', 'DUST'], \
+#                        bias=[-0.0037, -0.0055, -0.0085], float_background=True, inject_sz_frac=1.0, use_mask=False, max_nsrc=500, make_post_plots=True, nsamp=3000, residual_samples=200, \
 #                temp_sample_delay=10, color_sigs=color_prior_sigs, err_f_divfac=10., bkg_sig_fac=[10., 15., 20.], bkg_moveweight=20., fc_amp_sig=0.0005, temp_prop_sig_fudge_facs=[1., 15.0, 25.0], \
-#                movestar_moveweight=60, birth_death_moveweight=15, float_templates=True, float_fourier_comps=True, n_fc_terms=6, merge_split_moveweight=15, estimate_dust_first=True, nsamp_dustestimate=100, point_src_delay=5, \
-#                        initial_template_amplitude_dicts=initial_template_amplitude_dicts, template_names=['sze'], nregion=5, alph=0.0, nominal_nsrc=30., truealpha=3.)
+#                movestar_moveweight=60, birth_death_moveweight=15, float_templates=True, float_fourier_comps=True, n_fc_terms=6, merge_split_moveweight=15, estimate_dust_first=True, nsamp_dustestimate=10, \
+#                        initial_template_amplitude_dicts=initial_template_amplitude_dicts, template_names=['sze'], nregion=5, alph=0.0, nominal_nsrc=30, truealpha=2.5)
 
 
 # pcat_test.real_dat_run(visual=False, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.005, dataname='conley_030121/conley_030121_4arcmin/', tail_name='rxj1347_PSW_240_simidx300', image_extnames=['SIG_PRE_LENS', 'NOISE', 'DUST'], \
@@ -385,21 +396,27 @@ pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=F
 
 # -------------------- run on MACS for Ben ----------------------------
 
-panel_list = ['data0', 'data1', 'fourier_bkg0','residual0', 'residual1', 'dNdS0']
+truealpha=2.5
 
-# pcat_test.real_dat_run(visual=True, band0=0, show_input_maps=False, fmin=0.01, dataname='macs0717_spire_fields', tail_name='SPIRE_macs0717_PSW', image_extnames=['SIGNAL'], error_extname='SIGMA', \
+initial_template_amplitude_dicts = dict({'sze': dict({'S':0.0, 'M':0.002, 'L':0.018})})
+# initial_template_amplitude_dicts['sze']['L'] = np.random.uniform(0.01, 0.03)
+# initial_template_amplitude_dicts['sze']['M'] = np.random.uniform(-0.003, 0.003)
+# panel_list = ['data0', 'data1', 'fourier_bkg0','residual0', 'residual1', 'dNdS0']
+
+# pcat_test.real_dat_run(visual=True, band0=0, show_input_maps=False, fmin=0.01, dataname='SPIRE_photometer_fields_v2', tail_name='macs0717_PSW', image_extnames=['SIGNAL'], error_extname='SIGMA', \
 # 	bias=None, use_mask=True, max_nsrc=300, generate_condensed_catalog=True, make_post_plots=True, nsamp=1000, n_condensed_samp=100, residual_samples=100, \
 # 	color_sigs=color_prior_sigs, panel_list=panel_list, err_f_divfac=3., bkg_sig_fac=[5., 5., 10.],  \
 # 	float_fourier_comps=True, n_fc_terms=6, nregion=4, point_src_delay=20, nsrc_init=0)
+
 # pcat_test.validate_astrometry(dataname='spire_fields_v2', tail_name='SPIREmacs0717_PSW', use_mask=True, image_extnames=['SIGNAL'], error_extname='SIGMA', ngrid=10, return_validation_figs=True)
 # result_plots('20210402-151022', cattype=None, burn_in_frac=0.7, boolplotsave=True, boolplotshow=False, plttype='png', gdat=None)
 
 # panel_list = ['data0', 'data1', 'residual0', 'residual1', 'fourier_bkg0', 'fourier_bkg1']
 
-# pcat_test.real_dat_run(visual=False, band0=0, band1=1, show_input_maps=False, fmin=0.015, dataname='spire_fields_v2', tail_name='SPIREmacs0717_PSW', image_extnames=['SIGNAL'], error_extname='SIGMA', \
-# 	bias=None, use_mask=True, max_nsrc=300, generate_condensed_catalog=True, make_post_plots=True, nsamp=1000, n_condensed_samp=100, residual_samples=100, \
-# 	color_sigs=color_prior_sigs, panel_list=panel_list, err_f_divfac=3., bkg_sig_fac=[5., 5., 10.],  \
-# 	float_fourier_comps=True, n_fc_terms=6, nregion=4, estimate_dust_first=True, nsamp_dustestimate=200, point_src_delay=20, nsrc_init=0)
+# pcat_test.real_dat_run(visual=True, band0=0, band1=1, band2=2, show_input_maps=False, fmin=0.01, dataname='SPIRE_photometer_fields_v2', tail_name='macs0717_PSW_480arcsec_042021_sznorm', image_extnames=['SIGNAL'], error_extname='SIGMA', \
+# 	bias=[0.0, 0.0, 0.0], use_mask=False, max_nsrc=200, generate_condensed_catalog=True, make_post_plots=True, nsamp=1500, n_condensed_samp=100, residual_samples=100, \
+# 	color_sigs=color_prior_sigs, panel_list=None, err_f_divfac=3., fc_amp_sig=0.001, bkg_sig_fac=[5., 5., 10.], temp_sample_delay=10, temp_prop_sig_fudge_facs=[1., 10.0, 20.0], \
+# 	float_fourier_comps=True, n_fc_terms=6, nregion=4, float_templates=True, template_names=['sze'], initial_template_amplitude_dicts=initial_template_amplitude_dicts, estimate_dust_first=True, nsamp_dustestimate=200, point_src_delay=0, truealpha=truealpha)
 
 
 # -------------------- SZ inject test for Conley sims --------------------------------------------------

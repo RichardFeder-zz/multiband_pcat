@@ -2087,7 +2087,7 @@ class lion():
 		if self.gdat.temp_prop_sig_fudge_facs is None:
 			self.gdat.temp_prop_sig_fudge_facs = [1. for b in range(self.gdat.nbands)]
 
-		template_band_idxs = dict({'sze':[0, 1, 2], 'szetemp':[0,1,2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2], 'planck':[0,1,2]})
+		template_band_idxs = dict({'sze':[0, 1, 2], 'sze':[0,1,2], 'lensing':[0, 1, 2], 'dust':[0, 1, 2], 'planck':[0,1,2]})
 
 		# fourier comp colors
 		fourier_band_idxs = [0, 1, 2]
