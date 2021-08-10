@@ -170,12 +170,13 @@ def create_directories(gdat):
 		Time string associated with new PCAT run
 
 	'''
-
 	new_dir_name = gdat.result_path+'/'+gdat.timestr
 	timestr = gdat.timestr
 	if os.path.isdir(gdat.result_path+'/'+gdat.timestr):
 		i = 0
+		time.sleep(np.random.uniform(0, 5))
 		while os.path.isdir(gdat.result_path+'/'+gdat.timestr+'_'+str(i)):
+			time.sleep(np.random.uniform(0, 2))
 			i += 1
 		
 		timestr = gdat.timestr+'_'+str(i)
