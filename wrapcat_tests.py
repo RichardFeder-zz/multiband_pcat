@@ -706,7 +706,8 @@ class pcat_test_suite():
 		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, raw_counts=False, generate_condensed_catalog=False, \
 		err_f_divfac=1., bkg_sig_fac=5.0, bkg_moveweight=20., n_condensed_samp=50, prevalence_cut=0.5, burn_in_frac=0.7, \
 		temp_prop_sig_fudge_facs=None, estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, initial_template_amplitude_dicts=None, init_fourier_coeffs=None, truealpha=3., \
-		temp_prop_df=None, add_noise=False, use_errmap=True, scalar_noise_sigma=None, width=None, height=None):
+		temp_prop_df=None, add_noise=False, use_errmap=True, scalar_noise_sigma=None, width=None, height=None, \
+		flux_prior_type='double_power_law'):
 
 		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
@@ -750,7 +751,7 @@ class pcat_test_suite():
 			  movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
 			  float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0, fourier_comp_moveweight=200., \
 			  dfc_prob=1.0, point_src_delay=point_src_delay, nsrc_init=0, fc_amp_sig=fc_amp_sig, truealpha=truealpha, alph=alph, add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma, \
-			  width=width, height=height)
+			  width=width, height=height, flux_prior_type=flux_prior_type)
 
 			ob.main()
 			_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
@@ -778,10 +779,12 @@ class pcat_test_suite():
 	 				 im_fpath=im_fpath, err_fpath=err_fpath, init_fourier_coeffs=init_fourier_coeffs, psf_fwhms=psf_fwhms, point_src_delay=point_src_delay_main, fc_amp_sig=fc_amp_sig, MP_order=MP_order, bkg_moore_penrose_inv=bkg_moore_penrose_inv, ridge_fac=ridge_fac, \
 	 				 correct_misaligned_shift=correct_misaligned_shift, inject_diffuse_comp=inject_diffuse_comp, diffuse_comp_path=diffuse_comp_path, panel_list=panel_list, \
 	 				 F_statistic_alph=F_statistic_alph, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac, \
-	 				 bkg_sig_fac=bkg_sig_fac, n_condensed_samp=n_condensed_samp, prevalence_cut=prevalence_cut, init_template_amplitude_dicts=initial_template_amplitude_dicts, timestr_list_file=timestr_list_file, truealpha=truealpha, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, temp_prop_df=temp_prop_df, \
+	 				 bkg_sig_fac=bkg_sig_fac, n_condensed_samp=n_condensed_samp, prevalence_cut=prevalence_cut, init_template_amplitude_dicts=initial_template_amplitude_dicts, timestr_list_file=timestr_list_file, flux_prior_type=flux_prior_type, truealpha=truealpha, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, temp_prop_df=temp_prop_df, \
 	 				 add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma, width=width, height=height)
 
 		ob.main()
+
+		return ob.gdat.timestr
 
 
 	def run_sims_with_injected_sz(self, visual=False, show_input_maps=False, fmin=0.007, truealpha=3.0, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \

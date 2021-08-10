@@ -99,6 +99,50 @@ def initialize_c(gdat, libmmult, cblas=False):
 		libmmult.clib_eval_llik.restype = None
 		libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
 
+def icdf_dpow(unit, minm, maxm, brek, sloplowr, slopuppr):
+    
+    ''' Inverse CDF for double power law, taken from https://github.com/tdaylan/pcat/blob/master/pcat/main.py'''
+    
+    if np.isscalar(unit):
+        unit = np.array([unit])
+    
+    faca = 1. / (brek**(sloplowr - slopuppr) * (brek**(1. - sloplowr) - minm**(1. - sloplowr)) \
+                                / (1. - sloplowr) + (maxm**(1. - slopuppr) - brek**(1. - slopuppr)) / (1. - slopuppr))
+    facb = faca * brek**(sloplowr - slopuppr) / (1. - sloplowr)
+
+    para = np.empty_like(unit)
+    cdfnbrek = facb * (brek**(1. - sloplowr) - minm**(1. - sloplowr))
+    indxlowr = np.where(unit <= cdfnbrek)[0]
+    indxuppr = np.where(unit > cdfnbrek)[0]
+    if indxlowr.size > 0:
+        para[indxlowr] = (unit[indxlowr] / facb + minm**(1. - sloplowr))**(1. / (1. - sloplowr))
+    if indxuppr.size > 0:
+        para[indxuppr] = ((1. - slopuppr) * (unit[indxuppr] - cdfnbrek) / faca + brek**(1. - slopuppr))**(1. / (1. - slopuppr))
+    
+    return para
+
+def pdfn_dpow(xdat, minm, maxm, brek, sloplowr, slopuppr):
+    
+
+    ''' PDF for double power law, also taken from https://github.com/tdaylan/pcat/blob/master/pcat/main.py'''
+
+    if np.isscalar(xdat):
+        xdat = np.array([xdat])
+    
+    faca = 1. / (brek**(sloplowr - slopuppr) * (brek**(1. - sloplowr) - minm**(1. - sloplowr)) / \
+                                            (1. - sloplowr) + (maxm**(1. - slopuppr) - brek**(1. - slopuppr)) / (1. - slopuppr))
+    facb = faca * brek**(sloplowr - slopuppr) / (1. - sloplowr)
+    
+    pdfn = np.empty_like(xdat)
+    indxlowr = np.where(xdat <= brek)[0]
+    indxuppr = np.where(xdat > brek)[0]
+    if indxlowr.size > 0:
+        pdfn[indxlowr] = faca * brek**(sloplowr - slopuppr) * xdat[indxlowr]**(-sloplowr)
+    if indxuppr.size > 0:
+        pdfn[indxuppr] = faca * xdat[indxuppr]**(-slopuppr)
+    
+    return pdfn
+
 def add_directory(dirpath):
 	if not os.path.isdir(dirpath):
 		os.makedirs(dirpath)
@@ -126,6 +170,7 @@ def create_directories(gdat):
 		Time string associated with new PCAT run
 
 	'''
+
 	new_dir_name = gdat.result_path+'/'+gdat.timestr
 	timestr = gdat.timestr
 	if os.path.isdir(gdat.result_path+'/'+gdat.timestr):
@@ -298,11 +343,14 @@ class Model:
 	
 	''' the init function sets all of the data structures used for the catalog, 
 	randomly initializes catalog source values drawing from catalog priors  '''
-	def __init__(self, gdat, dat, libmmult=None, samp_idx=None):
+	def __init__(self, gdat, dat, libmmult=None, newsrc_minmax_range=500):
 
 		self.dat = dat
-		self.err_f = gdat.err_f
 		self.gdat = gdat
+		self.libmmult = libmmult
+		self.newsrc_minmax_range = newsrc_minmax_range
+
+		self.err_f = gdat.err_f
 
 		self.pixel_per_beam = [2*np.pi*(psf_pixel_fwhm/2.355)**2 for psf_pixel_fwhm in self.gdat.psf_fwhms] # variable pixel fwhm
 		self.linear_flux = gdat.linear_flux
@@ -310,7 +358,6 @@ class Model:
 		self.imsz0 = gdat.imsz0 # this is just for first band, where proposals are first made
 		self.imszs = gdat.imszs # this is list of image sizes for all bands, not just first one
 		self.kickrange = gdat.kickrange
-		self.libmmult = libmmult
 
 		self.margins = np.zeros(gdat.nbands).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
@@ -404,11 +451,14 @@ class Model:
 		self.stars[self._Y,0:self.n] *= gdat.imsz0[1]-1
 
 		self.truealpha = gdat.truealpha
-		self.trueminf = gdat.trueminf
 
+		# additional parameters for double power law
+		self.alpha_1 = gdat.alpha_1
+		self.alpha_2 = gdat.alpha_2
+		self.pivot_dpl = gdat.pivot_dpl
+		self.trueminf = gdat.trueminf
 		self.verbtype = gdat.verbtype
 
-		# self.bkg_prop_sigs = self.gdat.bkg_sig_fac*np.array([np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 		self.bkg_prop_sigs = np.array([self.gdat.bkg_sig_fac[b]*np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
 
 		if gdat.bkg_prior_mus is not None:
@@ -449,8 +499,15 @@ class Model:
 			for b in range(gdat.nbands):
 
 				if b==0:
-					self.stars[self._F+b,0:self.n] **= -1./(self.truealpha - 1.)
-					self.stars[self._F+b,0:self.n] *= self.trueminf
+					if self.gdat.flux_prior_type=='double_power_law':
+
+						self.stars[self._F+b,0:self.n] = icdf_dpow(self.stars[self._F+b,0:self.n],\
+																	 self.trueminf, self.trueminf*self.newsrc_minmax_range, \
+																	 self.pivot_dpl, self.alpha_1, self.alpha_2)
+
+					elif self.gdat.flux_prior_type=='single_power_law':
+						self.stars[self._F+b,0:self.n] **= -1./(self.truealpha - 1.)
+						self.stars[self._F+b,0:self.n] *= self.trueminf
 				else:
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=self.n)
 					
@@ -914,7 +971,6 @@ class Model:
 				else:
 					# is this taking the prior factor to the power nregion ^ 2 ? I think it might, TODO
 					if proposal.factor is not None:
-
 						dlogP += proposal.factor
 
 				
@@ -1253,6 +1309,38 @@ class Model:
 		pf = np.exp(-logdf*pff) * (-lindf*lindf*logdf*logdf+np.exp(2*logdf*pff)) / (2*logdf*logdf)
 		return pf
 
+	def eval_logp_dpl(self, fluxes):
+
+		''' Evaluate the log-prior of the flux distribution, parameterized as a double power law.
+
+		Inputs
+		------
+		fluxes : np.array of type 'float' and length N_src_max. 
+
+		Class variables
+		---------------
+		self.pivot_dpl : 'float'. Pivot flux density of the double power law
+		self.alpha_1/self.alpha_2 : variables of type 'float'.  Two assumed power law coefficients
+		
+		Returns
+		-------
+
+		logp_dpl : np.array of type 'float'. Log priors for each source
+
+
+		'''
+
+		logp_dpl = np.zeros_like(fluxes)
+		logf = np.log(fluxes)
+		piv_mask = (fluxes > self.pivot_dpl)
+
+		logfac2 = (self.alpha_2-self.alpha_1)*np.log(self.pivot_dpl)
+		logp_dpl[piv_mask] = logfac2-self.alpha_2*logf[piv_mask]
+		logp_dpl[~piv_mask] = -self.alpha_1*logf[~piv_mask]
+
+		return logp_dpl
+
+
 	def move_stars(self): 
 		idx_move = self.idx_parity_stars()
 		nw = idx_move.size
@@ -1274,11 +1362,26 @@ class Model:
 			print('negative flux!')
 			print(np.array(pfs)[np.array(pfs)<0])
 
-		dlogf = np.log(pfs[0]/f0[0])
 
 		verbprint(self.verbtype, 'Average flux difference : '+str(np.average(np.abs(f0[0]-pfs[0]))), verbthresh=1)
 
-		factor = -self.truealpha*dlogf
+
+		if self.gdat.flux_prior_type=='single_power_law':
+			dlogf = np.log(pfs[0]/f0[0])
+			factor = -self.truealpha*dlogf
+			# print('factor at move_stars for single power law are ', factor)
+		elif self.gdat.flux_prior_type=='double_power_law':
+			log_prior_dpow_pf = np.log(pdfn_dpow(pfs[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
+			log_prior_dpow_f0 = np.log(pdfn_dpow(f0[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
+
+			# print('log_prior_dpow_pf:', log_prior_dpow_pf)
+			# print('log_prior_dpow_f0:', log_prior_dpow_f0)
+
+			factor = log_prior_dpow_pf - log_prior_dpow_f0
+
+			# print('factor at move_stars is ', factor)
+
+			# factor = self.eval_logp_dpl(pfs[0])-self.eval_logp_dpl(f0[0])
 
 		if np.isnan(factor).any():
 			print('Factor NaN from flux')
@@ -1364,7 +1467,11 @@ class Model:
 			
 			for b in range(self.nbands):
 				if b==0:
-					starsb[self._F+b,:] = self.trueminf * np.exp(np.random.exponential(scale=1./(self.truealpha-1.),size=nbd))
+					if self.gdat.flux_prior_type=='single_power_law':
+						starsb[self._F+b,:] = self.trueminf * np.exp(np.random.exponential(scale=1./(self.truealpha-1.),size=nbd))
+					elif self.gdat.flux_prior_type=='double_power_law':
+						starsb[self._F+b,:] = icdf_dpow(np.random.uniform(0, 1, nbd), self.trueminf, self.trueminf*self.newsrc_minmax_range,\
+													 self.pivot_dpl, self.alpha_1, self.alpha_2)
 				else:
 					# draw new source colors from color prior
 					new_colors = np.random.normal(loc=self.color_mus[b-1], scale=self.color_sigs[b-1], size=nbd)
@@ -1593,16 +1700,41 @@ class Model:
 		The variable "factor" has the log prior (log(P(Catalog))), and since the prior is a product of 
 		individual priors we add log factors to get the log prior.'''
 		if goodmove:
-			# first three terms are ratio of flux priors, remaining terms come from how we choose sources to merge, and last term is Jacobian for the transdimensional proposal
-			# factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf) - self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) + np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) + np.log(1. - 2./fminratio) + np.log(bright_n) + np.log(invpairs) + np.log(sum_fs[0])
-			
 			# the first three terms are the ratio of the flux priors, the next two come from the position terms when choosing sources to merge/split, 
 			# the two terms after that capture the transition kernel since there are several combinations of sources that could be implemented, 
 			# the last term is the Jacobian determinant f, which is the same for the single and multiband cases given the new proposals 
-			factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf)-self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) \
-					+ np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) \
+			
+
+			# factor = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf)-self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0]) \
+			# 		+ np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) \
+			# 		+ np.log(bright_n) + np.log(invpairs)+ np.log(1. - 2./fminratio) + np.log(sum_fs[0])
+			
+
+			factor = np.log(2*np.pi*self.kickrange*self.kickrange) - np.log(self.imsz0[0]*self.imsz0[1]) \
 					+ np.log(bright_n) + np.log(invpairs)+ np.log(1. - 2./fminratio) + np.log(sum_fs[0])
 			
+			if self.gdat.flux_prior_type=='single_power_law':
+				factor += np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf)-self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0])
+			elif self.gdat.flux_prior_type=='double_power_law':
+
+				log_prior_dpow_split1 = np.log(pdfn_dpow(fracs[0]*sum_fs[0],  self.trueminf,\
+											 self.trueminf*self.newsrc_minmax_range,\
+											  self.pivot_dpl, self.alpha_1, self.alpha_2))
+				log_prior_dpow_split2 = np.log(pdfn_dpow((1-fracs[0])*sum_fs[0],  self.trueminf,\
+											 self.trueminf*self.newsrc_minmax_range,\
+											  self.pivot_dpl, self.alpha_1, self.alpha_2))
+				log_prior_dpow_tot = np.log(pdfn_dpow(sum_fs[0],  self.trueminf,\
+											 self.trueminf*self.newsrc_minmax_range,\
+											  self.pivot_dpl, self.alpha_1, self.alpha_2))
+
+				# print('sum logdiff:', log_prior_dpow_split1 + log_prior_dpow_split2 - log_prior_dpow_tot)
+
+				factor += log_prior_dpow_split1 + log_prior_dpow_split2 - log_prior_dpow_tot
+
+				# factor += self.eval_logp_dpl(fracs[0]*sum_fs[0]) \
+				# 			+self.eval_logp_dpl((1-fracs[0])*sum_fs[0]) \
+				# 			-self.eval_logp_dpl(sum_fs[0])
+
 			for b in range(self.nbands-1):
 
 				if self.linear_flux:
@@ -1968,10 +2100,16 @@ class lion():
 			split_col_sig = 0.2, \
 			# set linear_flux to true in order to get color priors in terms of linear flux density ratios
 			linear_flux = False, \
-			# number counts power law slope for sources
+			# power law type
+			flux_prior_type = 'single_power_law', \
+			# number counts single power law slope for sources
 			truealpha = 3.0, \
 			# minimum flux allowed in fit for SPIRE sources (Jy)
 			trueminf = 0.005, \
+			# two parameters for double power law, one for pivot flux density
+			alpha_1 = 1.01, \
+			alpha_2 = 3.5, \
+			pivot_dpl = 0.01, \
 
 			# these two, if specified, should be dictionaries with the color prior mean and width (assuming Gaussian)
 			color_mus = None, \
@@ -2068,6 +2206,11 @@ class lion():
 		self.gdat.lam_dict = dict({'S':250, 'M':350, 'L':500})
 		self.gdat.pixsize_dict = dict({'S':6., 'M':8., 'L':12.})
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
+
+		if self.gdat.alpha_1 == 1.0:
+			self.gdat.alpha_1 += 0.01
+		if self.gdat.alpha_2 == 1.0:
+			self.gdat.alpha_2 += 0.01
 		
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
 		self.gdat.nbands = len(self.gdat.bands)
