@@ -226,6 +226,35 @@ def compute_posterior_density(chain_var1, chain_var2, bins=30, norm_mode='max'):
     return density, hist2d, extent
 
 
+def compute_sz_cov_matrix_082021(plw_pmw_cov_input, fixbkgerr=None, gr_stat_fac=None, observed_cov=None, mult_fac=None):
+    
+    ''' current calculation of the SZ covariance matrix with relevant corrections. '''
+    plw_pmw_cov = plw_pmw_cov_input.copy()
+    
+    if fixbkgerr is not None:
+        plw_pmw_cov[0, 0] += fixbkgerr[0]**2
+        plw_pmw_cov[1, 1] += fixbkgerr[1]**2
+    
+    if mult_fac is not None:
+        plw_pmw_cov *= mult_fac
+        
+    if gr_stat_fac is not None and observed_cov is not None:
+        print('adding GR factor from observed data')
+        
+        add_plw = (gr_stat_fac[0]-1.)*observed_cov[0,0]
+        add_pmw = (gr_stat_fac[1]-1.)*observed_cov[1,1]
+        plw_pmw_cov[0,0] += add_plw
+        plw_pmw_cov[1,1] += add_pmw
+        
+    covmat = np.array([[0., 0., 0.], [0., plw_pmw_cov[0,0], plw_pmw_cov[0, 1]], [0., plw_pmw_cov[1,0], plw_pmw_cov[1, 1]]])
+
+        
+    print('new covariance matrix is ')
+    print(covmat)
+    
+    return covmat
+
+
 ''' these functions (fitEllipse(), ellipse_center(), ellipse_angle_of_rotation(), ellipse_axis_length(), find_ellipse()) are taken from stack overflow:
     https://stackoverflow.com/questions/39693869/fitting-an-ellipse-to-a-set-of-data-points-in-python/48002645'''
 def fitEllipse(x,y):
