@@ -3,6 +3,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from spire_data_utils import *
 import pickle
+from spire_plotting_fns import grab_extent
 # import corner
 # from pcat_spire import *
 
@@ -125,6 +126,161 @@ def compute_chain_rhats(all_chains, labels=['']):
     return f, rhats
 
 
+def compute_contours_sz(chain_var1, chain_var2, labels, bins=30, level=None, sigma_level=1.0, show=True, save_fpath=None, \
+                       xlim=None, ylim=None):
+
+    density, hist2d, extent = compute_posterior_density(chain_var1, chain_var2, bins=bins, norm_mode='max')
+    nx, ny = np.meshgrid(hist2d[1], hist2d[2])
+    
+    if level is None:
+        level = 1. - np.exp(-0.5*sigma_level**2)
+    print('contour level is ', level)
+    
+    plt.figure(figsize=(6,6))
+    plt.imshow(np.log(density), origin='lower', extent=extent, cmap='Greys', aspect='auto')
+    plt.colorbar()
+    contours = plt.contour(0.5*(hist2d[1][1:]+hist2d[1][:-1]), 0.5*(hist2d[2][1:]+hist2d[2][:-1]), density, levels=[level])
+    segments = contours.collections[0].get_segments()[0]
+    plt.scatter(segments[:,0], segments[:,1], color='r')
+    plt.legend()
+    plt.xlabel(labels[0], fontsize=18)
+    plt.ylabel(labels[1], fontsize=18)
+    plt.xlim(xlim)
+    plt.ylim(ylim)
+    
+    if show:
+        plt.show()
+    if save_fpath is not None:
+        plt.savefig(save_fpath, bbox_inches='tight')
+    
+    return contours, segments, density, hist2d
+
+def compute_ellipse_cov(fpath, r2500_conversion_fac=0.163, undo_r2500_conv=True, bins=30, sigma_level=1.0, smaj=None, smin=None, \
+                       xlim=None, ylim=None, plot=True, verbose=True):
+    
+    '''  
+    This function contains the main functionality to 1) load in a collection of posterior samples, 
+    2) compute the posterior density over a grid of values, 3) compute the contours corresponding to a desired
+    confidence region, 4) compute the best fit ellipse to that contour and rotate the principal components to get
+    an estimate of the covariance matrix in the A_SZ basis, assuming a Gaussian probability density. 
+        
+    '''
+    pmw_post, plw_post, nsrc_post = load_post_samples(fpath, r2500_conversion_fac=r2500_conversion_fac, undo_r2500_conv=undo_r2500_conv)
+
+    median_pmw = np.median(pmw_post)
+    median_plw = np.median(plw_post)
+    if verbose:
+        print('Median of PMW is ', median_pmw)
+        print('Median of PLW is ', median_plw)
+
+    if make_corner_plot:
+        labs = labels=["$A_{350}^{SZ}$", "$A_{500}^{SZ}$", "$N_{src}$", "$B_{250}$", "$B_{350}$", "$B_{500}$"]
+
+        figure = corner.corner(np.array([pmw_post, plw_post, nsrc_post]).transpose(), labels=labs[:3],
+                       quantiles=[0.05, 0.16, 0.5, 0.84, 0.95], bins=[20, 20, 15], smooth=True,
+                       show_titles=True, title_fmt='.3f', title_kwargs={"fontsize": 15}, label_kwargs={"fontsize":18})
+
+    
+    # get contours from matplotlib and extract collection of points bounding region
+    contours, segments, sz_post_density, hist2d = compute_contours_sz(pmw_post, plw_post,\
+                                         ['$A_{SZ}^{350}$ [MJy/sr]', '$A_{SZ}^{500}$ [MJy/sr]'], \
+                                        sigma_level=sigma_level, bins=bins, xlim=xlim, ylim=ylim)
+    
+    # use segment points to fit for an ellipse
+    center, phi, axes = find_ellipse(segments[:,0], segments[:,1])
+
+    # rotate the ellipse parameters to obtain a covariance matrix
+    if smaj is None:
+        smaj = np.argmax(axes)
+        smin = np.argmin(axes)
+
+    sz_cov_matrix = reproject_axes_cov_rot(axes, phi, smaj, smin)
+    
+    ell = Ellipse(xy=center, width=2*axes[0], height=2*axes[1], angle=phi*180/np.pi, alpha=0.5, label='Best fit ellipse')
+    if plot:
+        plt.figure(figsize=(8,8))
+        ax = plt.gca()
+        ax.add_patch(ell)
+        plt.plot(segments[:,0], segments[:,1])
+        plt.scatter(segments[:,0], segments[:,1], color='k')
+        plt.scatter([median_pmw], [median_plw], marker='x', label='Posterior median')
+        plt.scatter([center[0]], [center[1]], label='Ellipse center')
+        plt.legend(fontsize=14, loc=4)
+        plt.xlabel('$A_{SZ}^{350}$ [MJy/sr]', fontsize=18)
+        plt.ylabel('$A_{SZ}^{500}$ [MJy/sr]', fontsize=18)
+        plt.show()
+    
+    return sz_cov_matrix, sz_post_density, hist2d
+
+
+def compute_posterior_density(chain_var1, chain_var2, bins=30, norm_mode='max'):
+    hist2d = np.histogram2d(chain_var1, chain_var2, bins=bins, normed=True)
+    density = np.array(hist2d[0]).transpose()
+    if norm_mode=='max':
+        density /= np.max(density)
+    elif norm_mode=='sum':
+        density /= np.sum(density)
+        
+    extent = [np.min(hist2d[1]), np.max(hist2d[1]), np.min(hist2d[2]), np.max(hist2d[2])]
+
+    return density, hist2d, extent
+
+
+''' these functions (fitEllipse(), ellipse_center(), ellipse_angle_of_rotation(), ellipse_axis_length(), find_ellipse()) are taken from stack overflow:
+    https://stackoverflow.com/questions/39693869/fitting-an-ellipse-to-a-set-of-data-points-in-python/48002645'''
+def fitEllipse(x,y):
+    x = x[:,np.newaxis]
+    y = y[:,np.newaxis]
+    D =  np.hstack((x*x, x*y, y*y, x, y, np.ones_like(x)))
+    S = np.dot(D.T,D)
+    C = np.zeros([6,6])
+    C[0,2] = C[2,0] = 2; C[1,1] = -1
+    E, V =  linalg.eig(np.dot(linalg.inv(S), C))
+    n =  np.argmax(np.abs(E))
+    a = V[:,n]
+    return a
+
+def ellipse_center(a):
+    b,c,d,f,g,a = a[1]/2, a[2], a[3]/2, a[4]/2, a[5], a[0]
+    num = b*b-a*c
+    x0=(c*d-b*f)/num
+    y0=(a*f-b*d)/num
+    return np.array([x0,y0])
+
+def ellipse_angle_of_rotation(a):
+    b,c,d,f,g,a = a[1]/2, a[2], a[3]/2, a[4]/2, a[5], a[0]
+    return 0.5*np.arctan(2*b/(a-c))
+
+def ellipse_axis_length(a):
+    b,c,d,f,g,a = a[1]/2, a[2], a[3]/2, a[4]/2, a[5], a[0]
+    up = 2*(a*f*f+c*d*d+g*b*b-2*b*d*f-a*c*g)
+    down1=(b*b-a*c)*( (c-a)*np.sqrt(1+4*b*b/((a-c)*(a-c)))-(c+a))
+    down2=(b*b-a*c)*( (a-c)*np.sqrt(1+4*b*b/((a-c)*(a-c)))-(c+a))
+    res1=np.sqrt(up/down1)
+    res2=np.sqrt(up/down2)
+    return np.array([res1, res2])
+
+def find_ellipse(x, y, verbose=True):
+    xmean = x.mean()
+    ymean = y.mean()
+    x = x - xmean
+    y = y - ymean
+    a = fitEllipse(x,y)
+    center = ellipse_center(a)
+    center[0] += xmean
+    center[1] += ymean
+    phi = ellipse_angle_of_rotation(a)
+    axes = ellipse_axis_length(a)
+    x += xmean
+    y += ymean
+    
+    if verbose:
+        print "center = ",  center
+        print "angle of rotation (degrees) = ",  phi*180./np.pi
+        print "axes = ", axes
+    
+    return center, phi, axes
+
 
 def gather_posteriors_different_amps(timestr_list, label_dict):
 
@@ -139,7 +295,6 @@ def gather_posteriors_different_amps(timestr_list, label_dict):
     flux_density_conversion_facs = [86.29e-4, 16.65e-3, 34.52e-3]
 
     ratios = [0.0, 0.5, 1.0, 1.5]
-
     temp_mins = [-0.003, -0.012]
     temp_maxs = [0.011, 0.027]
 
@@ -714,6 +869,49 @@ def gather_posteriors(timestr_list=None, timestr_list_file=None, inject_sz_frac=
     return f, medians, pcts_16, pcts_84, pcts_5, pcts_95, ref_vals, indiv_medians_list, indiv_sigmas_list, indiv_84pcts_list, indiv_16pcts_list, list_of_posts, list_of_chains
 
 
+
+def load_post_samples(fpath, r2500_conversion_fac=0.163, undo_r2500_conv=True):
+
+    ''' Loads SZ/Nsrc posterior samples from file containing compiled samples. '''
+    post_samples = np.load(fpath)
+    
+    pmw_post = post_samples['pmw']
+    plw_post = post_samples['plw']
+    nsrc_post = post_samples['nsrc']
+    
+    if undo_r2500_conv:
+        pmw_post /= r2500_conversion_fac
+        plw_post /= r2500_conversion_fac
+        
+    return pmw_post, plw_post, nsrc_post
+
+def reproject_axes_cov_rot(axes, phi, smaj, smin, to_rad = False):
+    ''' 
+    Rotates the eigenvectors of the covariance ellipse by an angle phi to get
+    the covariance matrix in the A_SZ basis. 
+        
+    Inputs
+    ------
+    phi : 'float' with units of radians
+    axes : list of floats, principal axes of the covariance ellipse
+
+    Returns
+    -------
+    cov_matrix : np.array of size (2, 2)
+                Covariance matrix in A_SZ basis
+    
+    '''
+    
+    if to_rad:
+        phi *= np.pi/180.
+    rotation_matrix = np.array([[np.cos(phi), -np.sin(phi)], [np.sin(phi), np.cos(phi)]])
+    
+    diagonalized_cov_matrix = np.array([[axes[smaj]**2, 0], [0, axes[smin]**2]])
+    cov_matrix = np.dot(np.linalg.inv(rotation_matrix), np.dot(diagonalized_cov_matrix, rotation_matrix))
+    
+    return cov_matrix
+
+
 def split_timestr_lists_by_simidx(timestr_list):
 
     list_of_simidxs = []
@@ -733,9 +931,31 @@ def split_timestr_lists_by_simidx(timestr_list):
 
     return list_of_simidxs, list_of_timestr_lists, list_of_simidx_lists
 
+def upsample_log_post(log_post, hist2d=None, upsample_fac=10, order=1):
+    ''' 
+    Upsample grid of log posterior values
+    
+    log_post : np.array of floats representing log posterior. Assumes 2D posterior for now
+    
+    upsample_fac (optional): integer value for upsample factor. Default is 10.
+    
+    order (optional) : integer representing order of interpolation. Default is 1 (bilinear interpolation)
+    
+    '''
+    log_post_upsampled = scipy.ndimage.zoom(log_post, upsample_fac, order=1)
+    
+    if hist2d is not None:
+        
+        bins_var1 = scipy.ndimage.zoom(hist2d[1], upsample_fac, order=1)
+        bins_var2 = scipy.ndimage.zoom(hist2d[2], upsample_fac, order=1)
+        
+        return log_post_upsampled, [bins_var1, bins_var2]
+    
+    return log_post_upsampled
+
 
 #timestr_realdat_file = 'rxj1347_realdat_4arcmin_nfcterms=3_timestrs_041621_bkg_vals3.npz'
-timestr_realdat_file = 'rxj1347_realdat_10arcmin_nfcterms=6_timestrs_042021_fitbkg.npz'
+# timestr_realdat_file = 'rxj1347_realdat_10arcmin_nfcterms=6_timestrs_042021_fitbkg.npz'
 #timestr_bkg_file = 'rxj1347_conley_10arcmin_041921_timestrs_fitbkg.npz'
 
 #timestr_bkg_file = 'rxj1347_conley_4arcmin_041921_timestrs_bestfitbkgs.npz'
@@ -846,7 +1066,7 @@ timestr_realdat_file = 'rxj1347_realdat_10arcmin_nfcterms=6_timestrs_042021_fitb
 #timestr_list_file = 'rxj1347_conley_10arcmin_062121_timestrs_fitbkg.npz'
 #timestr_list_file='rxj1347_realdat_4arcmin_nfcterms=3_timestrs_062221_bestfitbkg.npz'
 #timestr_list_file = 'rxj1347_conley_4arcmin_062121_timestrs_bestfitbkg_sig0p25.npz'
-timestr_list_file = 'rxj1347_realdat_4arcmin_nfcterms=3_timestrs_062421_bestfitbkg_fluxalpha=3.npz'
+# timestr_list_file = 'rxj1347_realdat_4arcmin_nfcterms=3_timestrs_062421_bestfitbkg_fluxalpha=3.npz'
 #truealpha = 2.5
 #timestr_dust_file = 'lensed_1xdust_nfcterms=6_truealpha='+str(truealpha)+'_conley_rxj1347_timestrs_3_17_21_narrow_cprior_Fmin=5.npz'
 #timestr_dust_file = 'lensed_16xdust_nfcterms='+str(n_fc_terms)+'_conley_rxj1347_timestrs_withnoise_3_22_21_narrow_cprior_Fmin=5.npz'
@@ -868,16 +1088,16 @@ timestr_list_file = 'rxj1347_realdat_4arcmin_nfcterms=3_timestrs_062421_bestfitb
 
 
 #out_tail = '10arcmin_062121_fitbkg_sig0p5'
-out_tail = '4arcmin_062421_fixbkg_sig0p5_conley_fluxalpha=3'
+# out_tail = '4arcmin_062421_fixbkg_sig0p5_conley_fluxalpha=3'
 #out_tail = '4arcmin_041021_fixbkg_errdivfac=15'
 #out_tail = '4arcmin_unlensed_042421_bestfitbkg_longo'
 #out_tail = '4arcmin_041221_fixbkg_nreg2_longo'
 #out_tail = '4arcmin_041921_bestfitbkg_unlensed'
 #out_tail = '4arcmin_042021_bestfitbkg_realdat'
 
-dirpath = out_tail
-if not os.path.isdir(dirpath):
-    os.makedirs(dirpath)
+# dirpath = out_tail
+# if not os.path.isdir(dirpath):
+#     os.makedirs(dirpath)
 
 
 #pcagg = pcat_agg()
@@ -888,13 +1108,13 @@ if not os.path.isdir(dirpath):
 
 #np.savez(dirpath+'/all_stats_'+out_tail+'.npz', all_chi2_stats = all_chi2_stats, all_accept_stats = all_accept_stats, timetsr_list_file=timestr_bkg_file)
 
-fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _, all_temp_posteriors, full_chains = gather_posteriors(timestr_list_file=timestr_list_file, save=save_figs, tail_name=out_tail, integrate_sz_prof=False, dust=False, inject_sz_frac=1.0, datatype='real', burn_in_frac=0.5)
+# fs, medians_fctest, pcts_16_fctest, pcts_84_fctest, pcts_5_fctest, pcts_95_fctest, ref_vals_fctest, _, _,_, _, all_temp_posteriors, full_chains = gather_posteriors(timestr_list_file=timestr_list_file, save=save_figs, tail_name=out_tail, integrate_sz_prof=False, dust=False, inject_sz_frac=1.0, datatype='real', burn_in_frac=0.5)
 
 # ------------ save chains for convergence diagnostic analysis ----------------
 #np.savez('list_of_sz_chains_realdat_031621_take1_with_nsrc.npz', all_temp_posterior_sz=all_temp_posteriors, fmin=0.005, n_fc_terms=6, cprior_widths=0.5, nsrc_chains=all_temp_posteriors[-1])
 #np.savez('list_of_sz_chains_smallmask_full_realdat_033021_with_nsrc.npz', all_temp_posterior_sz=[full_chains[0], full_chains[1]], sz_band_order=['PMW', 'PLW'], fmin=0.005, n_fc_terms=6, cprior_widths=0.5, nsrc_chains=full_chains[2])
 
-np.savez(dirpath+'/list_of_chains_full_'+out_tail+'.npz', chains = full_chains, fmin=0.005, n_fc_terms=n_fc_terms, cprior_widths=0.5)
+# np.savez(dirpath+'/list_of_chains_full_'+out_tail+'.npz', chains = full_chains, fmin=0.005, n_fc_terms=n_fc_terms, cprior_widths=0.5)
 
 #np.savez('list_of_chains_full_unlensed_smallmask_041021_simidx300.npz', chains=full_chains, fmin=0.005, n_fc_terms=6, cprior_widths=0.5)
 

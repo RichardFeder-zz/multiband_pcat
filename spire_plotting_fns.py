@@ -144,6 +144,11 @@ def condensed_catalog_overlaid_data(images, all_xs, all_ys, all_fs=None, bands=N
 	if return_fig:
 		return f
 
+def grab_extent(bins_var1, bins_var2):
+    extent = [bins_var1[0], bins_var1[-1], bins_var2[0], bins_var2[-1]]
+    
+    return extent
+
 def plot_atcr(listsamp, title):
 
 
@@ -181,6 +186,7 @@ def plot_atcr_multichain(listsamp, title=None, alpha=1.0):
         print('wahoo! we have many things')
         
     timeatcr_list = np.zeros((len(listsamp),))
+    autocorrs = []
     for s, samp in enumerate(listsamp):
         
 
@@ -190,6 +196,7 @@ def plot_atcr_multichain(listsamp, title=None, alpha=1.0):
         atcr /= np.amax(atcr, 0)
 
         autocorr = atcr[:int(numbsamp/2), ...]
+        autocorrs.append(autocorr)
         indxatcr = np.where(autocorr > 0.2)
         timeatcr = np.argmax(indxatcr[0], axis=0)
         timeatcr_list[s] = timeatcr
@@ -207,7 +214,7 @@ def plot_atcr_multichain(listsamp, title=None, alpha=1.0):
     axis.axhline(0., ls='--', alpha=0.5)
     plt.tight_layout()
 
-    return figr
+    return figr, np.arange(numbsampatcr), autocorrs
 
 
 
@@ -245,7 +252,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 		if 'data' in panels[i]:
 
 			plt.imshow(obj.dat.data_array[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[band_idx], 5.), vmax=np.percentile(obj.dat.data_array[band_idx], 95.0))
-			plt.colorbar()
+			plt.colorbar(fraction=0.046, pad=0.04)
 
 			if band_idx > 0:
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
@@ -267,7 +274,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 		elif 'model' in panels[i]:
 
 			plt.imshow(models[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(models[band_idx], 5.), vmax=np.percentile(models[band_idx], 95.0))
-			plt.colorbar()
+			plt.colorbar(fraction=0.046, pad=0.04)
 
 			if 'zoom' in panels[i]:
 				plt.title('Model (band '+str(band_idx)+', zoomed in)')
@@ -280,7 +287,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 		elif 'injected_diffuse_comp' in panels[i]:
 			plt.imshow(obj.dat.injected_diffuse_comp[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.injected_diffuse_comp[band_idx], 5.), vmax=np.percentile(obj.dat.injected_diffuse_comp[band_idx], 95.))
-			plt.colorbar()
+			plt.colorbar(fraction=0.046, pad=0.04)
 		
 			plt.title('Injected cirrus (band '+str(band_idx)+')')
 			plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
@@ -292,7 +299,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 			fbkg[obj.dat.weights[band_idx]==0] = 0.
 
 			plt.imshow(fbkg, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(fbkg , 5), vmax=np.percentile(fbkg, 95))
-			plt.colorbar()
+			plt.colorbar(fraction=0.046, pad=0.04)
 		
 			plt.title('Sum of FCs (band '+str(band_idx)+')')
 			plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
@@ -305,7 +312,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.imshow(resids[band_idx]*np.sqrt(obj.dat.weights[band_idx]), origin='lower', interpolation='none', cmap='Greys', vmin=-5, vmax=5)
 			else:
 				plt.imshow(resids[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(resids[band_idx][obj.dat.weights[band_idx] != 0.], 5), vmax=np.percentile(resids[band_idx][obj.dat.weights[band_idx] != 0.], 95))
-			plt.colorbar()
+			plt.colorbar(fraction=0.046, pad=0.04)
 
 			if band_idx > 0:
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
@@ -326,7 +333,7 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 
 			plt.imshow(sz[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(sz[band_idx], 1), vmax=np.percentile(sz[band_idx], 99))
-			plt.colorbar()
+			plt.colorbar(fraction=0.046, pad=0.04)
 
 			if band_idx > 0:
 				xp, yp = obj.dat.fast_astrom.transform_q(obj.stars[obj._X, 0:obj.n], obj.stars[obj._Y, 0:obj.n], band_idx-1)
@@ -711,24 +718,24 @@ def plot_last_fc_map(fourier_coeffs, imsz, ref_img=None, fourier_templates=None,
 		plt.subplot(1,3,1)
 		plt.title('Data', fontsize=titlefontsize)
 		plt.imshow(ref_img, cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95), origin='lower')
-		cbar = plt.colorbar(orientation='horizontal')
+		cbar = plt.colorbar(orientation='horizontal', fraction=0.046, pad=0.04)
 		cbar.set_label('[Jy/beam]', fontsize=16)
 		plt.subplot(1,3,2)
 		plt.title('Last Fourier model realization (+PSF)', fontsize=titlefontsize)
 		plt.imshow(last_temp_bc/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower', vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
-		cbar = plt.colorbar(orientation='horizontal')
+		cbar = plt.colorbar(orientation='horizontal', fraction=0.046, pad=0.04)
 		cbar.set_label('[Jy/beam]', fontsize=16)
 		plt.subplot(1,3,3)
 		plt.title('Last Fourier model realization', fontsize=titlefontsize)
 		plt.imshow(last_temp/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower', vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 95))
-		cbar = plt.colorbar(orientation='horizontal')
+		cbar = plt.colorbar(orientation='horizontal', fraction=0.046, pad=0.04)
 		cbar.set_label('[Jy/beam]', fontsize=16)
 
 	else:
 		f = plt.figure()
 		plt.title('Last fourier model realization', fontsize=titlefontsize)
 		plt.imshow(last_temp/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, origin='lower')
-		plt.colorbar()
+		plt.colorbar(fraction=0.046, pad=0.04)
 
 	plt.tight_layout()
 	if show:
@@ -1177,13 +1184,13 @@ def plot_residual_map(resid, mode='median', band='S', titlefontsize=14, smooth=T
 
 	plt.title(title_mode+' -- '+band+title_unit, fontsize=titlefontsize)
 	plt.imshow(resid/convert_to_MJy_sr_fac, cmap='Greys', interpolation=None, vmin=minmax[0], vmax=minmax[1], origin='lower')
-	plt.colorbar()
+	plt.colorbar(fraction=0.046, pad=0.04)
 
 	if smooth:
 		plt.subplot(1,2,2)
 		plt.title('Smoothed Residual'+title_unit, fontsize=titlefontsize)
 		plt.imshow(gaussian_filter(resid, sigma=smooth_sigma)/convert_to_MJy_sr_fac, interpolation=None, cmap='Greys', vmin=minmax_smooth[0], vmax=minmax_smooth[1], origin='lower')
-		plt.colorbar()
+		plt.colorbar(fraction=0.046, pad=0.04)
 
 	if show:
 		plt.show()
@@ -1644,18 +1651,18 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 		gdat.round_up_or_down = 'up'
 
 		# for victoria
-		gdat.image_extnames = ['SIGNAL']
-		gdat.data_path = 'Data/spire/conley_030121'
-		gdat.base_path = '/Users/luminatech/Documents/multiband_pcat/'
+		# gdat.image_extnames = ['SIGNAL']
+		# gdat.data_path = 'Data/spire/conley_030121'
+		# gdat.base_path = '/Users/luminatech/Documents/multiband_pcat/'
 
-		gdat.filepath= 'spire_results/'+gdat.timestr
-		gdat.tail_name = 'rxj1347_PSW_sim0300'
-		gdat.im_fpath = None
-		gdat.err_fpath = None
-		gdat.error_extname = 'ERROR'
-		gdat.mask_file = None
-		gdat.add_noise = None
-		gdat.correct_misaligned_shift = False
+		# gdat.filepath= 'spire_results/'+gdat.timestr
+		# gdat.tail_name = 'rxj1347_PSW_sim0300'
+		# gdat.im_fpath = None
+		# gdat.err_fpath = None
+		# gdat.error_extname = 'ERROR'
+		# gdat.mask_file = None
+		# gdat.add_noise = None
+		# gdat.correct_misaligned_shift = False
 
 	else:
 		gdat.filepath = gdat.result_path + gdat.timestr
@@ -2173,14 +2180,14 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 				# print(dc1)
 
-				red_srcs_only = (colors0 > 1.)*(colors1 > 1.)
+				# red_srcs_only = (colors0 > 1.)*(colors1 > 1.)
 
-				print(colors0)
-				plt.errorbar(colors0[red_srcs_only], colors1[red_srcs_only], xerr=dc0[red_srcs_only], yerr=dc1[red_srcs_only], capsize=5, c='k', alpha=0.2, ls='none', label='Condensed catalog \n prevalence > '+str(prev_cut))
-				plt.scatter(colors0[red_srcs_only], colors1[red_srcs_only], s=25*condensed_cat[red_srcs_only, prevalence_idx], c=1e3*condensed_cat[red_srcs_only,flux_idxs[flux_band_cbar]])
+				# print(colors0)
+				# plt.errorbar(colors0[red_srcs_only], colors1[red_srcs_only], xerr=dc0[red_srcs_only], yerr=dc1[red_srcs_only], capsize=5, c='k', alpha=0.2, ls='none', label='Condensed catalog \n prevalence > '+str(prev_cut))
+				# plt.scatter(colors0[red_srcs_only], colors1[red_srcs_only], s=25*condensed_cat[red_srcs_only, prevalence_idx], c=1e3*condensed_cat[red_srcs_only,flux_idxs[flux_band_cbar]])
 	
-				# plt.errorbar(colors0, colors1, xerr=dc0, yerr=dc1, capsize=5, c='k', alpha=0.5, ls='none', label='Condensed catalog \n prevalence > '+str(prev_cut))
-				# plt.scatter(colors0, colors1, s=50*condensed_cat[:, prevalence_idx], c=500*condensed_cat[:,flux_idxs[flux_band_cbar]])
+				plt.errorbar(colors0, colors1, xerr=dc0, yerr=dc1, capsize=5, c='k', alpha=0.5, ls='none', label='Condensed catalog \n prevalence > '+str(prev_cut))
+				plt.scatter(colors0, colors1, s=50*condensed_cat[:, prevalence_idx], c=500*condensed_cat[:,flux_idxs[flux_band_cbar]])
 				cbar = plt.colorbar(fraction=0.046, pad=0.04)
 				cbar.set_label('$F_{'+str(lams[flux_band_cbar])+'}$ [mJy]', fontsize=18)
 				plt.xlabel('$F_{'+str(lams[c0idxs[0]])+'}/F_{'+str(lams[c0idxs[1]])+'}$', fontsize=18)
@@ -2318,9 +2325,11 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 							if ylim is not None:
 								plt.ylim(ylim)
 
-				plt.tight_layout()
+				if nspec > 0:
+					plt.tight_layout()
 
 				return spectra_plot
+
 
 			# flux_cut_idx= 2 
 			# flux_cut = 0.025
@@ -2331,6 +2340,8 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			lams = [500, 350, 250]
 			# all_spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim)
 			red_flux_cut = 0.025
+
+
 			red_spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim, red_cut=True, flux_cut_idx=flux_cut_idx, flux_cut=red_flux_cut)
 			spectra_plot = condensed_cat_spectra_plot(condensed_cat, flux_idxs, lams=lams, prev_cut=gdat.prevalence_cut, xlim=xlim, ylim=ylim, flux_cut_idx=flux_cut_idx, flux_cut=flux_cut)
 			color_color_flux_cond = condensed_cat_color_color_plot(condensed_cat, flux_idxs, lams=lams, flux_band_cbar=flux_band_cbar, prev_cut=gdat.prevalence_cut, xlim=[0.5, 3.5], ylim=[0.5, 2.5])
