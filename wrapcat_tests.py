@@ -745,7 +745,7 @@ class pcat_test_suite():
 
 			ob = lion(band0=band0, base_path=self.base_path, data_path=data_path, result_path=self.result_path, burn_in_frac=burn_in_frac, float_background=float_background, \
 			  bkg_sample_delay=0, bkg_moveweight=bkg_moveweight, cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-			  tail_name=tail_name, dataname=dataname, bias=[bias[0]], use_mask=use_mask, mask_file=mask_file, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
+			  tail_name=tail_name, dataname=dataname, bias=[bias[0]], use_mask=use_mask, inject_sz_frac=inject_sz_frac, mask_file=mask_file, max_nsrc=max_nsrc, trueminf=fmin, nregion=nregion, \
 			  make_post_plots=False, nsamp=nsamp_dustestimate, residual_samples=5, template_moveweight=template_moveweight, float_templates=False, \
 			  image_extnames=image_extnames, error_extname=error_extname, panel_list=pan_list, err_f_divfac=err_f_divfac/np.sqrt(3.), bkg_sig_fac=bkg_sig_fac, \
 			  movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \

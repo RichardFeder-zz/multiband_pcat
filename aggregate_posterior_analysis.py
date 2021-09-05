@@ -4,13 +4,18 @@ import matplotlib.pyplot as plt
 from spire_data_utils import *
 import pickle
 from spire_plotting_fns import grab_extent
-# import corner
+import corner
 # from pcat_spire import *
 
 import os
 import ctypes
 import numpy.ctypeslib as npct
 from ctypes import c_int, c_double
+import numpy.linalg as linalg
+from matplotlib.patches import Ellipse
+from scipy.ndimage import gaussian_filter
+import scipy
+from scipy.optimize import curve_fit
 
 
 def aggregate_posterior_corner_plot(timestr_list, temp_amplitudes=True, bkgs=True, nsrcs=True, \
@@ -19,7 +24,6 @@ def aggregate_posterior_corner_plot(timestr_list, temp_amplitudes=True, bkgs=Tru
     flux_density_conversion_facs = dict({0:86.29e-4, 1:16.65e-3, 2:34.52e-3})
     bkg_labels = dict({0:'$B_{250}$', 1:'$B_{350}$', 2:'$B_{500}$'})
     temp_labels = dict({0:'$A_{250}^{SZ}$', 1:'$A_{350}^{SZ}$', 2:'$A_{500}^{SZ}$'})
-
 
     nsrc = []
     bkgs = [[] for x in range(nbands)]
@@ -103,24 +107,32 @@ def compute_gelman_rubin_diagnostic(list_of_chains):
     
     return Rhat
     
-def compute_chain_rhats(all_chains, labels=['']):
+def compute_chain_rhats(all_chains, labels, i0=0, nthin=1):
     
     rhats = []
     for chains in all_chains:
-        rhat = compute_gelman_rubin_diagnostic(chains)
-        
+        chains = np.array(chains)
+        print(chains.shape)
+        rhat, m, n = compute_gelman_rubin_diagnostic(chains[:,::nthin], i0=i0//nthin)
+                    
         rhats.append(rhat)
         
+    f = plt.figure(figsize=(8,6))
+    plt.title('Gelman Rubin statistic $\\hat{R}$ ($N_{c}=$'+str(m)+', $N_s=$'+str(n)+')', fontsize=14)
+    barlabel = None
+    if nthin > 1:
+        barlabel = '$N_{thin}=$'+str(nthin)
+
+    x_pos = [i for i, _ in enumerate(labels)]
     
-    f = plt.figure()
-    plt.title('Gelman Rubin statistic $\\hat{R}$', fontsize=16)
-    plt.bar(labels, rhats, width=0.5, alpha=0.4)
+    plt.bar(x_pos, rhats, width=0.5, alpha=0.4, label=barlabel)
     plt.axhline(1.2, linestyle='dashed', label='$\\hat{R}$=1.2')
     plt.axhline(1.1, linestyle='dashed', label='$\\hat{R}$=1.1')
-
-    plt.legend()
+    plt.xticks(x_pos, labels)
+    plt.legend(fontsize=14)
     plt.xticks(fontsize=16)
     plt.ylabel('$\\hat{R}$', fontsize=16)
+    plt.tick_params(labelsize=16)
     plt.show()
     
     return f, rhats
@@ -156,7 +168,7 @@ def compute_contours_sz(chain_var1, chain_var2, labels, bins=30, level=None, sig
     return contours, segments, density, hist2d
 
 def compute_ellipse_cov(fpath, r2500_conversion_fac=0.163, undo_r2500_conv=True, bins=30, sigma_level=1.0, smaj=None, smin=None, \
-                       xlim=None, ylim=None, plot=True, verbose=True):
+                       xlim=None, ylim=None, plot=True, verbose=True, make_corner_plot=True):
     
     '''  
     This function contains the main functionality to 1) load in a collection of posterior samples, 
@@ -214,8 +226,10 @@ def compute_ellipse_cov(fpath, r2500_conversion_fac=0.163, undo_r2500_conv=True,
 
 
 def compute_posterior_density(chain_var1, chain_var2, bins=30, norm_mode='max'):
-    hist2d = np.histogram2d(chain_var1, chain_var2, bins=bins, normed=True)
+    hist2d = np.histogram2d(chain_var1, chain_var2, bins=bins, normed=True, smooth=False, smooth_sig=5)
     density = np.array(hist2d[0]).transpose()
+    if smooth:
+        density = gaussian_filter(density, sigma=smooth_sig)
     if norm_mode=='max':
         density /= np.max(density)
     elif norm_mode=='sum':
@@ -309,6 +323,25 @@ def find_ellipse(x, y, verbose=True):
         print "axes = ", axes
     
     return center, phi, axes
+
+def gaussian_chisq(data, model, cov):
+    data = np.array(data)
+    model = np.array(model)
+    cov = np.array(cov)
+    sub_dat = data - model
+    first = np.dot(sub_dat,inv(cov))
+    result = np.dot(first,sub_dat.T)
+        
+    return result
+
+def GaussSum(x,*p):
+    ''' For computing Feldman-Cousins confidence intervals from double Gaussian '''
+    n=len(p)//3
+    A=p[:n]
+    c=p[n:2*n]
+    w=p[2*n:3*n]
+    y = sum([A[i]*np.exp(-(x-c[i])**2./(2.*(w[i])**2.))/(2*np.pi*w[i]**2)**0.5 for i in range(n)])
+    return y
 
 
 def gather_posteriors_different_amps(timestr_list, label_dict):
@@ -960,6 +993,43 @@ def split_timestr_lists_by_simidx(timestr_list):
 
     return list_of_simidxs, list_of_timestr_lists, list_of_simidx_lists
 
+def sample_corrected_post(pmw_post_bias, plw_post_bias, pmw_obs, plw_obs, pmw_GR=0.14, plw_GR=0.2, \
+                         r2500_conversion_fac=0.163, r2500_central_observed_pmw=0.006, r2500_central_observed_plw=0.009, \
+                         pmw_bkg_fix=0.02, plw_bkg_fix=0.008):
+    
+    ''' This is for propagating samples from the collection of lensed mocks and the observed dI values to a 
+        lensing-corrected posterior. This function applies to appropriate penalties for 1) fixing our backgrounds and
+        2) imperfect chain convergence, as measured through the Gelman-Rubin statistic
+    '''
+    
+    median_pmw_post_bias = np.median(pmw_post_bias)
+    median_plw_post_bias = np.median(plw_post_bias)
+    
+    pmw_obs_corr_median = pmw_obs + median_pmw_post_bias
+    plw_obs_corr_median = plw_obs + median_plw_post_bias
+    
+    zc_pmw_bias = pmw_post_bias - median_pmw_post_bias
+    zc_plw_bias = plw_post_bias - median_plw_post_bias
+    
+    rescaled_pmw_bias_samps = []
+    rescaled_plw_bias_samps = []
+    
+    for i in range(len(zc_pmw_bias)):
+        
+        # fixed background additional uncertainty
+        zcr_pmw = zc_pmw_bias[i] + np.random.normal(0, pmw_bkg_fix)
+        zcr_plw = zc_plw_bias[i] + np.random.normal(0, plw_bkg_fix)
+        
+        # GR penalty using scatter on real data scaled by R
+        zcr_pmw += np.random.normal(0, (pmw_GR)*(r2500_central_observed_pmw/r2500_conversion_fac))
+        zcr_plw += np.random.normal(0, (plw_GR)*(r2500_central_observed_plw/r2500_conversion_fac))
+
+        
+        rescaled_pmw_bias_samps.append(zcr_pmw)
+        rescaled_plw_bias_samps.append(zcr_plw)
+        
+    return rescaled_pmw_bias_samps+pmw_obs_corr_median, rescaled_plw_bias_samps+plw_obs_corr_median
+
 def upsample_log_post(log_post, hist2d=None, upsample_fac=10, order=1):
     ''' 
     Upsample grid of log posterior values
@@ -972,6 +1042,7 @@ def upsample_log_post(log_post, hist2d=None, upsample_fac=10, order=1):
     
     '''
     log_post_upsampled = scipy.ndimage.zoom(log_post, upsample_fac, order=1)
+
     
     if hist2d is not None:
         
