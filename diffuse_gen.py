@@ -102,7 +102,6 @@ def generate_spire_cirrus_realizations(n_realizations, planck_template, imdims, 
 			multiband_dust_realiz = psf_smooth_templates(multiband_dust_realiz, psf_sigmas=np.array(psf_fwhms)/2.355)
 
 		final_ts = [norms[i]*multiband_dust_realiz[i] for i in range(len(imdims))]
-		
 
 		if show:
 			f = show_diffuse_temps(final_ts, titles=['250 micron [Jy/beam]', '350 micron [Jy/beam]', '500 micron [Jy/beam]'], vmin=vmin, vmax=vmax)
@@ -186,6 +185,7 @@ def multiband_diffuse_realization(N_vals, M_vals=None, power_law_idx=-2.7, psf_s
 		Generated diffuse templates.
 	
 	'''
+	
 	if M_vals is None:
 		M_vals = N_vals
 
@@ -373,6 +373,83 @@ def compute_Neff(weights):
     N_eff = np.sum(weights)**2/np.sum(weights**2)
 
     return N_eff
+
+
+
+def grab_rms_diffuse_gen_model(timestr_list, dirname):
+    
+    nfc_terms_list = np.zeros((11,))
+    chi2_diffs = np.zeros((11,))
+    median_diffuse_bkgs = np.zeros((11, 100, 100))
+    for timestr in timestr_list:
+
+        chain = np.load('../../Downloads/'+dirname+'/'+timestr+'/chain.npz')
+        gdat, filepath, result_path = load_param_dict(timestr, result_path='/Users/luminatech/Downloads/'+dirname+'/')
+
+        diffuse_realiz = 1e3*np.load('Data/spire/cirrus_gen/051821/cirrus_sim_idx'+str(int(gdat.tail_name[-3:])-300)+'_051821_4x_planck_cleansky.npz')['S']
+
+        nfc_terms = gdat.n_fourier_terms        
+        nfc_terms_list[nfc_terms-5] = nfc_terms
+        residz = chain['residuals0']
+        bkgs = chain['bkg']
+
+
+        fourier_coeffs = chain['fourier_coeffs']
+        fourier_templates = make_fourier_templates(dimx, dimy, nfc_terms, psf_fwhm=psf_fwhm)              
+        burnin_fourier_coeff = np.median(fourier_coeffs[:50,:,:,:], axis=0)
+
+        av_fourier_coeff = np.median(fourier_coeffs[-nsamp:,:,:,:], axis=0)
+        
+        burnin_diffuse_bkg = generate_template(burnin_fourier_coeff, nfc_terms, fourier_templates=fourier_templates, N=dimx, M=dimy)
+        burnin_diffuse_bkg *= 1e3
+        
+        median_diffuse_bkg = generate_template(av_fourier_coeff, nfc_terms, fourier_templates=fourier_templates, N=dimx, M=dimy)
+        median_diffuse_bkg *= 1e3
+
+        chi2_difference = np.sum((median_diffuse_bkg-diffuse_realiz)**2)
+        chi2_diffs[nfc_terms-5] = chi2_difference
+        
+        median_diffuse_bkgs[nfc_terms-5] = median_diffuse_bkg        
+    
+        if plot:
+            plt.figure(figsize=(15, 5))
+            plt.subplot(1,3,1)
+            plt.title('burn in')
+            plt.imshow(burnin_diffuse_bkg, vmin=np.percentile(diffuse_realiz, 1), vmax=np.percentile(diffuse_realiz, 99), origin='lower', cmap='Greys')
+            plt.colorbar()
+            plt.subplot(1,3,2)
+            plt.title('end of chain')
+            plt.imshow(median_diffuse_bkg, vmin=np.percentile(diffuse_realiz, 1), vmax=np.percentile(diffuse_realiz, 99), origin='lower', cmap='Greys')
+            plt.colorbar()
+            plt.subplot(1,3,3)
+            plt.title('difference')
+            plt.imshow(burnin_diffuse_bkg-median_diffuse_bkg, vmin=-4, vmax=4, origin='lower', cmap='Greys')
+            plt.colorbar()
+            plt.tight_layout()
+            plt.show()
+
+            plt.figure(figsize=(15,5))
+            plt.suptitle('Order of Fourier component model = '+str(nfc_terms), fontsize=24)
+            plt.subplot(1,3,1)
+            plt.imshow(median_diffuse_bkg, vmin=np.percentile(diffuse_realiz, 1), vmax=np.percentile(diffuse_realiz, 99), origin='lower', cmap='Greys')
+            cbar = plt.colorbar(fraction=0.046, pad=0.04)
+            cbar.set_label('mJy/beam')
+            plt.subplot(1,3,2)
+            plt.imshow(diffuse_realiz, vmin=np.percentile(diffuse_realiz, 1), vmax=np.percentile(diffuse_realiz, 99), origin='lower', cmap='Greys')
+            cbar = plt.colorbar(fraction=0.046, pad=0.04)
+            cbar.set_label('mJy/beam')
+            plt.subplot(1,3,3)
+            vmin_resid = -4
+            vmax_resid = 4
+            plt.imshow((median_diffuse_bkg-diffuse_realiz), vmin=vmin_resid, vmax=vmax_resid, origin='lower', cmap='Greys')
+            cbar = plt.colorbar(fraction=0.046, pad=0.04)
+            cbar.set_label('mJy/beam', fontsize=16)
+            plt.tight_layout()
+    #         plt.savefig('/Users/luminatech/Downloads/conley_dustonly_10arcmin_1band_1mJy_beam_060121_4x_Planck_simidx_301/figures/threepan_nfc='+str(nfc_terms)+'.png', bbox_inches='tight', dpi=200)
+    #         plt.savefig('/Users/luminatech/Downloads/conley_dustonly_10arcmin_1band_1mJy_beam_060121_4x_Planck_simidx_301_wptsrcmodl/figures/threepan_nfc='+str(nfc_terms)+'.png', bbox_inches='tight', dpi=200)
+            plt.show()
+        
+    return chi2_diffs, nfc_terms_list, median_diffuse_bkgs, diffuse_realiz
 
 
 

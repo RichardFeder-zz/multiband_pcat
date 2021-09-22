@@ -1332,6 +1332,28 @@ def plot_acceptance_fractions(accept_stats, proposal_types=['All', 'Move', 'Birt
 
 	return f
 
+def trace_plot(chains, titlestr=None, i0=0, ylabel=None, titlefontsize=18, show=True, return_fig=True):
+    
+    f = plt.figure(figsize=(6, 5))
+    if titlestr is not None:
+        plt.title(titlestr, fontsize=titlefontsize)
+    # for chain in temp_chains_full[0]:
+
+    for chain in chains:
+
+        plt.plot(np.arange(i0, len(chain)), chain[i0:])
+    
+    plt.xlabel('$i_{samp}$', fontsize=18)
+    if ylabel is not None:
+        plt.ylabel(ylabel, fontsize=18)
+    plt.tick_params(labelsize=14)
+    
+    if show:
+        plt.show()
+    
+    if return_fig:
+        return f
+
 def plot_fluxbias_vs_flux(mean_frac_flux_error_binned, pct16_frac_flux_error_binned, pct84_frac_flux_error_binned, fluxbins,\
 						 band=0, nsrc_perfbin=None, xlim = [2, 700], ylim=[-1.5, 2.5], title=None, titlefontsize=18, verbose=True, load_jank_txts=True, fractional_bias=False):
 

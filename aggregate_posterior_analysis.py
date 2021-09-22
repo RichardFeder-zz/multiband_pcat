@@ -12,6 +12,7 @@ import ctypes
 import numpy.ctypeslib as npct
 from ctypes import c_int, c_double
 import numpy.linalg as linalg
+from numpy.linalg import inv,det
 from matplotlib.patches import Ellipse
 from scipy.ndimage import gaussian_filter
 import scipy
@@ -82,30 +83,64 @@ def aggregate_posterior_corner_plot(timestr_list, temp_amplitudes=True, bkgs=Tru
     return figure
 
 
-def compute_gelman_rubin_diagnostic(list_of_chains):
+def compute_gelman_rubin_diagnostic(list_of_chains, i0=0):
     
+    list_of_chains = np.array(list_of_chains)
+    print('list of chains has shape ', list_of_chains.shape)
     m = len(list_of_chains)
-    n = len(list_of_chains[0])
+    n = len(list_of_chains[0])-i0
     
     print('n=',n,' m=',m)
-        
-    B = (n/(m-1))*np.sum((np.mean(list_of_chains, axis=1)-np.mean(list_of_chains))**2)
+    
+    B = (n/(m-1))*np.sum((np.mean(list_of_chains[:,i0:], axis=1)-np.mean(list_of_chains[:,i0:]))**2)
     
     W = 0.
     for j in range(m):
-        
-        sumsq = np.sum((list_of_chains[j]-np.mean(list_of_chains[j]))**2)
-        
+        sumsq = np.sum((list_of_chains[j,i0:]-np.mean(list_of_chains[j,i0:]))**2)
+                
         W += (1./m)*(1./(n-1.))*sumsq
     
     var_th = ((n-1.)/n)*W + (B/n)
-    
     
     Rhat = np.sqrt(var_th/W)
     
     print("rhat = ", Rhat)
     
-    return Rhat
+    return Rhat, m, n
+
+def compute_hdpi(ts, t_likelihood, frac=0.68):
+
+    ''' computes 1d highest posterior density interval'''
+    
+    idxs_hdpi = []
+    
+    idxmax = np.argmax(t_likelihood)
+    
+    idxs_hdpi.append(idxmax)
+    
+    psum = t_likelihood[idxmax]
+    
+    idx0 = np.argmax(t_likelihood)+1
+    idx1 = np.argmax(t_likelihood)-1
+    while True:
+        
+        if t_likelihood[idx0] > t_likelihood[idx1]:
+            psum += t_likelihood[idx0]
+            idxs_hdpi.append(idx0)
+            idx0 += 1
+        else:
+            psum += t_likelihood[idx1]
+            idxs_hdpi.append(idx1)
+            idx1 -= 1
+    
+        if psum >= frac:
+            print('psum is now ', psum)
+            break
+        
+    ts_credible = np.sort(ts[np.array(idxs_hdpi)])
+    
+    return ts_credible
+    
     
 def compute_chain_rhats(all_chains, labels, i0=0, nthin=1):
     
@@ -225,8 +260,8 @@ def compute_ellipse_cov(fpath, r2500_conversion_fac=0.163, undo_r2500_conv=True,
     return sz_cov_matrix, sz_post_density, hist2d
 
 
-def compute_posterior_density(chain_var1, chain_var2, bins=30, norm_mode='max'):
-    hist2d = np.histogram2d(chain_var1, chain_var2, bins=bins, normed=True, smooth=False, smooth_sig=5)
+def compute_posterior_density(chain_var1, chain_var2, bins=30, norm_mode='max', smooth=False, smooth_sig=5):
+    hist2d = np.histogram2d(chain_var1, chain_var2, bins=bins, normed=True)
     density = np.array(hist2d[0]).transpose()
     if smooth:
         density = gaussian_filter(density, sigma=smooth_sig)
@@ -993,6 +1028,7 @@ def split_timestr_lists_by_simidx(timestr_list):
 
     return list_of_simidxs, list_of_timestr_lists, list_of_simidx_lists
 
+
 def sample_corrected_post(pmw_post_bias, plw_post_bias, pmw_obs, plw_obs, pmw_GR=0.14, plw_GR=0.2, \
                          r2500_conversion_fac=0.163, r2500_central_observed_pmw=0.006, r2500_central_observed_plw=0.009, \
                          pmw_bkg_fix=0.02, plw_bkg_fix=0.008):
@@ -1029,6 +1065,7 @@ def sample_corrected_post(pmw_post_bias, plw_post_bias, pmw_obs, plw_obs, pmw_GR
         rescaled_plw_bias_samps.append(zcr_plw)
         
     return rescaled_pmw_bias_samps+pmw_obs_corr_median, rescaled_plw_bias_samps+plw_obs_corr_median
+    
 
 def upsample_log_post(log_post, hist2d=None, upsample_fac=10, order=1):
     ''' 
