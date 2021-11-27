@@ -31,117 +31,12 @@ class objectview(object):
 		self.__dict__ = d
 
 class gdatstrt(object):
-
+	''' Initializes global data object used throughout PCAT. '''
 	def __init__(self):
 		pass
 	
 	def __setattr__(self, attr, valu):
 		super(gdatstrt, self).__setattr__(attr, valu)
-
-
-def verbprint(verbose, text, file=None, verbthresh=None):
-	if verbthresh is not None:
-		if verbose > verbthresh:
-			print(text, file=file)
-	else:
-		if verbose:
-			print(text, file=file)
-
-def save_params(directory, gdat):
-	# save parameters as dictionary, then pickle them to txt file
-	param_dict = vars(gdat).copy()
-	param_dict['fc_templates'] = None # these take up too much space and not necessary
-	param_dict['truth_catalog'] = None 
-	
-	with open(directory+'/params.txt', 'wb') as file:
-		file.write(pickle.dumps(param_dict))
-
-	file.close()
-
-	with open(directory+'/params_read.txt', 'w') as file2:
-		for key in param_dict:
-			file2.write(key+': '+str(param_dict[key])+'\n')
-	file2.close()
-
-def fluxes_to_color(flux1, flux2):
-	return 2.5*np.log10(flux1/flux2)
-
-def initialize_c(gdat, libmmult, cblas=False):
-
-	verbprint(gdat.verbtype, 'initializing c routines and data structs', file=gdat.flog, verbthresh=1)
-	# if gdat.verbtype > 1:
-	# 	print('initializing c routines and data structs', file=gdat.flog)
-
-	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
-	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
-	array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
-	array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
-
-	if cblas:
-		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
-			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)		
-				
-		libmmult.pcat_model_eval.restype = None
-		libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-		libmmult.pcat_imag_acpt.restype = None
-		libmmult.pcat_imag_acpt.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
-		libmmult.pcat_like_eval.restype = None
-		libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-
-	else:
-		if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
-			warnings.warn('blas.c modified after compiled blas.so', Warning)		
-		
-		libmmult.clib_eval_modl.restype = None
-		libmmult.clib_eval_modl.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-		libmmult.clib_updt_modl.restype = None
-		libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
-		libmmult.clib_eval_llik.restype = None
-		libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
-
-def icdf_dpow(unit, minm, maxm, brek, sloplowr, slopuppr):
-    
-    ''' Inverse CDF for double power law, taken from https://github.com/tdaylan/pcat/blob/master/pcat/main.py'''
-    
-    if np.isscalar(unit):
-        unit = np.array([unit])
-    
-    faca = 1. / (brek**(sloplowr - slopuppr) * (brek**(1. - sloplowr) - minm**(1. - sloplowr)) \
-                                / (1. - sloplowr) + (maxm**(1. - slopuppr) - brek**(1. - slopuppr)) / (1. - slopuppr))
-    facb = faca * brek**(sloplowr - slopuppr) / (1. - sloplowr)
-
-    para = np.empty_like(unit)
-    cdfnbrek = facb * (brek**(1. - sloplowr) - minm**(1. - sloplowr))
-    indxlowr = np.where(unit <= cdfnbrek)[0]
-    indxuppr = np.where(unit > cdfnbrek)[0]
-    if indxlowr.size > 0:
-        para[indxlowr] = (unit[indxlowr] / facb + minm**(1. - sloplowr))**(1. / (1. - sloplowr))
-    if indxuppr.size > 0:
-        para[indxuppr] = ((1. - slopuppr) * (unit[indxuppr] - cdfnbrek) / faca + brek**(1. - slopuppr))**(1. / (1. - slopuppr))
-    
-    return para
-
-def pdfn_dpow(xdat, minm, maxm, brek, sloplowr, slopuppr):
-    
-
-    ''' PDF for double power law, also taken from https://github.com/tdaylan/pcat/blob/master/pcat/main.py'''
-
-    if np.isscalar(xdat):
-        xdat = np.array([xdat])
-    
-    faca = 1. / (brek**(sloplowr - slopuppr) * (brek**(1. - sloplowr) - minm**(1. - sloplowr)) / \
-                                            (1. - sloplowr) + (maxm**(1. - slopuppr) - brek**(1. - slopuppr)) / (1. - slopuppr))
-    facb = faca * brek**(sloplowr - slopuppr) / (1. - sloplowr)
-    
-    pdfn = np.empty_like(xdat)
-    indxlowr = np.where(xdat <= brek)[0]
-    indxuppr = np.where(xdat > brek)[0]
-    if indxlowr.size > 0:
-        pdfn[indxlowr] = faca * brek**(sloplowr - slopuppr) * xdat[indxlowr]**(-sloplowr)
-    if indxuppr.size > 0:
-        pdfn[indxuppr] = faca * xdat[indxuppr]**(-slopuppr)
-    
-    return pdfn
 
 def add_directory(dirpath):
 	if not os.path.isdir(dirpath):
@@ -150,7 +45,7 @@ def add_directory(dirpath):
 
 def create_directories(gdat):
 	''' 
-	Makes initial directory structure for new PCAT run 
+	Makes initial directory structure for new PCAT run.
 
 	Parameters
 	----------
@@ -191,9 +86,201 @@ def create_directories(gdat):
 	print('timestr:', timestr)
 	return frame_dir_name, new_dir_name, timestr
 
+
+
+def verbprint(verbose, text, file=None, verbthresh=0):
+	''' 
+	This function is a wrapped print function that accommodates various levels of verbosity. 
+	This is an in place operation.
+
+	Parameters
+	----------
+
+	verbose : 'int'. Level of verbosity. If verbthresh is None, verbose=1 will result in a statement being printed, otherwise verbose needs to be greater than verbthresh.
+	text : 'str'. Text to print. 
+	file (optional) : 'str'. User can specifiy file to write logs to. (I'm not sure if this fully works).
+			Default is 'None'.
+	verbthresh (optional) : Verbosity threshold. Default is 'None' (meaning the verbosity threshold is >0).
+
+	'''
+	if verbthresh is not None:
+		if verbose > verbthresh:
+			print(text, file=file)
+	else:
+		if verbose:
+			print(text, file=file)
+
+
+def compute_Fstat_alph(imszs, nbands, nominal_nsrc):
+	''' 
+	Computes expected improvement in log-likelihood per degree of freedom (DOF) in the finite DOF limit through the F-statistic (https://en.wikipedia.org/wiki/F-test).
+
+	Parameters
+	----------
+
+	imszs : 'np.array' of 'floats'.
+	nbands : 'int'. Number of bands in fit.
+	nominal_nsrc : 'int'. Number of expected sources in the fit. This could be adapted at a later point in the chain, but is currently fixed ab initio.
+
+	Returns
+	-------
+
+	alph : 'float'. Expected improvement in log-likelihood per degree of freedom.
+
+	'''
+
+	npix = np.sum(np.array([imszs[b][0]*imszs[b][1] for b in range(nbands)]))
+	alph = 0.5*(2.+nbands)*npix/(npix - (2.+nbands)*nominal_nsrc)
+	alph /= 0.5*(2.+nbands) # regularization prior is normalized relative to limit with infinite data, per degree of freedom
+
+	return alph
+
+def fluxes_to_color(flux1, flux2):
+
+	return 2.5*np.log10(flux1/flux2)
+
+def initialize_c(gdat, libmmult, cblas=False):
+
+	''' 
+
+	This function initializes the C library needed for the core numerical routines in PCAT. 
+	This is an in place operation.
+	
+	Parameters
+	----------
+	
+	gdat : global data object usued by PCAT
+
+	libmmult : Matrix multiplication library
+
+	cblas (optional) : If True, use CBLAS matrix multiplication routines in model evaluation
+
+	'''
+
+	verbprint(gdat.verbtype, 'initializing c routines and data structs', file=gdat.flog, verbthresh=1)
+	# if gdat.verbtype > 1:
+	# 	print('initializing c routines and data structs', file=gdat.flog)
+
+	array_2d_float = npct.ndpointer(dtype=np.float32, ndim=2, flags="C_CONTIGUOUS")
+	array_1d_int = npct.ndpointer(dtype=np.int32, ndim=1, flags="C_CONTIGUOUS")
+	array_2d_double = npct.ndpointer(dtype=np.float64, ndim=2, flags="C_CONTIGUOUS")
+	array_2d_int = npct.ndpointer(dtype=np.int32, ndim=2, flags="C_CONTIGUOUS")
+
+	if cblas:
+		if os.path.getmtime('pcat-lion.c') > os.path.getmtime('pcat-lion.so'):
+			warnings.warn('pcat-lion.c modified after compiled pcat-lion.so', Warning)		
+				
+		libmmult.pcat_model_eval.restype = None
+		libmmult.pcat_model_eval.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+		libmmult.pcat_imag_acpt.restype = None
+		libmmult.pcat_imag_acpt.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
+		libmmult.pcat_like_eval.restype = None
+		libmmult.pcat_like_eval.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+
+	else:
+		if os.path.getmtime('blas.c') > os.path.getmtime('blas.so'):
+			warnings.warn('blas.c modified after compiled blas.so', Warning)		
+		
+		libmmult.clib_eval_modl.restype = None
+		libmmult.clib_eval_modl.argtypes = [c_int, c_int, c_int, c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_1d_int, array_1d_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+		libmmult.clib_updt_modl.restype = None
+		libmmult.clib_updt_modl.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_int, c_int, c_int, c_int, c_int]
+		libmmult.clib_eval_llik.restype = None
+		libmmult.clib_eval_llik.argtypes = [c_int, c_int, array_2d_float, array_2d_float, array_2d_float, array_2d_double, c_int, c_int, c_int, c_int]
+
+
+def icdf_dpow(unit, minm, maxm, brek, sloplowr, slopuppr):
+    
+    ''' Inverse CDF for double power law, taken from https://github.com/tdaylan/pcat/blob/master/pcat/main.py
+
+	Parameters
+	----------
+	
+	unit : 'np.array' of type 'float'. Uniform draws from CDF
+
+	minm/maxm : 'floats'. Minimum/maximum bounds on flux density distribution. These parameters are used to normalize the distribution so that prior samples can be drawn.
+
+	brek : 'float'. Pivot value for the flux distribution
+
+	sloplowr/slopuppr : 'floats'. Power law parameters for lower/upper end of the CDF
+
+	Returns
+	-------
+
+	para : 'np.array' of type 'float'. Sample of flux densities corresponding to CDF draws (unit).
+
+    '''
+    
+    if np.isscalar(unit):
+        unit = np.array([unit])
+    
+    faca = 1. / (brek**(sloplowr - slopuppr) * (brek**(1. - sloplowr) - minm**(1. - sloplowr)) \
+                                / (1. - sloplowr) + (maxm**(1. - slopuppr) - brek**(1. - slopuppr)) / (1. - slopuppr))
+    facb = faca * brek**(sloplowr - slopuppr) / (1. - sloplowr)
+
+    para = np.empty_like(unit)
+    cdfnbrek = facb * (brek**(1. - sloplowr) - minm**(1. - sloplowr))
+    indxlowr = np.where(unit <= cdfnbrek)[0]
+    indxuppr = np.where(unit > cdfnbrek)[0]
+    if indxlowr.size > 0:
+        para[indxlowr] = (unit[indxlowr] / facb + minm**(1. - sloplowr))**(1. / (1. - sloplowr))
+    if indxuppr.size > 0:
+        para[indxuppr] = ((1. - slopuppr) * (unit[indxuppr] - cdfnbrek) / faca + brek**(1. - slopuppr))**(1. / (1. - slopuppr))
+    
+    return para
+
+def pdfn_dpow(xdat, minm, maxm, brek, sloplowr, slopuppr):
+    
+    ''' PDF for double power law, also taken from https://github.com/tdaylan/pcat/blob/master/pcat/main.py'''
+
+    if np.isscalar(xdat):
+        xdat = np.array([xdat])
+    
+    faca = 1. / (brek**(sloplowr - slopuppr) * (brek**(1. - sloplowr) - minm**(1. - sloplowr)) / \
+                                            (1. - sloplowr) + (maxm**(1. - slopuppr) - brek**(1. - slopuppr)) / (1. - slopuppr))
+    facb = faca * brek**(sloplowr - slopuppr) / (1. - sloplowr)
+    
+    pdfn = np.empty_like(xdat)
+    indxlowr = np.where(xdat <= brek)[0]
+    indxuppr = np.where(xdat > brek)[0]
+    if indxlowr.size > 0:
+        pdfn[indxlowr] = faca * brek**(sloplowr - slopuppr) * xdat[indxlowr]**(-sloplowr)
+    if indxuppr.size > 0:
+        pdfn[indxuppr] = faca * xdat[indxuppr]**(-slopuppr)
+    
+    return pdfn
+
+def save_params(directory, gdat):
+	''' 
+	Save parameters as dictionary, then pickle them to .txt file. This also produces a more human-readable file, params_read.txt. 
+	This is an inplace operation. 
+
+	Parameters
+	----------
+
+	directory : 'str'. MCMC run result directory to store parameter configuration file.
+	gdat : global data object used by PCAT.
+	'''
+	param_dict = vars(gdat).copy()
+	param_dict['fc_templates'] = None # these take up too much space and not necessary
+	param_dict['truth_catalog'] = None 
+	
+	with open(directory+'/params.txt', 'wb') as file:
+		file.write(pickle.dumps(param_dict))
+
+	file.close()
+
+	with open(directory+'/params_read.txt', 'w') as file2:
+		for key in param_dict:
+			file2.write(key+': '+str(param_dict[key])+'\n')
+	file2.close()
+
+
 def neighbours(x,y,neigh,i,generate=False):
-	''' Neighbours function is used in merge proposal, where you have some source and you want to choose a nearby
-		source with some probability to merge. '''
+	''' 
+	Neighbours function is used in merge proposal, where you have some source and you want to choose a nearby
+	source with some probability to merge. 
+	'''
 
 	neighx = np.abs(x - x[i])
 	neighy = np.abs(y - y[i])
@@ -272,7 +359,7 @@ class Proposal:
 			self.fphon[b] = np.append(self.fphon[b], np.array(fluxmult*stars[self._F+b,:], dtype=np.float32))
 		self.assert_types()
 
-	def add_move_stars(self, idx_move, stars0, starsp, modl_eval_colors=[]):
+	def add_move_stars(self, idx_move, stars0, starsp):
 		self.idx_move = idx_move
 		self.stars0 = stars0
 		self.starsp = starsp
@@ -338,7 +425,7 @@ class Model:
 	_Y = 1
 	_F = 2
 
-	k =2.5/np.log(10)
+	k = 2.5/np.log(10)
 
 	color_mus, color_sigs = [], []
 	
@@ -350,20 +437,16 @@ class Model:
 		self.gdat = gdat
 		self.libmmult = libmmult
 		self.newsrc_minmax_range = newsrc_minmax_range
-
 		self.err_f = gdat.err_f
-
 		self.pixel_per_beam = [2*np.pi*(psf_pixel_fwhm/2.355)**2 for psf_pixel_fwhm in self.gdat.psf_fwhms] # variable pixel fwhm
 		self.linear_flux = gdat.linear_flux
-
 		self.imsz0 = gdat.imsz0 # this is just for first band, where proposals are first made
 		self.imszs = gdat.imszs # this is list of image sizes for all bands, not just first one
 		self.kickrange = gdat.kickrange
-
 		self.margins = np.zeros(gdat.nbands).astype(np.int)
 		self.max_nsrc = gdat.max_nsrc
-		
 		self.bkg = np.array(gdat.bias)
+
 		print('at initialization of model, self.bkg is ', self.bkg)
 
 		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
@@ -374,7 +457,7 @@ class Model:
 
 		self.n_templates = gdat.n_templates
 
-		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.0005})
+		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.004})
 		if self.gdat.sz_amp_sig is not None:
 			self.temp_amplitude_sigs['sze'] = self.gdat.sz_amp_sig
 		if self.gdat.fc_amp_sig is not None:
@@ -404,7 +487,7 @@ class Model:
 				self.dat.data_array[0] -= np.nanmean(self.dat.data_array[0]) # this is done to isolate the fluctuation component
 				self.bkg[0] = 0.
 
-
+				# this is for quick marginalization of the Fourier components with the data.
 				_, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
 																		fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
 																		data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig, ridge_fac=self.gdat.ridge_fac)
@@ -436,7 +519,6 @@ class Model:
 		self.nloop = gdat.nloop
 		self.nominal_nsrc = gdat.nominal_nsrc
 		self.nregion = gdat.nregion
-
 		self.offsetxs = np.zeros(self.nbands).astype(np.int)
 		self.offsetys = np.zeros(self.nbands).astype(np.int)
 		
@@ -461,7 +543,7 @@ class Model:
 		self.verbtype = gdat.verbtype
 
 		self.bkg_prop_sigs = np.array([self.gdat.bkg_sig_fac[b]*np.nanmedian(self.dat.errors[b][self.dat.errors[b]>0])/np.sqrt(self.dat.fracs[b]*self.imszs[b][0]*self.imszs[b][1]) for b in range(gdat.nbands)])
-
+		print('BKG PROP SIGS is ', self.bkg_prop_sigs)
 		if gdat.bkg_prior_mus is not None:
 			self.bkg_prior_mus = gdat.bkg_prior_mus
 		else:
@@ -474,12 +556,10 @@ class Model:
 			self.mus = self.gdat.color_mus
 		else:			
 			self.mus = dict({'S-M':0.0, 'M-L':0.5, 'L-S':0.5, 'M-S':0.0, 'S-L':-0.5, 'L-M':-0.5})
-
 		if self.gdat.color_sigs is not None:
 			self.sigs = self.gdat.color_sigs
 		else:
 			self.sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5}) #very broad color prior
-
 
 		for b in range(self.nbands-1):
 
@@ -496,16 +576,15 @@ class Model:
 		print('self.color_mus : ', self.color_mus)
 		print('self.color_sigs : ', self.color_sigs)
 
+		# unless previous model state provided to PCAT (for example, from a previous run), draw fluxes from specified flux prior.
 		if gdat.load_state_timestr is None:
 			for b in range(gdat.nbands):
-
 				if b==0:
 					if self.gdat.flux_prior_type=='double_power_law':
 
 						self.stars[self._F+b,0:self.n] = icdf_dpow(self.stars[self._F+b,0:self.n],\
 																	 self.trueminf, self.trueminf*self.newsrc_minmax_range, \
 																	 self.pivot_dpl, self.alpha_1, self.alpha_2)
-
 					elif self.gdat.flux_prior_type=='single_power_law':
 						self.stars[self._F+b,0:self.n] **= -1./(self.truealpha - 1.)
 						self.stars[self._F+b,0:self.n] *= self.trueminf
@@ -520,15 +599,10 @@ class Model:
 			# if loading in a previous catalog, make sure the bands of the catalog are in order
 			print('Loading in catalog from run with timestr='+gdat.load_state_timestr+'...', file=gdat.flog)
 			catpath = gdat.result_path+'/'+gdat.load_state_timestr+'/final_state.npz'
-			
 			catload = np.load(catpath)
-
 			gdat_previous, _, _ = load_param_dict(gdat.load_state_timestr, result_path=gdat.result_path)
-
 			previous_cat = np.load(catpath)['cat']
-
 			self.n = np.count_nonzero(previous_cat[self._F,:])
-
 
 			if self.gdat.float_background:
 				for b in range(gdat_previous.nbands):
@@ -566,8 +640,14 @@ class Model:
 			print('self.template amplitudes is ', self.template_amplitudes, file=gdat.flog)
 
 
-	def update_moveweights(self, j):
+	def load_previous_model(self):
+		#TODO wrap above code 
+		pass 
 
+	def update_moveweights(self, j):
+		''' 
+		During the burn in stage of sampling, this function gets used to update the proposals PCAT draws from with the specified weights. 
+		'''
 		moveweight_idx_dict = dict({'movestar':0, 'birth_death':1, 'merge_split':2, 'bkg':3, 'template':4, 'fourier_comp':5})
 		sample_delays = [self.gdat.movestar_sample_delay, self.gdat.birth_death_sample_delay, self.gdat.merge_split_sample_delay, self.gdat.bkg_sample_delay, \
 						self.gdat.temp_sample_delay, self.gdat.fc_sample_delay]
@@ -587,7 +667,9 @@ class Model:
 				print('moveweights:', self.moveweights, file=self.gdat.flog)
 
 	def normalize_weights(self, weights):
-		''' This gets used when updating proposal weights during burn-in.'''
+		''' 
+		This gets used when updating proposal weights during burn-in.
+		'''
 		normalized_weights = weights / np.sum(weights)
 
 		return normalized_weights
@@ -644,7 +726,9 @@ class Model:
 
 	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None, rtype=None, dfc=None, idxvec=None, precomp_temps=None, fc_rel_amps=None, \
 		perturb_band_idx=None):
-		''' Wrapper for multiband likelihood evaluation given model parameters.'''
+		'''
+		Wrapper for multiband likelihood evaluation given catalog model parameters.
+		'''
 
 		dmodels = []
 		dt_transf = 0
@@ -711,7 +795,6 @@ class Model:
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
-
 				# diff2s += diff2
 			else:    
 				xp=x
@@ -721,9 +804,7 @@ class Model:
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
-			
 				# diff2s = diff2
-
 			if nb==0:
 				diff2s = diff2
 				nb += 1
@@ -736,7 +817,29 @@ class Model:
 
 
 	def run_sampler(self, sample_idx):
-		''' run_sampler() completes nloop samples, so the function is called nsamp times'''
+		''' 
+		Main wrapper function for executing the calculation of a thinned sample in PCAT.
+		run_sampler() completes nloop samples, so the function gets called 'nsamp' times in a full run.
+	
+		Parameters
+		----------
+
+		sample_idx : 'int'. Thinned sample index.
+
+		Returns
+		-------
+
+		n : 'int'. Number of sources.
+		chi2 : 'np.array' of type 'float' with shape (nbands,). Image model chi squared for each band.
+		timestat_array : 'np.array' of type 'float'.
+		accept_fracs : 'np.array' of type 'float'.
+		diff2_list : 
+		rtype_array : 'np.array' of type 'float' and shape (nloop,). Proposal types for nloop samples corresponding to thinned sample 'sample_idx'. 
+		accept : 'np.array' of type 'bool' and shape (nloop,). Booleans indicate whether or not the proposals were accepted or not.
+		resids : 'list' of 'np.arrays' of type 'float' and shape (nbands, dimx, dimy). Residual maps at end of thinned sample.
+		models : 'list' of 'np.arrays' of type 'float' and shape (nbands, dimx, dimy). Model images at end of thinned sample.
+
+		'''
 		
 		t0 = time.time()
 		nmov = np.zeros(self.nloop)
@@ -797,9 +900,7 @@ class Model:
 		else:
 			lib = self.libmmult.clib_eval_modl
 
-		dtemplate = None
-		fcoeff = None
-		running_temp = None
+		dtemplate, fcoeff, running_temp = None, None, None
 
 		if self.gdat.float_templates:
 			dtemplate = self.template_amplitudes
@@ -900,6 +1001,9 @@ class Model:
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, perturb_band_idx=proposal.perturb_band_idx)
 	
 				
+					# print('self.stars[self._F:0:self.n],', self.stars[self._F:,0:self.n])
+					# print('proposal.fphon', proposal.fphon)
+
 
 				elif rtype == 4: # template
 
@@ -972,7 +1076,11 @@ class Model:
 				else:
 					# is this taking the prior factor to the power nregion ^ 2 ? I think it might, TODO
 					if proposal.factor is not None:
-						dlogP += proposal.factor
+
+						# if rtype == 3 and self.gdat.coupled_bkg_prop:
+							# print('dlogP = ', dlogP)
+							# print('proposal.factor is ', proposal.factor)
+						dlogP += (proposal.factor/(dlogP.shape[0]*dlogP.shape[1]))
 
 				
 				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
@@ -1039,9 +1147,18 @@ class Model:
 
 				#implement accepted moves
 				if proposal.idx_move is not None:
-					starsp = proposal.starsp.compress(acceptprop, axis=1)
-					idx_move_a = proposal.idx_move.compress(acceptprop)
-					self.stars[:, idx_move_a] = starsp
+
+					if rtype==3:
+
+						self.stars = proposal.starsp
+						# idx_move_a = proposal.idx_move
+					else:
+						starsp = proposal.starsp.compress(acceptprop, axis=1)
+						# print(acceptprop.shape, starsp.shape)
+
+						idx_move_a = proposal.idx_move.compress(acceptprop)
+
+						self.stars[:, idx_move_a] = starsp
 
 				
 				if proposal.do_birth:
@@ -1173,20 +1290,72 @@ class Model:
 
 
 	def perturb_background(self):
+		''' 
+		Perturb mean background level according to Model.bkg_prop_sigs.
 
+		Returns
+		-------
+		proposal : Proposal class object.
+	
+		'''
 		proposal = Proposal(self.gdat)
 		# I want this proposal to return the original dback + the proposed change. If the proposal gets approved later on
 		# then model.dback will be set to the updated state
 		bkg_idx = np.random.choice(self.nbands)
-
 		dback = np.random.normal(0., scale=self.bkg_prop_sigs[bkg_idx])
 
 		proposal.dback[bkg_idx] = dback
 
+		# this is to do coupled proposal between mean background normalization and point sources. The idea here is to compensate a change in background level with a
+		# change in point source fluxes. All (or maybe select?) sources across the FOV are perturbed by N_eff*dback. 
+		factor = None
+		if self.gdat.coupled_bkg_prop:
+			# integrated Jy/beam over beam --> average change in flux density for sources
+			dback_int = dback*self.gdat.N_eff 
+
+			# choose stars at random 
+ 
+			if self.gdat.couple_nfrac is not None:
+				idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac))
+				# print('idx move is ', idx_move)
+			else:
+				idx_move = np.arange(self.n)
+
+			stars0 = self.stars.copy()
+
+			# change fluxes of stars in opposite direction to dback_int
+			starsp = stars0.copy()
+			starsp[self._X,:] = stars0[self._X,:]
+			starsp[self._Y,:] = stars0[self._Y,:]
+			starsp[self._F+bkg_idx,:self.n] -= dback_int/len(idx_move)
+
+			if bkg_idx==0:
+				fthr = self.gdat.trueminf
+			else:
+				fthr = 0.00001
+
+			ltfmin_mask = (starsp[self._F+bkg_idx,:] < fthr)
+			gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
+			# print('self.n = ', self.n)
+			# print('gtrfmin has ', np.sum(gtrfmin_mask))
+			# print('ltfmin mask has ', np.sum(ltfmin_mask)-(self.max_nsrc-self.n), ' lt0 sources')
+			starsp[self._F+bkg_idx, ltfmin_mask] = stars0[self._F+bkg_idx, ltfmin_mask]
+
+			proposal.add_move_stars(idx_move, stars0, starsp)
+			flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,:], starsp[self._F+bkg_idx,:])
+			if factor is None:
+				factor = np.nansum(flux_couple_factor)
+				# print('flux couple factor is ', factor)
+
 		if self.gdat.dc_bkg_prior:
 			bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_prior_mus[bkg_idx])**2/(2*self.bkg_prior_sig**2)
 			bkg_factor += (self.bkg[bkg_idx]+self.dback[bkg_idx]-self.bkg_prior_mus[bkg_idx])**2/(2*self.bkg_prior_sig**2)
-			proposal.set_factor(bkg_factor)
+			if factor is not None:
+				factor += bkg_factor
+			else:
+				factor = bkg_factor
+
+		proposal.set_factor(factor)
 		
 		proposal.change_bkg(perturb_band_idx=bkg_idx)
 
@@ -1194,7 +1363,11 @@ class Model:
 
 
 	def perturb_fourier_comp(self): # fourier comp
-
+		''' 
+		Proposal to perturb amplitudes of Fourier component templates. The proposal width is determined by Model.temp_amplitude_sigs and can be
+		scaled with the power law exponent of the assumed power law spectrum.
+		'''
+		
 		proposal = Proposal(self.gdat)
 
 		# set dfc_prob to zero if you only want to perturb the amplitudes
@@ -1206,15 +1379,11 @@ class Model:
 			fc_sig_fac = self.temp_amplitude_sigs['fc']
 			
 			if self.gdat.fc_prop_alpha is not None:
-				ellmag = np.sqrt((proposal.idx0+1)**2 + (proposal.idx1+1)**2)
+				ellmag = np.sqrt((proposal.idx0+1)**2 + (proposal.idx1+1)**2)/np.sqrt(2.)
 				fc_sig_fac *= ellmag**self.gdat.fc_prop_alpha
 
 			coeff_pert = np.random.normal(0, fc_sig_fac)
 			proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
-
-			# prior on fourier component.. I think this would involve a prior on the power spectrum of the overall fourier series.. is there
-			# a closed form expression for power spectrum in terms of fourier series? yes! this is implemented for the power spectrum. But not sure if PS
-			# prior is needed
 
 		else:
 
@@ -1238,6 +1407,18 @@ class Model:
 
 
 	def perturb_template_amplitude(self):
+
+		''' 
+		Perturb (non-Fourier component) template amplitudes. These are being kept separate since it delineates between parametric/non-parametric models.
+		For example, templates for the SZ effect are based on a parametric model, while cirrus or other diffuse emission can be fit with a non-parametric model, 
+		with the note that you could have a full spatial model floated as one template (e.g., a Planck interpolated map of cirrus). 
+		
+		Returns
+		-------
+
+		proposal : Proposal class object.
+			
+		'''
 
 		proposal = Proposal(self.gdat)
 		proposal.dtemplate = np.zeros((self.gdat.n_templates, self.gdat.nbands))
@@ -1341,8 +1522,35 @@ class Model:
 
 		return logp_dpl
 
+	def compute_flux_prior(self, f0, pf):
+
+		if self.gdat.flux_prior_type=='single_power_law':
+			dlogf = np.log(pf/f0)
+			factor = -self.truealpha*dlogf
+			# verbprint('factor at move_stars for single power law are ', factor)
+		
+		elif self.gdat.flux_prior_type=='double_power_law':
+			log_prior_dpow_pf = np.log(pdfn_dpow(pf,  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
+			log_prior_dpow_f0 = np.log(pdfn_dpow(f0,  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
+			# verbprint('log_prior_dpow_pf:', log_prior_dpow_pf)
+			# verbprint('log_prior_dpow_f0:', log_prior_dpow_f0)
+
+			factor = log_prior_dpow_pf - log_prior_dpow_f0
+			# verbprint('factor at move_stars for dpl is ', factor)
+
+		else:
+			print("Need a valid flux prior type (either single_power_law or double_power_law")
+			factor = None
+
+		return factor
 
 	def move_stars(self): 
+
+		''' 
+		Proposal to perturb the positions/fluxes of model sources. This is done simultaneously by drawing a flux proposal and then 
+		a position change that depends on the max flux of the source, i.e. max(current flux vs. proposed flux). 
+
+		'''
 		idx_move = self.idx_parity_stars()
 		nw = idx_move.size
 		stars0 = self.stars.take(idx_move, axis=1)
@@ -1356,7 +1564,7 @@ class Model:
 			if b==0:
 				pf = self.flux_proposal(f0[b], nw)
 			else:
-				pf = self.flux_proposal(f0[b], nw, trueminf=0.0001) #place a minor minf to avoid negative fluxes in non-pivot bands
+				pf = self.flux_proposal(f0[b], nw, trueminf=0.00001) #place a minor minf to avoid negative fluxes in non-pivot bands
 			pfs.append(pf)
  
 		if (np.array(pfs)<0).any():
@@ -1366,28 +1574,27 @@ class Model:
 
 		verbprint(self.verbtype, 'Average flux difference : '+str(np.average(np.abs(f0[0]-pfs[0]))), verbthresh=1)
 
+		factor = self.compute_flux_prior(f0[0], pfs[0])
 
-		if self.gdat.flux_prior_type=='single_power_law':
-			dlogf = np.log(pfs[0]/f0[0])
-			factor = -self.truealpha*dlogf
-			# print('factor at move_stars for single power law are ', factor)
-		elif self.gdat.flux_prior_type=='double_power_law':
-			log_prior_dpow_pf = np.log(pdfn_dpow(pfs[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
-			log_prior_dpow_f0 = np.log(pdfn_dpow(f0[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
+		# if self.gdat.flux_prior_type=='single_power_law':
+		# 	dlogf = np.log(pfs[0]/f0[0])
+		# 	factor = -self.truealpha*dlogf
+		# 	verbprint('factor at move_stars for single power law are ', factor)
 
-			# print('log_prior_dpow_pf:', log_prior_dpow_pf)
-			# print('log_prior_dpow_f0:', log_prior_dpow_f0)
+		# elif self.gdat.flux_prior_type=='double_power_law':
+		# 	log_prior_dpow_pf = np.log(pdfn_dpow(pfs[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
+		# 	log_prior_dpow_f0 = np.log(pdfn_dpow(f0[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
 
-			factor = log_prior_dpow_pf - log_prior_dpow_f0
+		# 	verbprint('log_prior_dpow_pf:', log_prior_dpow_pf)
+		# 	verbprint('log_prior_dpow_f0:', log_prior_dpow_f0)
 
-			# print('factor at move_stars is ', factor)
+		# 	factor = log_prior_dpow_pf - log_prior_dpow_f0
 
-			# factor = self.eval_logp_dpl(pfs[0])-self.eval_logp_dpl(f0[0])
+		# 	verbprint('factor at move_stars for dpl is ', factor)
 
 		if np.isnan(factor).any():
-			print('Factor NaN from flux')
-			print('Number of f0 zero elements:', len(f0[0])-np.count_nonzero(np.array(f0[0])))
-
+			verbprint(self.verbtype,'Factor NaN from flux', verbthresh=1)
+			verbprint(self.verbtype,'Number of f0 zero elements:'+str(len(f0[0])-np.count_nonzero(np.array(f0[0]))), verbthresh=1)
 			verbprint(self.verbtype, 'prior factor = '+str(factor), verbthresh=1)
 
 			factor[np.isnan(factor)]=0
@@ -1440,7 +1647,7 @@ class Model:
 		self.bounce_off_edges(starsp)
 
 		proposal = Proposal(self.gdat)
-		proposal.add_move_stars(idx_move, stars0, starsp, modl_eval_colors)
+		proposal.add_move_stars(idx_move, stars0, starsp)
 		
 		assert np.isinf(factor).any()==False
 		assert np.isnan(factor).any()==False
@@ -1523,9 +1730,11 @@ class Model:
 
 	def merge_split_stars(self):
 
+		''' PCAT proposal to merge/split model sources. '''
+
 		splitsville = np.random.randint(2)
 		idx_reg = self.idx_parity_stars()
-		fracs, sum_fs = [],[]
+		fracs, sum_fs = [], []
 		idx_bright = idx_reg.take(np.flatnonzero(self.stars[self._F, :].take(idx_reg) > 2*self.trueminf)) # in region!
 		bright_n = idx_bright.size
 		nms = int((self.nregx * self.nregy) / 4)
@@ -1600,7 +1809,6 @@ class Model:
 			nms = idx_move.size
 
 			goodmove = (nms > 0)*((np.array(fracs) > 0).all())
-
 			if goodmove:
 				proposal.add_move_stars(idx_move, stars0, starsp)
 				proposal.add_birth_stars(starsb)
@@ -1715,7 +1923,9 @@ class Model:
 					+ np.log(bright_n) + np.log(invpairs)+ np.log(1. - 2./fminratio) + np.log(sum_fs[0])
 			
 			if self.gdat.flux_prior_type=='single_power_law':
-				factor += np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf)-self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0])
+
+				fluxfac = np.log(self.truealpha-1) + (self.truealpha-1)*np.log(self.trueminf)-self.truealpha*np.log(fracs[0]*(1-fracs[0])*sum_fs[0])
+
 			elif self.gdat.flux_prior_type=='double_power_law':
 
 				log_prior_dpow_split1 = np.log(pdfn_dpow(fracs[0]*sum_fs[0],  self.trueminf,\
@@ -1727,14 +1937,16 @@ class Model:
 				log_prior_dpow_tot = np.log(pdfn_dpow(sum_fs[0],  self.trueminf,\
 											 self.trueminf*self.newsrc_minmax_range,\
 											  self.pivot_dpl, self.alpha_1, self.alpha_2))
-
 				# print('sum logdiff:', log_prior_dpow_split1 + log_prior_dpow_split2 - log_prior_dpow_tot)
 
-				factor += log_prior_dpow_split1 + log_prior_dpow_split2 - log_prior_dpow_tot
+				fluxfac = log_prior_dpow_split1 + log_prior_dpow_split2 - log_prior_dpow_tot
 
+				# print('fluxfac for dpl is ', fluxfac)
 				# factor += self.eval_logp_dpl(fracs[0]*sum_fs[0]) \
 				# 			+self.eval_logp_dpl((1-fracs[0])*sum_fs[0]) \
 				# 			-self.eval_logp_dpl(sum_fs[0])
+
+			factor += fluxfac
 
 			for b in range(self.nbands-1):
 
@@ -1784,7 +1996,7 @@ class Model:
 			proposal.set_factor(factor)
 						
 			if np.isnan(factor).any():
-				print('There was a NaN factor in merge/split!')	
+				verbprint(self.verbtype, 'There was a NaN factor in merge/split!', verbthresh=1)	
 
 			verbprint(self.verbtype, 'kickrange factor: '+str(np.log(2*np.pi*self.kickrange*self.kickrange)), verbthresh=1)
 			verbprint(self.verbtype, 'imsz factor: '+str(np.log(2*np.pi*self.kickrange*self.kickrange)), verbthresh=1)
@@ -1798,26 +2010,28 @@ class Model:
 
 
 class Samples():
+	''' The Samples() class saves the parameter chains and other diagnostic statistics about the MCMC run. '''
 
 	def __init__(self, gdat):
-		self.nsample = np.zeros(gdat.nsamp, dtype=np.int32)
-		self.xsample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
-		self.ysample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32)
-		self.timestats = np.zeros((gdat.nsamp, 6, 7), dtype=np.float32)
 
-		self.diff2_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
-		self.accept_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
-		self.rtypes = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32)
-		self.accept_stats = np.zeros((gdat.nsamp, 7), dtype=np.float32)
+		self.nsample = np.zeros(gdat.nsamp, dtype=np.int32) # number of sources
+		self.xsample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) # x positions of sample sources
+		self.ysample = np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) # y positions of sample sources
+		self.timestats = np.zeros((gdat.nsamp, 6, 7), dtype=np.float32) # contains information on computational performance for different parts of algorithm
+
+		self.diff2_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32) # saves log likelihoods of modoels
+		self.accept_all = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32) # accepted proposals
+		self.rtypes = np.zeros((gdat.nsamp, gdat.nloop), dtype=np.float32) # proposal types at each step
+		self.accept_stats = np.zeros((gdat.nsamp, 7), dtype=np.float32) # acceptance fractions for different types of proposals
 
 		self.tq_times = np.zeros(gdat.nsamp, dtype=np.float32)
 		self.fsample = [np.zeros((gdat.nsamp, gdat.max_nsrc), dtype=np.float32) for x in range(gdat.nbands)]
 		
-		self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands))
-		self.template_amplitudes = np.zeros((gdat.nsamp, gdat.n_templates, gdat.nbands))
-		self.fourier_coeffs = np.zeros((gdat.nsamp, gdat.n_fourier_terms, gdat.n_fourier_terms, 4))
+		self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands)) # thinned mean background levels
+		self.template_amplitudes = np.zeros((gdat.nsamp, gdat.n_templates, gdat.nbands)) # amplitudes of templates used in fit 
+		self.fourier_coeffs = np.zeros((gdat.nsamp, gdat.n_fourier_terms, gdat.n_fourier_terms, 4)) # amplitudes of Fourier templates
 
-		self.fc_rel_amps = np.zeros((gdat.nsamp, gdat.nbands))
+		self.fc_rel_amps = np.zeros((gdat.nsamp, gdat.nbands)) # relative amplitudes of diffuse Fourier component model across observing bands.
 
 		self.colorsample = [[] for x in range(gdat.nbands-1)]
 		self.residuals = [np.zeros((gdat.residual_samples, gdat.imszs[i][0], gdat.imszs[i][1])) for i in range(gdat.nbands)]
@@ -1828,7 +2042,25 @@ class Samples():
 		self.gdat = gdat
 
 	def add_sample(self, j, model, diff2_list, accepts, rtype_array, accept_fracs, chi2_all, statarrays, resids, model_images):
-		
+		''' 
+		For each thinned sample, adds model parameters to class variables. 
+		This is an in place operation.
+
+		Parameters
+		----------
+
+		j : 'int'. Index of thinned sample
+		model : Class object 'Model'.
+		diff2_list : 'list' of arrays.
+		accepts :
+		rtype_array : 
+		accept_fracs : 
+		chi2_all : 
+		statarrays :
+		resids : 
+		model_images :
+
+		'''
 		self.nsample[j] = model.n
 		self.xsample[j,:] = model.stars[Model._X, :]
 		self.ysample[j,:] = model.stars[Model._Y, :]
@@ -1852,6 +2084,17 @@ class Samples():
 
 	def save_samples(self, result_path, timestr):
 
+		''' 
+		Save chain parameters/metadata with numpy compressed file. 
+		This is an in place operation.
+		
+		Parameters
+		----------
+		
+		result_path : 'str'. Path to result directory.
+		timestr : 'str'. Timestring used to save the run (maybe make it possible to customize name?)
+
+		'''
 		# fourier comp, fourier comp colors
 		if self.nbands < 3:
 			residuals2, model_images2 = None, None
@@ -1871,9 +2114,17 @@ class Samples():
 			fourier_coeffs=self.fourier_coeffs, fc_rel_amps=self.fc_rel_amps)
 
 
-# -------------------- actually execute the thing ----------------
 
 class lion():
+
+	''' 
+	This is where the main lion() class is initialized and is the starting point for all PCAT runs.
+	Below, the collection of configurable parameters in PCAT are presented, separated into relevant variable groups. 
+	While there are many tunable variables in the implementation, in practice most of these can remain fixed. 
+	As a note, there may be a better way of structuring this, or in storing variable initializations in dedicated parameter files.
+
+	'''
+
 
 	gdat = gdatstrt()
 
@@ -1900,6 +2151,7 @@ class lion():
 			correct_misaligned_shift = False, \
 
 			bolocam_mask = False, \
+			# change default to False
 			use_mask = True, \
 			mask_file = None, \
 
@@ -1911,25 +2163,13 @@ class lion():
 			# Full width at half maximum for the PSF of the instrument/observation. Currently assumed to be Gaussian, but other 
 			# PCAT implementations have used a PSF template, so perhaps a more detailed PSF model could be added as another FITS header
 			psf_pixel_fwhm = 3.0, \
-
 			psf_fwhms = None, \
 
-			# if not None, then all pixels with a noise model above the preset values will be zero weighted. should have one number for each band included in the fit
+			# TBD
+			psf_postage_stamp = None, \
+
+			# if not None, then all pixels with a noise model above the preset values will be zero-weighted. should have one number for each band included in the fit
 			noise_thresholds=None, \
-
-			err_f_divfac = 2., \
-
-			merge_split_sample_delay=0, \
-			merge_split_moveweight = 60., \
-
-			movestar_sample_delay = 0, \
-			movestar_moveweight = 80., \
-
-			birth_death_sample_delay=0, \
-			birth_death_moveweight=60., \
-
-			# if specified, delays all point source modeling until point_src_delay samples have passed. 
-			point_src_delay = None, \
 
 	
 			# ---------------------------------- BACKGROUND PARAMS --------------------------------
@@ -1960,10 +2200,15 @@ class lion():
 			# if set to True, includes Gaussian prior on background amplitude with mean bkg_mus[bkg_idx] and scale bkg_prior_sig
 			dc_bkg_prior = False, \
 
+			# if True, PCAT couples background proposals with change in point source fluxes
+			coupled_bkg_prop = True, \
+
+			couple_nfrac = 0.1, \
+
 			# ---------------------------------- TEMPLATE PARAMS ----------------------------------------
 
 			# this determines when templates start getting fit
-			temp_sample_delay = 100, \
+			temp_sample_delay = 0, \
 			# boolean determining whether to float emission template amplitudes, e.g. for SZ or lensing templates
 			float_templates = False, \
 			# names of templates to use in fit, I think there will be a separate template folder where the names specify which files to read in
@@ -2020,7 +2265,7 @@ class lion():
 			# n_fourier_terms squared 
 			n_fourier_terms = 5, \
 
-			# this is for perturbing the relative amplitudes of a fixed fourier comp model across bands
+			# this is for perturbing the relative amplitudes of a fixed Fourier comp model across bands
 			fourier_amp_sig = 0.0005, \
 
 			# power law slope of Fourier component proposal distribution. If set to None, constant proposal width used
@@ -2047,7 +2292,7 @@ class lion():
 			data_path = None, \
 			# the tail name can be configured when reading files from a specific dataset if the name space changes.
 			# the default tail name should be for PSW, as this is picked up in a later routine and modified to the appropriate band.
-			tail_name = 'PSW_sim2300', \
+			tail_name = None, \
 			# file_path can be provided if only one image is desired with a specific path not consistent with the larger directory structure
 			file_path = None, \
 
@@ -2126,6 +2371,20 @@ class lion():
 			# if specified, nsrc_init is the initial number of sources drawn from the model. otherwise a random integer between 1 and max_nsrc is drawn
 			nsrc_init = None, \
 
+			err_f_divfac = 2., \
+
+			merge_split_sample_delay=0, \
+			merge_split_moveweight = 60., \
+
+			movestar_sample_delay = 0, \
+			movestar_moveweight = 80., \
+
+			birth_death_sample_delay=0, \
+			birth_death_moveweight=60., \
+
+			# if specified, delays all point source modeling until point_src_delay samples have passed. 
+			point_src_delay = None, \
+
 			# ----------------------------------- DIAGNOSTICS/POSTERIOR ANALYSIS -------------------------------------
 			
 			# interactive backend should be loaded before importing pyplot
@@ -2133,7 +2392,7 @@ class lion():
 			# used for visual mode
 			weighted_residual = True, \
 			# panel list controls what is shown in six panels plotted by PCAT intermittently when visual=True  
-			panel_list = None, \
+			panel_list = ['data0', 'model0', 'residual0', 'data_zoom0', 'dNdS0', 'residual_zoom0'], \
 			# plots visual frames every "plot_sample_period" thinned samples
 			plot_sample_period = 1, \
 			# can have fully deterministic trials by specifying a random initial seed 
@@ -2208,9 +2467,11 @@ class lion():
 		self.gdat.pixsize_dict = dict({'S':6., 'M':8., 'L':12.})
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 
-		if self.gdat.alpha_1 == 1.0:
+		# power law exponents equal to 1 in double power law will cause a numerical error.
+
+		if self.gdat.alpha_1 == 1.0 and self.flux_prior_type=='double_power_law':
 			self.gdat.alpha_1 += 0.01
-		if self.gdat.alpha_2 == 1.0:
+		if self.gdat.alpha_2 == 1.0 and self.flux_prior_type=='double_power_law':
 			self.gdat.alpha_2 += 0.01
 		
 		self.gdat.bands = [b for b in np.array([self.gdat.band0, self.gdat.band1, self.gdat.band2]) if b is not None]
@@ -2240,25 +2501,16 @@ class lion():
 			self.gdat.psf_fwhms = [self.gdat.psf_pixel_fwhm for i in range(self.gdat.nbands)]
 		
 		self.gdat.template_order = []
-		
 		self.gdat.template_band_idxs = np.zeros(shape=(self.gdat.n_templates, self.gdat.nbands))
 	
 		if self.gdat.template_names is not None:
-			for i, temp_name in enumerate(self.gdat.template_names):
-				print('template name here is ', temp_name)
-		
+			for i, temp_name in enumerate(self.gdat.template_names):		
 				for b, band in enumerate(self.gdat.bands):
-					
 					if band in template_band_idxs[temp_name]:
 						self.gdat.template_band_idxs[i,b] = band
 					else:
 						self.gdat.template_band_idxs[i,b] = None
-
 				self.gdat.template_order.append(temp_name)
-
-		if self.gdat.panel_list is None:
-			self.gdat.panel_list = ['data0', 'model0', 'residual0', 'data_zoom0', 'dNdS0', 'residual_zoom0']
-
 
 		if self.gdat.data_path is None:
 			self.gdat.data_path = self.gdat.base_path+'/Data/spire/'
@@ -2267,12 +2519,16 @@ class lion():
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
 		self.data.load_in_data(self.gdat, map_object=map_object, show_input_maps=self.gdat.show_input_maps)
 
+		# TODO add something that computes the nominal Nsrc down to min flux density threshold given flux prior and map size/resolution.
+
+
 		if self.gdat.F_statistic_alph:
-			npix = np.sum(np.array([self.gdat.imszs[b][0]*self.gdat.imszs[b][1] for b in range(self.gdat.nbands)]))
-			alph = 0.5*(2.+self.gdat.nbands)*npix/(npix - (2.+self.gdat.nbands)*self.gdat.nominal_nsrc)
-			alph /= 0.5*(2.+self.gdat.nbands) # regularization prior is normalized relative to limit with infinite data, per degree of freedom
+			alph = compute_Fstat_alph(self.gdat.imszs, self.gdat.nbands, self.gdat.nominal_nsrc)
+			# npix = np.sum(np.array([self.gdat.imszs[b][0]*self.gdat.imszs[b][1] for b in range(self.gdat.nbands)]))
+			# alph = 0.5*(2.+self.gdat.nbands)*npix/(npix - (2.+self.gdat.nbands)*self.gdat.nominal_nsrc)
+			# alph /= 0.5*(2.+self.gdat.nbands) # regularization prior is normalized relative to limit with infinite data, per degree of freedom
 			self.gdat.alph = alph
-			print('alph computed from the F statistic with '+str(self.gdat.nominal_nsrc)+' sources is '+str(np.round(alph, 3)))
+			print('Regularization prior (per degree of freedom) computed from the F-statistic with '+str(self.gdat.nominal_nsrc)+' sources is '+str(np.round(alph, 3)))
 
 		# fourier comp
 		if self.gdat.float_fourier_comps:
@@ -2328,7 +2584,7 @@ class lion():
 
 
 	def initialize_libmmult(self):
-
+		''' Initializes matrix multiplication used in PCAT.'''
 		if self.gdat.cblas:
 			print('Using CBLAS routines for Intel processors.. :-) ', file=self.gdat.flog)
 
@@ -2363,10 +2619,18 @@ class lion():
 
 
 	def main(self):
+		''' 
+		Here is where we initialize the C libraries and instantiate the arrays that will store our 
+		thinned samples and other stats. We want the MKL routine if possible, then OpenBLAS, then regular C, with that order in priority.
+		This is also where the MCMC sampler is initialized and run.
 
-		''' Here is where we initialize the C libraries and instantiate the arrays that will store our 
-		thinned samples and other stats. We want the MKL routine if possible, then OpenBLAS, then regular C,
-		with that order in priority.'''
+		Returns
+		-------
+
+		models (optional): 'list' of 'np.array' of type 'float' and shape (dimx, dimy). 
+		If self.gdat.return_median_model is True, this is returned (default is False).
+
+		'''
 
 		self.initialize_print_log()
 		
