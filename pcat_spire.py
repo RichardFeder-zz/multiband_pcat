@@ -1004,6 +1004,17 @@ class Model:
 					# print('self.stars[self._F:0:self.n],', self.stars[self._F:,0:self.n])
 					# print('proposal.fphon', proposal.fphon)
 
+					# plt.figure(figsize=(12, 5))
+					# plt.subplot(1,2,1)
+					# plt.imshow(mods[0], cmap='Greys')
+					# plt.colorbar()
+					# # plt.subplot(1,3,2)
+					# # plt.imshow(diff2s_nomargin, cmap='Greys')
+					# # plt.colorbar()
+					# plt.subplot(1,2,2)
+					# plt.imshow(dmodels[0], cmap='Greys')
+					# plt.colorbar()
+					# plt.show()
 
 				elif rtype == 4: # template
 
@@ -1073,27 +1084,37 @@ class Model:
 					else:
 						print('proposal factor is None')
 
-				else:
+				# else:
 					# is this taking the prior factor to the power nregion ^ 2 ? I think it might, TODO
-					if proposal.factor is not None:
+					# if proposal.factor is not None:
 
 						# if rtype == 3 and self.gdat.coupled_bkg_prop:
 							# print('dlogP = ', dlogP)
 							# print('proposal.factor is ', proposal.factor)
-						dlogP += (proposal.factor/(dlogP.shape[0]*dlogP.shape[1]))
+						# dlogP += (proposal.factor/(dlogP.shape[0]*dlogP.shape[1])) # dividing by the number of subregions 
 
 				
 				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 
-				if rtype < 3: # fourier comp
+				if rtype < 3:
+
 					acceptprop = acceptreg[regiony, regionx]
 					numaccept = np.count_nonzero(acceptprop)
 
 				else:
 					# if background proposal:
 					# sum up existing logL from subregions
+
 					total_logL = np.sum(logL)
 					total_dlogP = np.sum(dlogP)
+
+					if np.abs(total_dlogP) > 500:
+						print('doophy total dlogP is ', total_dlogP)
+
+					if proposal.factor is not None:
+						if np.abs(proposal.factor) > 100:
+							print('whoaaaaa proposal.factor is ', proposal.factor)
+						total_dlogP += proposal.factor
 
 					# compute dlogP over the full image
 					# compute acceptance
@@ -1102,6 +1123,11 @@ class Model:
 					if accept_or_not:
 						# set all acceptreg for subregions to 1
 						acceptreg = np.ones(shape=(self.nregy, self.nregx)).astype(np.int32)
+
+						if total_dlogP < -10.:
+							print('the chi squared degraded significantly in this proposal')
+							print('delta log likelihood:', total_dlogP-proposal.factor)
+							print('proposal.factor:', proposal.factor)
 					else:
 						acceptreg = np.zeros(shape=(self.nregy, self.nregx)).astype(np.int32)
 
@@ -1298,6 +1324,7 @@ class Model:
 		proposal : Proposal class object.
 	
 		'''
+
 		proposal = Proposal(self.gdat)
 		# I want this proposal to return the original dback + the proposed change. If the proposal gets approved later on
 		# then model.dback will be set to the updated state
@@ -1309,6 +1336,7 @@ class Model:
 		# this is to do coupled proposal between mean background normalization and point sources. The idea here is to compensate a change in background level with a
 		# change in point source fluxes. All (or maybe select?) sources across the FOV are perturbed by N_eff*dback. 
 		factor = None
+
 		if self.gdat.coupled_bkg_prop:
 			# integrated Jy/beam over beam --> average change in flux density for sources
 			dback_int = dback*self.gdat.N_eff 
@@ -1327,7 +1355,7 @@ class Model:
 			starsp = stars0.copy()
 			starsp[self._X,:] = stars0[self._X,:]
 			starsp[self._Y,:] = stars0[self._Y,:]
-			starsp[self._F+bkg_idx,:self.n] -= dback_int/len(idx_move)
+			starsp[self._F+bkg_idx,idx_move] -= dback_int/len(idx_move)
 
 			if bkg_idx==0:
 				fthr = self.gdat.trueminf
