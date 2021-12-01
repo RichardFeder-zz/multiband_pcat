@@ -139,6 +139,17 @@ def fluxes_to_color(flux1, flux2):
 
 	return 2.5*np.log10(flux1/flux2)
 
+def get_band_weights(band_idxs):
+	weights = []
+	for idx in band_idxs:
+		if idx is None:
+			weights.append(0.)
+		else:
+			weights.append(1.)
+	weights /= np.sum(band_weights)
+
+	return weights 
+
 def initialize_c(gdat, libmmult, cblas=False):
 
 	''' 
@@ -1108,8 +1119,8 @@ class Model:
 					total_logL = np.sum(logL)
 					total_dlogP = np.sum(dlogP)
 
-					if np.abs(total_dlogP) > 500:
-						print('doophy total dlogP is ', total_dlogP)
+					# if np.abs(total_dlogP) > 500:
+						# print('doophy total dlogP is ', total_dlogP)
 
 					if proposal.factor is not None:
 						if np.abs(proposal.factor) > 100:
@@ -1144,6 +1155,13 @@ class Model:
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
 
+					# if self.gdat.coupled_bkg_prop and rtype==3:
+					# 	plt.figure(figsize=(8, 6))
+					# 	plt.imshow(dmodels[b], origin='lower')
+					# 	plt.colorbar()
+					# 	plt.show()
+	
+
 					if self.gdat.cblas:
 
 						self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
@@ -1158,11 +1176,18 @@ class Model:
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
 
+
+
 					if nb==0:
 						diff2_total1 = diff2_acpt
 						nb += 1
 					else:
 						diff2_total1 += diff2_acpt
+
+					# if rtype == 3:
+					# 	print(diff2_total1)
+					# 	if diff2_total1 > 500:
+					# 		print('oooo diff2_total1 is ', diff2_total1, rtype, accept_or_not)
 
 					# if b==0:
 					# 	diff2_total1 = diff2_acpt
@@ -1240,6 +1265,11 @@ class Model:
 
 			for b in range(self.nbands):
 				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
+
+			if i > 0:
+				if diff2_list[i]-diff2_list[i-1] > 500: # testcoup
+					print('diff2s_list = ', diff2_list[i]-diff2_list[i-1], rtype, proposal.factor)
+
 
 			verbprint(self.verbtype, 'End of loop '+str(i), verbthresh=1)		
 			verbprint(self.verbtype, 'self.n = '+str(self.n), verbthresh=1)					
@@ -1344,13 +1374,11 @@ class Model:
 			# choose stars at random 
  
 			if self.gdat.couple_nfrac is not None:
-				idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac))
-				# print('idx move is ', idx_move)
+				idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
 			else:
 				idx_move = np.arange(self.n)
 
 			stars0 = self.stars.copy()
-
 			# change fluxes of stars in opposite direction to dback_int
 			starsp = stars0.copy()
 			starsp[self._X,:] = stars0[self._X,:]
@@ -1364,12 +1392,10 @@ class Model:
 
 			ltfmin_mask = (starsp[self._F+bkg_idx,:] < fthr)
 			gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
-			# print('self.n = ', self.n)
-			# print('gtrfmin has ', np.sum(gtrfmin_mask))
-			# print('ltfmin mask has ', np.sum(ltfmin_mask)-(self.max_nsrc-self.n), ' lt0 sources')
 			starsp[self._F+bkg_idx, ltfmin_mask] = stars0[self._F+bkg_idx, ltfmin_mask]
 
 			proposal.add_move_stars(idx_move, stars0, starsp)
+			# flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,idx_move], starsp[self._F+bkg_idx,idx_move])
 			flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,:], starsp[self._F+bkg_idx,:])
 			if factor is None:
 				factor = np.nansum(flux_couple_factor)
@@ -1397,6 +1423,7 @@ class Model:
 		'''
 		
 		proposal = Proposal(self.gdat)
+		factor = None
 
 		# set dfc_prob to zero if you only want to perturb the amplitudes
 		if np.random.uniform() < self.gdat.dfc_prob:
@@ -1406,24 +1433,73 @@ class Model:
 			
 			fc_sig_fac = self.temp_amplitude_sigs['fc']
 			
-			if self.gdat.fc_prop_alpha is not None:
+			if self.gdat.fc_prop_alpha is not None: 
 				ellmag = np.sqrt((proposal.idx0+1)**2 + (proposal.idx1+1)**2)/np.sqrt(2.)
 				fc_sig_fac *= ellmag**self.gdat.fc_prop_alpha
 
 			coeff_pert = np.random.normal(0, fc_sig_fac)
 			proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
 
+			if self.coupled_fc_prop:
+
+				fcomp = self.fourier_templates[b][proposal.idx0, proposal.idx1, proposal.idxk]
+
+				# choose stars at random 
+				if self.gdat.couple_nfrac is not None:
+					idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
+				else:
+					idx_move = np.arange(self.n)
+
+				stars0 = self.stars.copy()
+
+				# change fluxes of stars in opposite direction to dback_int
+				starsp = stars0.copy()
+				starsp[self._X,:] = stars0[self._X,:]
+				starsp[self._Y,:] = stars0[self._Y,:]
+
+				# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
+				xfloors = np.floor(starsp[self._X,idx_move])
+				yfloors = np.floor(starsp[self._Y,idx_move])
+				print('xfloors is ', xfloors)
+				dflux_fc = -coeff_pert*self.N_eff*np.array([fcomp[xfloors[i],yfloors[i]] for i in range(len(idx_move))])
+				print('dflux is ', dflux_fc)
+
+				for band_idx in range(self.gdat.nbands):
+					starsp[self._F+band_idx,idx_move] -= dflux_fc*self.fc_rel_amps[band_idx]/len(idx_move)/np.sqrt(self.gdat.nbands)
+
+					if band_idx==0:
+						fthr = self.gdat.trueminf
+					else:
+						fthr = 0.00001
+
+					ltfmin_mask = (starsp[self._F+band_idx,:] < fthr)
+					print('sum of ltfmin mask is ', np.sum(ltfmin_mask))
+					starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
+
+				proposal.add_move_stars(idx_move, stars0, starsp)
+
+
+				# flux_couple_factor = self.compute_flux_prior(stars0[self._F,idx_move], starsp[self._F,idx_move])
+				# color_factors_orig, colors_orig = self.compute_color_prior(stars0[self._F:,idx_move])
+				# color_factors_prop, colors_prop = self.compute_color_prior(starsp[self._F:,idx_move])
+
+				flux_couple_factor = self.compute_flux_prior(stars0[self._F,:], starsp[self._F,:])
+				color_factors_orig, colors_orig = self.compute_color_prior(stars0[self._F:,:])
+				color_factors_prop, colors_prop = self.compute_color_prior(starsp[self._F:,:])
+				color_factors = color_factors_prop - color_factors_orig
+
+				if factor is None:
+					factor = np.nansum(flux_couple_factor)
+				factor += np.sum(color_factors)
+
+				proposal.set_factor(factor)
+
+
 		else:
 
 			proposal.fc_rel_amp_bool=True
-			band_weights = []
-
-			for idx in self.gdat.fourier_band_idxs:
-				if idx is None:
-					band_weights.append(0.)
-				else:
-					band_weights.append(1.)
-			band_weights /= np.sum(band_weights)
+			# band_weights = []
+			band_weights = get_band_weights(self.gdat.fourier_band_idxs)
 			band_idx = int(np.random.choice(self.gdat.fourier_band_idxs, p=band_weights))
 
 			d_amp = np.random.normal(0, scale=self.fourier_amp_sig)
@@ -1466,19 +1542,13 @@ class Model:
 				proposal.dtemplate[template_idx,:] = d_amp
 
 		else:
-			band_weights = []
-			for idx in temp_band_idxs:
-				if np.isnan(idx):
-					band_weights.append(0.)
-				else:
-					band_weights.append(1.)
+			band_weights = get_band_weights(temp_band_idxs) # this function returns normalized weights
 
 			# uncomment to institute DELTA FN PRIOR SZE @ 250 micron
 			if self.gdat.template_order[template_idx] == 'sze':
 				# print('setting weight to zero')
 				band_weights[0] = 0.
-
-			band_weights /= np.sum(band_weights)
+				band_weights /= np.sum(band_weights)
 
 			band_idx = int(np.random.choice(temp_band_idxs, p=band_weights))
 
@@ -1486,7 +1556,33 @@ class Model:
 
 			proposal.perturb_band_idx = band_idx
 
-		# update: now using a non-negativity prior on SZ amplitudes (might be good for dust as well at some point).
+			if self.gdat.coupled_profile_temp_prop:
+
+				idx_move = np.random.choice(np.arange(self.n), self.gdat.coupled_profile_temp_nsrc, replace=False) # want drawing without replacement
+				stars0 = self.stars.copy()
+
+				# change fluxes of stars in opposite direction to dback_int
+				starsp = stars0.copy()
+				starsp[self._X,:] = stars0[self._X,:]
+				starsp[self._Y,:] = stars0[self._Y,:]
+
+				# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
+				xfloors = np.floor(starsp[self._X,idx_move])
+				yfloors = np.floor(starsp[self._Y,idx_move])
+
+				# change in fluxes
+				dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.N_eff*np.array([self.dat.template_array[band_idx][template_idx][xfloors[i],yfloors[i]] for i in range(len(idx_move))])
+				print('dflux_fc is ', dflux_fc)
+				starsp[self._F+band_idx,idx_move] -= dflux_fc*self.fc_rel_amps[band_idx]/len(idx_move)/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))?
+				
+				proposal.add_move_stars(idx_move, stars0, starsp)
+
+				flux_couple_factor = self.compute_flux_prior(stars0[self._F+band_idx,idx_move], starsp[self._F+band_idx,idx_move])
+				if factor is None:
+					factor = np.nansum(flux_couple_factor)
+				proposal.set_factor(factor)
+
+
 		# the lines below are implementing a step function prior where the ln(prior) = -np.inf when the amplitude is negative
 		if self.gdat.template_order[template_idx] == 'sze' and self.gdat.sz_positivity_prior:
 			
@@ -1551,26 +1647,49 @@ class Model:
 		return logp_dpl
 
 	def compute_flux_prior(self, f0, pf):
+		''' Function to compute the delta log prior of the flux distribution between model states.
 
+		Parameters
+		----------
+
+		self : 'Model' class object. The flux distribution type is obtained from the class object.
+
+		f0 : 'np.array'. Original flux densities
+		pf : 'np.array'. Proposed flux densities
+
+		Returns
+		-------
+
+		factor : 'np.array' of length len(f0). Delta log-prior for each source
+		'''
 		if self.gdat.flux_prior_type=='single_power_law':
 			dlogf = np.log(pf/f0)
 			factor = -self.truealpha*dlogf
-			# verbprint('factor at move_stars for single power law are ', factor)
 		
 		elif self.gdat.flux_prior_type=='double_power_law':
 			log_prior_dpow_pf = np.log(pdfn_dpow(pf,  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
 			log_prior_dpow_f0 = np.log(pdfn_dpow(f0,  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
-			# verbprint('log_prior_dpow_pf:', log_prior_dpow_pf)
-			# verbprint('log_prior_dpow_f0:', log_prior_dpow_f0)
-
 			factor = log_prior_dpow_pf - log_prior_dpow_f0
-			# verbprint('factor at move_stars for dpl is ', factor)
 
 		else:
 			print("Need a valid flux prior type (either single_power_law or double_power_law")
 			factor = None
 
 		return factor
+
+	def compute_color_prior(self, fluxes):
+		all_colors = []
+		color_factors = []
+		for b in range(self.nbands-1):
+			if self.linear_flux:
+				colors = fluxes[0]/fluxes[b+1]
+			else:
+				colors = fluxes_to_color(fluxes[0], fluxes[b+1])
+			colors[np.isnan(colors)] = self.color_mus[b]
+			all_colors.append(colors)
+			color_factors.append(-(colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2))
+
+		return np.array(color_factors), all_colors
 
 	def move_stars(self): 
 
@@ -1579,6 +1698,7 @@ class Model:
 		a position change that depends on the max flux of the source, i.e. max(current flux vs. proposed flux). 
 
 		'''
+
 		idx_move = self.idx_parity_stars()
 		nw = idx_move.size
 		stars0 = self.stars.take(idx_move, axis=1)
@@ -1586,7 +1706,7 @@ class Model:
 		
 		f0 = stars0[self._F:,:]
 		pfs = []
-		color_factors = np.zeros((self.nbands-1, nw)).astype(np.float32)
+		# color_factors = np.zeros((self.nbands-1, nw)).astype(np.float32)
 
 		for b in range(self.nbands):
 			if b==0:
@@ -1630,20 +1750,29 @@ class Model:
 		''' the loop over bands below computes colors and prior factors in color used when sampling the posterior
 		come back to this later  '''
 		modl_eval_colors = []
-		for b in range(self.nbands-1):
-			if self.linear_flux:
-				colors = pfs[0]/pfs[b+1]
-				orig_colors = f0[0]/f0[b+1]
-			else:
-				colors = fluxes_to_color(pfs[0], pfs[b+1])
-				orig_colors = fluxes_to_color(f0[0], f0[b+1])
-			
-			colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
-			orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
 
-			color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-			color_factors[b] += (orig_colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-			modl_eval_colors.append(colors)
+		color_factors_orig, colors_orig = self.compute_color_prior(f0)
+		color_factors_prop, colors_prop = self.compute_color_prior(pfs)
+		color_factors = color_factors_prop - color_factors_orig
+
+
+		for b in range(self.nbands-1):
+			modl_eval_colors.append(colors_prop[b])
+
+			# colors = None
+			# if self.linear_flux:
+			# 	colors = pfs[0]/pfs[b+1]
+			# 	orig_colors = f0[0]/f0[b+1]
+			# else:
+			# 	colors = fluxes_to_color(pfs[0], pfs[b+1])
+			# 	orig_colors = fluxes_to_color(f0[0], f0[b+1])
+			
+			# colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
+			# orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
+
+			# color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+			# color_factors[b] += (orig_colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
+			# modl_eval_colors.append(colors)
 	
 		assert np.isnan(color_factors).any()==False       
 
@@ -2268,6 +2397,11 @@ class lion():
 
 			diffuse_comp_path = None, \
 
+			# coupled proposals between template describing profile (e.g., SZ surface brightness profile) and point sources
+			coupled_profile_temp_prop = False, \
+
+			# number of sources to perturb each time
+			coupled_profile_temp_nsrc = 1, \
 
 			# ---------------------------------- FOURIER COMPONENT PARAMS ----------------------------------------
 
@@ -2309,6 +2443,9 @@ class lion():
 			mean_sig = True, \
 
 			ridge_fac = 2., \
+
+			# if True, PCAT couples Fourier component proposals with change in point source fluxes
+			coupled_fc_prop = True, \
 
 			# --------------------------------- DATA CONFIGURATION ----------------------------------------
 
