@@ -70,7 +70,25 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 	return psfnew, cf, nc, nbin
 
 def make_pcat_fits_file_simp(images, card_names, new_wcs=None, header=None, janscalefac=None):
-    
+    ''' Simple function for making FITS file from set of images and desired HDU card names. 
+
+	Parameters
+	----------
+
+	images : 
+	card_names :
+	new_wcs (optional) :
+		Default is 'None'.
+	header (optional) : 
+		Default is 'None'.
+	janscalefac (optional) :
+		Default is 'None'.
+
+	Returns
+	-------
+
+	hdulist : 'list' of 'astropy.fits.HDU' objects. FITS file just absolutely ready to be saved
+    '''
     hdu = fits.PrimaryHDU(None)
     
     if header is not None:
@@ -405,7 +423,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 	y0 = None
 
 	if not gdat.use_errmap:
-		error = np.zeros((gdat.width, gdat.height))
+		error = np.zeros_like(image)
 
 	elif gdat.err_fpath is None:
 
@@ -450,7 +468,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 				noise_sig = gdat.scalar_noise_sigma[band]
 
 			noise_realization = np.random.normal(0, noise_sig, (image.shape[0], image.shape[1]))
-			image[error != 0] += noise_realization[error != 0]
+			image += noise_realization
 
 			if not gdat.use_errmap:
 				error = noise_sig*np.ones((image.shape[0], image.shape[1]))
@@ -577,7 +595,20 @@ def load_param_dict(timestr=None, result_path='/Users/luminatech/Documents/multi
 
 def get_rect_mask_bounds(mask):
 
-	''' this function assumes the mask is rectangular in shape, with ones in the desired region and zero otherwise. '''
+	''' 
+	This function assumes the mask is rectangular in shape, with ones in the desired region and zero otherwise.
+	
+	Parameters
+	----------
+
+	mask : 'np.array' of type 'int'. Mask
+
+	Returns
+	-------
+
+	bounds : 'np.array' of type 'float' and shape (2, 2). x and y bounds for mask.
+
+	'''
 
 	idxs = np.argwhere(mask == 1.0)
 	bounds = np.array([[np.min(idxs[:,0]), np.max(idxs[:,0])], [np.min(idxs[:,1]), np.max(idxs[:,1])]])
@@ -585,10 +616,14 @@ def get_rect_mask_bounds(mask):
 	return bounds
 
 
-''' This class sets up the data structures for data/data-related information. 
-load_in_data() loads in data, generates the PSF template and computes weights from the noise model
-'''
+
 class pcat_data():
+
+	''' 
+	This class sets up the data structures for data/data-related information. 
+	
+	- load_in_data() loads in data, generates the PSF template and computes weights from the noise model
+	'''
 
 	template_bands = dict({'sze':['S', 'M', 'L'], 'szetemp':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L'], 'planck':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
 
@@ -602,13 +637,34 @@ class pcat_data():
 
 		'''
 		This function does the heavy lifting for parsing input data products and setting up variables in pcat_data class. At some point, template section should be cleaned up.
+		This is an in place operation. 
+
+		Parameters
+		----------
+
+		gdat : Global data object. 
+
+		map_object (optional) : 
+				Default is 'None'.
+		tail_name (optional) : 
+				Default is 'None'.
+		show_input_maps (optional) : 'boolean'.
+				Default is 'False'.
+		temp_mock_amps_dict (optional) :  'dictionary' of floats.
+				Default is 'None'.
+		flux_density_conversion_dict (optional) : 'dictionary' of floats.
+				Default is 'None'. 
+		sed_cirrus (optional) : 
+
 		'''
 
 		if flux_density_conversion_dict is None:
 			flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
 
 		if temp_mock_amps_dict is None:
-			temp_mock_amps_dict = dict({'S':0.03, 'M': 0.2, 'L': 0.8}) # MJy/sr
+			temp_mock_amps_dict = dict({'S':0.4, 'M': 0.2, 'L': 0.8}) # MJy/sr, this was to test how adding a signal at 250 um (like dust) would affect the fit if not modeled
+
+			# temp_mock_amps_dict = dict({'S':0.03, 'M': 0.2, 'L': 0.8}) # MJy/sr
 
 		if sed_cirrus is None:
 			sed_cirrus = dict({100:1.7, 250:3.5, 350:1.6, 500:0.85}) # MJy/sr

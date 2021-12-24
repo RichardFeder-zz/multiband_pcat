@@ -251,7 +251,11 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 		if 'data' in panels[i]:
 
-			plt.imshow(obj.dat.data_array[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[band_idx], 5.), vmax=np.percentile(obj.dat.data_array[band_idx], 95.0))
+			if 'minusptsrc' in panels[i] and fourier_bkg is not None:
+				plt.imshow(resids[band_idx]+fourier_bkg[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(resids[band_idx]+fourier_bkg[band_idx], 5.), vmax=np.percentile(resids[band_idx]+fourier_bkg[band_idx], 95.0))
+			else:				
+				plt.imshow(obj.dat.data_array[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[band_idx], 5.), vmax=np.percentile(obj.dat.data_array[band_idx], 95.0))
+
 			plt.colorbar(fraction=0.046, pad=0.04)
 
 			if band_idx > 0:
@@ -270,6 +274,8 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 				plt.title('Data (band '+str(band_idx)+')')
 				plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
 				plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
+
+
 
 		elif 'model' in panels[i]:
 
@@ -943,6 +949,8 @@ def plot_posterior_bkg_amplitude(bkg_samples, band='250 micron', title=True, sho
 def plot_posterior_template_amplitude(template_samples, band='250 micron', template_name='sze', title=True, show=False, xlabel='Amplitude', convert_to_MJy_sr_fac=None, \
 									mock_truth=None, xlabel_unit=None):
 	
+
+	# print('template samples is ', template_samples)
 	if convert_to_MJy_sr_fac is None:
 		convert_to_MJy_sr_fac = 1.
 
@@ -960,10 +968,11 @@ def plot_posterior_template_amplitude(template_samples, band='250 micron', templ
 		plt.title(template_name +' template level - '+str(band))
 
 	if not np.isnan(template_samples).any() and np.std(template_samples) != 0:
-		if len(template_samples)>50:
-			binz = scotts_rule_bins(template_samples/convert_to_MJy_sr_fac)
-		else:
-			binz = 10
+		binz = 10
+		# if len(template_samples)>50:
+			# binz = scotts_rule_bins(template_samples/convert_to_MJy_sr_fac)
+		# else:
+			# binz = 10
 		plt.hist(np.array(template_samples)/convert_to_MJy_sr_fac, label=band, histtype='step', bins=binz)
 	if mock_truth is not None:
 		plt.axvline(mock_truth, linestyle='dashdot', color='r', label='Mock truth')
@@ -1648,7 +1657,9 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	if title_band_dict is None:
 		title_band_dict = dict({0:'250 micron', 1:'350 micron', 2:'500 micron'})
 	if temp_mock_amps_dict is None:
-		temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912}) # MJy/sr
+		# temp_mock_amps_dict = dict({'S':0.0111, 'M': 0.1249, 'L': 0.6912}) # MJy/sr
+		temp_mock_amps_dict = dict({'S':0.4, 'M': 0.2, 'L': 0.8}) # MJy/sr, this was to test how adding a signal at 250 um (like dust) would affect the fit if not modeled
+
 	if lam_dict is None:
 		lam_dict = dict({0:250, 1:350, 2:500}) # microns
 	if pixel_sizes is None:

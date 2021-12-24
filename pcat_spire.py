@@ -146,7 +146,7 @@ def get_band_weights(band_idxs):
 			weights.append(0.)
 		else:
 			weights.append(1.)
-	weights /= np.sum(band_weights)
+	weights /= np.sum(weights)
 
 	return weights 
 
@@ -816,6 +816,15 @@ class Model:
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 				# diff2s = diff2
+			
+			# if rtype==4:
+			# 	plt.figure()
+			# 	plt.title('bandidx = '+str(b))
+			# 	plt.imshow(dmodel)
+			# 	plt.colorbar()
+			# 	plt.show()
+
+
 			if nb==0:
 				diff2s = diff2
 				nb += 1
@@ -1119,8 +1128,7 @@ class Model:
 					total_logL = np.sum(logL)
 					total_dlogP = np.sum(dlogP)
 
-					# if np.abs(total_dlogP) > 500:
-						# print('doophy total dlogP is ', total_dlogP)
+					# print('total dlogP is ', total_dlogP)
 
 					if proposal.factor is not None:
 						if np.abs(proposal.factor) > 100:
@@ -1137,8 +1145,8 @@ class Model:
 
 						if total_dlogP < -10.:
 							print('the chi squared degraded significantly in this proposal')
-							print('delta log likelihood:', total_dlogP-proposal.factor)
-							print('proposal.factor:', proposal.factor)
+						# 	print('delta log likelihood:', total_dlogP-proposal.factor)
+						# 	print('proposal.factor:', proposal.factor)
 					else:
 						acceptreg = np.zeros(shape=(self.nregy, self.nregx)).astype(np.int32)
 
@@ -1177,7 +1185,6 @@ class Model:
 					models[b] += dmodel_acpt
 
 
-
 					if nb==0:
 						diff2_total1 = diff2_acpt
 						nb += 1
@@ -1202,10 +1209,24 @@ class Model:
 					if rtype==3:
 
 						self.stars = proposal.starsp
-						# idx_move_a = proposal.idx_move
+
+					elif self.gdat.coupled_profile_temp_prop and rtype==4:
+						# print('idx move here is ', proposal.idx_move)
+
+						if accept_or_not: 
+							acceptprop = np.zeros((self.stars.shape[1],))
+							acceptprop[proposal.idx_move] = 1
+
+							starsp = proposal.starsp.compress(acceptprop, axis=1)
+							# print('aaand here starsp has shape', starsp.shape)
+
+							# print('stars, starsp:', self.stars[:, proposal.idx_move], starsp)
+							self.stars[:, proposal.idx_move] = starsp
+
 					else:
+						# print('while acceptprop has shape ', acceptprop.shape)
 						starsp = proposal.starsp.compress(acceptprop, axis=1)
-						# print(acceptprop.shape, starsp.shape)
+						# print("starsp has shape", starsp.shape)
 
 						idx_move_a = proposal.idx_move.compress(acceptprop)
 
@@ -1461,7 +1482,7 @@ class Model:
 				xfloors = np.floor(starsp[self._X,idx_move])
 				yfloors = np.floor(starsp[self._Y,idx_move])
 				print('xfloors is ', xfloors)
-				dflux_fc = -coeff_pert*self.N_eff*np.array([fcomp[xfloors[i],yfloors[i]] for i in range(len(idx_move))])
+				dflux_fc = -coeff_pert*self.gdat.N_eff*np.array([fcomp[xfloors[i],yfloors[i]] for i in range(len(idx_move))])
 				print('dflux is ', dflux_fc)
 
 				for band_idx in range(self.gdat.nbands):
@@ -1491,7 +1512,6 @@ class Model:
 				if factor is None:
 					factor = np.nansum(flux_couple_factor)
 				factor += np.sum(color_factors)
-
 				proposal.set_factor(factor)
 
 
@@ -1529,6 +1549,7 @@ class Model:
 
 		template_idx = np.random.choice(self.n_templates) # if multiple templates, choose one to change at a time
 		temp_band_idxs = self.gdat.template_band_idxs[template_idx]
+		factor = None
 
 		# d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs[self.gdat.template_order[template_idx]])
 
@@ -1546,7 +1567,6 @@ class Model:
 
 			# uncomment to institute DELTA FN PRIOR SZE @ 250 micron
 			if self.gdat.template_order[template_idx] == 'sze':
-				# print('setting weight to zero')
 				band_weights[0] = 0.
 				band_weights /= np.sum(band_weights)
 
@@ -1557,8 +1577,6 @@ class Model:
 			proposal.perturb_band_idx = band_idx
 
 			if self.gdat.coupled_profile_temp_prop:
-
-				idx_move = np.random.choice(np.arange(self.n), self.gdat.coupled_profile_temp_nsrc, replace=False) # want drawing without replacement
 				stars0 = self.stars.copy()
 
 				# change fluxes of stars in opposite direction to dback_int
@@ -1566,15 +1584,39 @@ class Model:
 				starsp[self._X,:] = stars0[self._X,:]
 				starsp[self._Y,:] = stars0[self._Y,:]
 
+				xpf, ypf = self.dat.fast_astrom.transform_q(starsp[self._X,:], starsp[self._Y,:], band_idx-1)
+				xpf = np.floor(xpf).astype(np.int)
+				ypf = np.floor(ypf).astype(np.int)
+
+				temp_vals = np.array([self.dat.template_array[band_idx][template_idx][xpf[i],ypf[i]] for i in range(self.n)])
+				temp_vals_norm = temp_vals/np.sum(temp_vals)
+				idx_move = np.random.choice(np.arange(self.n), self.gdat.coupled_profile_temp_nsrc, replace=False, p=temp_vals_norm) # want drawing without replacement
+
 				# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
-				xfloors = np.floor(starsp[self._X,idx_move])
-				yfloors = np.floor(starsp[self._Y,idx_move])
+				# xp, yp = self.dat.fast_astrom.transform_q(starsp[self._X,idx_move], starsp[self._Y,idx_move], band_idx-1)
+				# xp = np.floor(xp).astype(np.int)
+				# yp = np.floor(yp).astype(np.int)
 
 				# change in fluxes
-				dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.N_eff*np.array([self.dat.template_array[band_idx][template_idx][xfloors[i],yfloors[i]] for i in range(len(idx_move))])
-				print('dflux_fc is ', dflux_fc)
-				starsp[self._F+band_idx,idx_move] -= dflux_fc*self.fc_rel_amps[band_idx]/len(idx_move)/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))?
+				# print('proposal.dtemplate[template_idx,band_idx]:', proposal.dtemplate[template_idx,band_idx])
+				# print('idx move is ', idx_move)
+				# dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.gdat.N_eff*np.array([self.dat.template_array[band_idx][template_idx][xpf[idx_move][i],ypf[idx_move][i]] for i in range(len(idx_move))])
+
+				dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.gdat.N_eff*temp_vals[idx_move]
+
+				starsp[self._F+band_idx,idx_move] -= dflux_fc/len(idx_move)/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))
+				# starsp[self._F+band_idx,idx_move] -= dflux_fc/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))?
 				
+				if band_idx==0:
+					fthr = self.gdat.trueminf
+				else:
+					fthr = 0.00001
+				ltfmin_mask = (starsp[self._F+band_idx,:] < fthr)
+				# gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
+				starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
+
+
+
 				proposal.add_move_stars(idx_move, stars0, starsp)
 
 				flux_couple_factor = self.compute_flux_prior(stars0[self._F+band_idx,idx_move], starsp[self._F+band_idx,idx_move])
@@ -2281,7 +2323,6 @@ class lion():
 	As a note, there may be a better way of structuring this, or in storing variable initializations in dedicated parameter files.
 
 	'''
-
 
 	gdat = gdatstrt()
 
