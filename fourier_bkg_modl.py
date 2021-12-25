@@ -6,6 +6,78 @@ import matplotlib.pyplot as plt
 from astropy.stats import sigma_clipped_stats
 from image_eval import psf_poly_fit, image_model_eval
 from scipy.ndimage import gaussian_filter
+from spire_plotting_fns import plot_mp_fit
+
+
+def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
+                           ravel_temps=None, fourier_templates=None,  psf_fwhm=3., \
+                          ridge_fac = None, show=False, x_max_pivot=None, verbose=True):
+    
+    '''
+    NOTE -- this only works for single band at the moment. Is there a way to compute the Moore-Penrose inverse for 
+    backgrounds observed over several bands with a fixed color prior? 
+
+    also , I think that using the full noise model in the matrix product is necessary when using multiband and multi-region
+    evaluations. This might already be handled in the code by zeroing out NaNs.
+    
+    Condition number is not sensitive to multiplicative normalization tried this
+    
+    '''
+    
+    if imsz is None:
+        imsz = error.shape
+        
+    if verbose:
+        print('n_terms is ', n_terms)
+        
+    if ravel_temps is None:
+        if fourier_templates is None:
+            fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
+        ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
+    
+    im_cut_rav = data.copy().ravel()
+    err_cut_rav = error.copy().ravel()
+    
+    # compress system of equations excluding any nan-valued entries
+    nanmask = np.logical_or((err_cut_rav ==0), np.logical_or(np.isnan(err_cut_rav), np.isnan(im_cut_rav)))
+    ravel_temps = ravel_temps.compress(~nanmask, axis=1)
+    im_cut_rav = im_cut_rav.compress(~nanmask)
+    err_cut_rav = err_cut_rav.compress(~nanmask)
+
+    if bt_siginv_b_inv is None:
+        if verbose:
+            print('min max err cut rav:', np.min(err_cut_rav), np.max(err_cut_rav))
+            print('min max err cut rav inv2:', np.min(np.diag(err_cut_rav**(-2))), np.max(np.diag(err_cut_rav**(-2))))
+            print('min max ravel temps:', np.min(ravel_temps), np.max(ravel_temps))
+
+        bt_siginv_b = np.dot(ravel_temps, np.dot(np.diag(err_cut_rav**(-2)), ravel_temps.transpose()))
+            
+        assert ~np.isnan(np.linalg.cond(bt_siginv_b))
+
+        if verbose:
+            print('condition number of (B^T S^{-1} B)^{-1}: ', np.linalg.cond(bt_siginv_b))
+        
+        if ridge_fac is not None:
+            if verbose:
+                print('adding regularization')
+                
+            lambda_I = np.zeros_like(bt_siginv_b)
+            np.fill_diagonal(lambda_I, ridge_fac)
+            bt_siginv_b += lambda_I
+            
+        bt_siginv_b_inv = np.linalg.inv(bt_siginv_b)
+    
+    siginv_K_rav = im_cut_rav*err_cut_rav**(-2) # Sigma^-1 Y
+    bt_siginv_K = np.dot(ravel_temps, siginv_K_rav) # B^T Sigma^-1 Y
+    A_hat = np.dot(bt_siginv_b_inv, bt_siginv_K) # (B^T Sigma^-1 B^-1 + Lambda I) B^T Sigma^-1 Y
+    mp_coeffs = np.reshape(A_hat, (n_terms, n_terms, 4))
+    temp_A_hat = generate_template(mp_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1], x_max_pivot=x_max_pivot)
+
+    if show:
+        plot_mp_fit(temp_A_hat, n_terms, A_hat, data)
+        
+        
+    return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, mp_coeffs, temp_A_hat
 
 
 def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
@@ -21,10 +93,9 @@ def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_sigin
     if imsz is None:
         imsz = error.shape
 
-    if fourier_templates is None and ravel_temps is None:
-        fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
-
     if ravel_temps is None:
+        if fourier_templates is None:
+            fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
         ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
     
     err_cut_rav = error.ravel()
@@ -47,7 +118,6 @@ def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_sigin
         else:
             bt_siginv_b_inv = np.linalg.inv(bt_siginv_b)
 
-
     if mean_sig:
         bt_siginv_b_inv *= np.nanmean(error.astype(np.float64))**2
                 
@@ -65,65 +135,55 @@ def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_sigin
         else:
             siginv_K_rav = im_cut_rav*err_cut_rav**(-2)
 
-
-
         siginv_K_rav[np.isinf(siginv_K_rav)] = 0.
-
         bt_siginv_K = np.dot(ravel_temps, siginv_K_rav)
-
         A_hat = np.dot(bt_siginv_b_inv, bt_siginv_K)
 
 
-        arr_3d = np.empty((n_terms,n_terms,4))
-        count = 0
-        for i in range(n_terms):
-            for j in range(n_terms):
-                for k in range(4):
-                    arr_3d[i,j,k] = A_hat[count]
-                    count += 1
+        mp_coeffs = np.reshape(A_hat, (n_terms, n_terms, 4))
 
-
-        temp_A_hat = generate_template(arr_3d, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1], x_max_pivot=x_max_pivot)
+        temp_A_hat = generate_template(mp_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1], x_max_pivot=x_max_pivot)
 
         if show:
-
-            plt.figure(figsize=(10,10))
-            plt.suptitle('Moore-Penrose inverse, $N_{FC}$='+str(n_terms), fontsize=20)
-            plt.subplot(2,2,1)
-            plt.title('Background estimate', fontsize=18)
-            plt.imshow(temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 99), vmin=np.percentile(temp_A_hat, 1))
-            plt.colorbar(fraction=0.046, pad=0.04)
-            plt.subplot(2,2,2)
-            plt.hist(np.abs(A_hat), bins=np.logspace(-5, 1, 30))
-            plt.xscale('log')
-            plt.xlabel('Absolute value of Fourier coefficients', fontsize=14)
-            plt.ylabel('N')
-            plt.subplot(2,2,3)
-            plt.title('Image', fontsize=18)
-            plt.imshow(data, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
-            plt.colorbar(fraction=0.046, pad=0.04)
-            plt.subplot(2,2,4)
-            plt.title('Image - Background estimate', fontsize=18)
-            plt.imshow(data-temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
-            plt.colorbar(fraction=0.046, pad=0.04)
-
-            plt.tight_layout()
-            plt.show()
+            plot_mp_fit(temp_A_hat, n_terms, A_hat, data)
 
         
-        return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, A_hat
+        return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, mp_coeffs
     
-    return fourier_templates, ravel_temps, bt_siginv_b_inv, A_hat
+    return fourier_templates, ravel_temps, bt_siginv_b_inv, None
+
+
+def plot_mp_fit(temp_A_hat, n_terms, A_hat, data):
+    plt.figure(figsize=(10,10))
+    plt.suptitle('Moore-Penrose inverse, $N_{FC}$='+str(n_terms), fontsize=20)
+    plt.subplot(2,2,1)
+    plt.title('Background estimate', fontsize=18)
+    plt.imshow(temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 99), vmin=np.percentile(temp_A_hat, 1))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.subplot(2,2,2)
+    plt.hist(np.abs(A_hat), bins=np.logspace(-5, 1, 30))
+    plt.xscale('log')
+    plt.xlabel('Absolute value of Fourier coefficients', fontsize=14)
+    plt.ylabel('N')
+    plt.subplot(2,2,3)
+    plt.title('Image', fontsize=18)
+    plt.imshow(data, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.subplot(2,2,4)
+    plt.title('Image - Background estimate', fontsize=18)
+    plt.imshow(data-temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    plt.show()
+
 
 def ravel_temps_from_ndtemp(templates, n_terms, auxdim=4):
-    ravel_temps = []
+    ''' Faster version of previous function '''
+    ravel_templates_all = np.reshape(templates, (templates.shape[0], templates.shape[1], auxdim, templates.shape[-2]*templates.shape[-1]))
     
-    for i in range(n_terms):
-        for j in range(n_terms):
-            for k in range(auxdim):
-                ravel_temps.append(templates[i,j,k].ravel())
-           
-    ravel_temps = np.array(ravel_temps)
+    ravel_temps = ravel_templates_all[:n_terms, :n_terms]
+    
+    ravel_temps = np.reshape(ravel_temps, (ravel_temps.shape[0]*ravel_temps.shape[1]*ravel_temps.shape[2], ravel_temps.shape[-1]))
     
     return ravel_temps
 
@@ -270,7 +330,7 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
     return templates
 
 
-def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M=None, psf_fwhm=None, x_max_pivot=None):
+def generate_template(fourier_coeffs, n_terms, fourier_templates=None, imsz=None, N=None, M=None, psf_fwhm=None, x_max_pivot=None):
 
     '''
     Given a set of coefficients and Fourier templates, computes their dot product.
@@ -316,8 +376,16 @@ def generate_template(fourier_coeffs, n_terms, fourier_templates=None, N=None, M
         The summed template.
 
     '''
+
+    if imsz is None and N is None and M is None:
+        print('need to provide input dimensions through either imsz or (N, M)')
+        return None
+
+    if imsz is None:
+        imsz = [N,M]
+        
     if fourier_templates is None:
-        fourier_templates = make_fourier_templates(N, M, n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
+        fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
 
     sum_temp = np.sum([fourier_coeffs[i,j,k]*fourier_templates[i,j,k] for i in range(n_terms) for j in range(n_terms) for k in range(fourier_coeffs.shape[-1])], axis=0)
     
@@ -423,3 +491,48 @@ def plot_logL(lnlz, N=100, M=100):
     plt.xlabel('Sample iteration', fontsize=18)
     plt.tight_layout()
     plt.show() 
+
+
+def compute_BT_B(n_terms, M, auxdim=4):
+    # this is supposed to be for computing the analytic covariance matrix of the fourier components, don't think it works, don't bother
+    bt_b = np.zeros((auxdim*n_terms**2, auxdim*n_terms**2))
+    
+    for i_d in range(n_terms):
+        for j_d in range(n_terms):
+            for k_d in range(auxdim):
+                
+                for i in range(n_terms):
+                    for j in range(n_terms):
+                        for k in range(auxdim):
+
+                            term1 = 0.
+                            term2 = 0.
+
+                            if i==i_d:
+                                
+                                if (k==0 and k_d==1) or (k==1 and k_d==0) or (k==2 and k_d==3) or (k==3 and k_d==2) or (k==0 and k_d==0) or (k==1 and k_d==1) or (k==2 and k_d==2) or (k==3 and k_d==3):
+                                    term1 = M/2.
+                        
+                            else:
+                                if (k==0 and k_d==2) or (k==0 and k_d==3) or (k==1 and k_d==2) or (k==1 and k_d==3) or (k==2 and k_d==0) or (k==2 and k_d==1) or (k==3 and k_d==0) or (k==3 and k_d==1):
+                                    
+                                    term1 = (M/np.pi)*((1/(2*(i-i_d)))*(1-np.cos(np.pi*(i-i_d))) +(1/(2*(i+i_d+2.)))*(1-np.cos(np.pi*(i+i_d))))
+                                                                                                        
+                            if j==j_d:
+                                
+                                if (k==0 and k_d==2) or (k==1 and k_d==3) or (k==2 and k_d==0) or (k==3 and k_d==1):
+                                    term2 = M/2.
+                                elif (k==0 and k_d==0) or (k==1 and k_d==1) or (k==2 and k_d==2) or (k==3 and k_d==3):
+                                    term2 = M/2.
+                                
+                            else:
+                                if (k==0 and k_d==1) or (k==0 and k_d==3) or (k==1 and k_d==0) or (k==1 and k_d==2) or (k==2 and k_d==1) or (k==2 and k_d==3) or (k==3 and k_d==0) or (k==3 and k_d==2):                         
+                                    
+                                    term2 = (M/np.pi)*((1./(2.*(j-j_d)))*(1.-np.cos(np.pi*(j-j_d))) +(1./(2.*(j+j_d+2.)))*(1.-np.cos(np.pi*(j+j_d))))
+                                
+                                
+                            bt_b[i_d*j_d*auxdim + j_d*auxdim + k_d, i*j*auxdim + j*auxdim + k] = term1*term2
+            
+    return bt_b
+
+

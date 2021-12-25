@@ -492,26 +492,30 @@ class Model:
 			
 			if self.gdat.bkg_moore_penrose_inv:
 
-				# ----- NOTE -------- this only works for single band images right now.
-
-				print('moore penrose inverse is happening!!!!!')
+				print('Moore Penrose inverse is happening!!!!!')
 				self.dat.data_array[0] -= np.nanmean(self.dat.data_array[0]) # this is done to isolate the fluctuation component
 				self.bkg[0] = 0.
 
+				_, _, _, bt_siginv_b_inv, mp_coeffs = compute_marginalized_templates(self.gdat.MP_order, self.dat.errors[0],\
+														fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
+														data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig, ridge_fac=self.gdat.ridge_fac)
+
+				self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
+
 				# this is for quick marginalization of the Fourier components with the data.
-				_, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
-																		fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
-																		data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig, ridge_fac=self.gdat.ridge_fac)
+				# _, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
+				# 														fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
+				# 														data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig, ridge_fac=self.gdat.ridge_fac)
 
-				init_coeffs = np.empty((self.gdat.MP_order,self.gdat.MP_order,4))
-				count = 0
-				for i in range(self.gdat.MP_order):
-					for j in range(self.gdat.MP_order):
-						for k in range(4):
-							init_coeffs[i,j,k] = A_hat[count]
-							count += 1
+				# init_coeffs = np.empty((self.gdat.MP_order,self.gdat.MP_order,4))
+				# count = 0
+				# for i in range(self.gdat.MP_order):
+				# 	for j in range(self.gdat.MP_order):
+				# 		for k in range(4):
+				# 			init_coeffs[i,j,k] = A_hat[count]
+				# 			count += 1
 
-				self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = init_coeffs.copy()
+				# self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = A_hat.copy()
 
 			self.n_fourier_terms = self.gdat.n_fourier_terms
 			self.dfc = np.zeros((self.n_fourier_terms, self.n_fourier_terms, 4))
@@ -2483,7 +2487,7 @@ class lion():
 
 			mean_sig = True, \
 
-			ridge_fac = 2., \
+			ridge_fac = 10., \
 
 			# if True, PCAT couples Fourier component proposals with change in point source fluxes
 			coupled_fc_prop = True, \

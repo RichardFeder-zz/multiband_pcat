@@ -879,6 +879,29 @@ def plot_fourier_coeffs_sample_chains(fourier_coeffs, show=False):
 	return f
 
 
+def plot_mp_fit(temp_A_hat, n_terms, A_hat, data):
+    plt.figure(figsize=(10,10))
+    plt.suptitle('Moore-Penrose inverse, $N_{FC}$='+str(n_terms), fontsize=20, y=1.02)
+    plt.subplot(2,2,1)
+    plt.title('Background estimate', fontsize=18)
+    plt.imshow(temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 99), vmin=np.percentile(temp_A_hat, 1))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.subplot(2,2,2)
+    plt.hist(np.abs(A_hat), bins=np.logspace(-5, 1, 30))
+    plt.xscale('log')
+    plt.xlabel('Absolute value of Fourier coefficients', fontsize=14)
+    plt.ylabel('N')
+    plt.subplot(2,2,3)
+    plt.title('Image', fontsize=18)
+    plt.imshow(data, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.subplot(2,2,4)
+    plt.title('Image - Background estimate', fontsize=18)
+    plt.imshow(data-temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(data-temp_A_hat, 95), vmin=np.percentile(data-temp_A_hat, 5))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    plt.show()
+
 def plot_posterior_fc_power_spectrum(fourier_coeffs, N, pixsize=6., show=False):
 
 	n_terms = fourier_coeffs.shape[1]
