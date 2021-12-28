@@ -253,6 +253,10 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 
 			if 'minusptsrc' in panels[i] and fourier_bkg is not None:
 				plt.imshow(resids[band_idx]+fourier_bkg[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(resids[band_idx]+fourier_bkg[band_idx], 5.), vmax=np.percentile(resids[band_idx]+fourier_bkg[band_idx], 95.0))
+			
+			elif 'minusfbkg' in panels[i] and fourier_bkg is not None:
+				plt.imshow(obj.dat.data_array[band_idx]-fourier_bkg[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[band_idx]-fourier_bkg[band_idx], 5.), vmax=np.percentile(obj.dat.data_array[band_idx]-fourier_bkg[band_idx], 95.0))
+
 			else:				
 				plt.imshow(obj.dat.data_array[band_idx], origin='lower', interpolation='none', cmap='Greys', vmin=np.percentile(obj.dat.data_array[band_idx], 5.), vmax=np.percentile(obj.dat.data_array[band_idx], 95.0))
 
@@ -877,7 +881,6 @@ def plot_fourier_coeffs_sample_chains(fourier_coeffs, show=False):
 
 
 	return f
-
 
 def plot_mp_fit(temp_A_hat, n_terms, A_hat, data):
     plt.figure(figsize=(10,10))

@@ -6,12 +6,11 @@ import matplotlib.pyplot as plt
 from astropy.stats import sigma_clipped_stats
 from image_eval import psf_poly_fit, image_model_eval
 from scipy.ndimage import gaussian_filter
-from spire_plotting_fns import plot_mp_fit
 
 
 def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
                            ravel_temps=None, fourier_templates=None,  psf_fwhm=3., \
-                          ridge_fac = None, show=False, x_max_pivot=None, verbose=True):
+                          ridge_fac = None, ridge_fac_alpha=None, show=True, x_max_pivot=None, verbose=True):
     
     '''
     NOTE -- this only works for single band at the moment. Is there a way to compute the Moore-Penrose inverse for 
@@ -20,7 +19,7 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
     also , I think that using the full noise model in the matrix product is necessary when using multiband and multi-region
     evaluations. This might already be handled in the code by zeroing out NaNs.
     
-    Condition number is not sensitive to multiplicative normalization tried this
+    Ridge factor is inversely proportional to fluctuation power in each mode. 
     
     '''
     
@@ -32,8 +31,13 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
         
     if ravel_temps is None:
         if fourier_templates is None:
-            fourier_templates = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot)
+            fourier_templates, meshx_idx, meshy_idx = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot, return_idxs=True)
         ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
+        kx_idx_rav = meshx_idx.ravel()
+        ky_idx_rav = meshy_idx.ravel()
+
+        print('kx idx rav:', kx_idx_rav)
+        print('kx idx rav:', ky_idx_rav)
     
     im_cut_rav = data.copy().ravel()
     err_cut_rav = error.copy().ravel()
@@ -43,6 +47,8 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
     ravel_temps = ravel_temps.compress(~nanmask, axis=1)
     im_cut_rav = im_cut_rav.compress(~nanmask)
     err_cut_rav = err_cut_rav.compress(~nanmask)
+
+    print('nan values in ', np.sum(nanmask), ' of ', len(nanmask))
 
     if bt_siginv_b_inv is None:
         if verbose:
@@ -60,6 +66,11 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
         if ridge_fac is not None:
             if verbose:
                 print('adding regularization')
+
+            if ridge_fac_alpha is not None:
+                kmag = np.sqrt((kx_idx_rav+1)**2 + (ky_idx_rav+1)**2)/np.sqrt(2.) # sqrt of 2 is for kx=1 & ky=1, since its relative to fundamental mode
+                ridge_fac /= kmag**(-ridge_fac_alpha)
+                print('ridge fac is now ', ridge_fac)
                 
             lambda_I = np.zeros_like(bt_siginv_b)
             np.fill_diagonal(lambda_I, ridge_fac)
@@ -187,7 +198,7 @@ def ravel_temps_from_ndtemp(templates, n_terms, auxdim=4):
     
     return ravel_temps
 
-def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=None, x_max_pivot_list=None):
+def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=None, x_max_pivot_list=None, scale_fac=None):
     '''
     Given a list of image and beam sizes, produces multiband fourier templates for background modeling.
 
@@ -227,10 +238,10 @@ def multiband_fourier_templates(imszs, n_terms, show_templates=False, psf_fwhms=
         if x_max_pivot_list is not None:
             x_max_pivot = x_max_pivot_list[b]
 
-        all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot))
+        all_templates.append(make_fourier_templates(imszs[b][0], imszs[b][1], n_terms, show_templates=show_templates, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot, scale_fac=scale_fac))
     return all_templates
 
-def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, shift=False, x_max_pivot=None):
+def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, shift=False, x_max_pivot=None, scale_fac=None, return_idxs=False):
         
     '''
     
@@ -258,6 +269,10 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
     x_max_pivot : float, optional
         Indicating pixel coordinate for boundary of FOV in each dimension. Default is 'None'.
 
+    return_idxs : bool, optional
+        If True, returns mesh grids of Fourier component indices for x and y. 
+        Default is False.
+
     Returns
     -------
     
@@ -268,9 +283,13 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
     '''
 
     templates = np.zeros((n_terms, n_terms, 4, N, M))
+    if scale_fac is None:
+        scale_fac = 1.
 
     x = np.arange(N)
     y = np.arange(M)
+
+    meshkx, meshky = np.meshgrid(np.arange(n_terms), np.arange(n_terms))
     
     meshx, meshy = np.meshgrid(x, y)
         
@@ -314,6 +333,9 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
                 templates[i,j,2,:,:] = xtemps_cos[i]*ytemps_sin[j]
                 templates[i,j,3,:,:] = xtemps_cos[i]*ytemps_cos[j]
      
+    templates *= scale_fac
+
+
     if show_templates:
         for k in range(4):
             counter = 1
@@ -326,6 +348,9 @@ def make_fourier_templates(N, M, n_terms, show_templates=False, psf_fwhm=None, s
                     counter +=1
             plt.tight_layout()
             plt.show()
+
+    if return_idxs:
+        return templates, meshkx, meshky
 
     return templates
 
@@ -378,8 +403,11 @@ def generate_template(fourier_coeffs, n_terms, fourier_templates=None, imsz=None
     '''
 
     if imsz is None and N is None and M is None:
-        print('need to provide input dimensions through either imsz or (N, M)')
-        return None
+        if fourier_templates is not None:
+            imsz = [fourier_templates.shape[-2], fourier_templates.shape[-1]]
+        else:
+            print('need to provide input dimensions through either imsz or (N, M)')
+            return None
 
     if imsz is None:
         imsz = [N,M]
@@ -491,6 +519,31 @@ def plot_logL(lnlz, N=100, M=100):
     plt.xlabel('Sample iteration', fontsize=18)
     plt.tight_layout()
     plt.show() 
+
+
+def plot_mp_fit(temp_A_hat, n_terms, A_hat, data):
+    ''' plot comparing data before and after FC marginalization step '''
+    plt.figure(figsize=(10,10))
+    plt.suptitle('Moore-Penrose inverse, $N_{FC}$='+str(n_terms), fontsize=20, y=1.02)
+    plt.subplot(2,2,1)
+    plt.title('Background estimate', fontsize=18)
+    plt.imshow(temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 99), vmin=np.percentile(temp_A_hat, 1))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.subplot(2,2,2)
+    plt.hist(np.abs(A_hat), bins=np.logspace(-5, 1, 30))
+    plt.xscale('log')
+    plt.xlabel('Absolute value of Fourier coefficients', fontsize=14)
+    plt.ylabel('N')
+    plt.subplot(2,2,3)
+    plt.title('Image', fontsize=18)
+    plt.imshow(data, origin='lower', cmap='Greys', vmax=np.percentile(temp_A_hat, 95), vmin=np.percentile(temp_A_hat, 5))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.subplot(2,2,4)
+    plt.title('Image - Background estimate', fontsize=18)
+    plt.imshow(data-temp_A_hat, origin='lower', cmap='Greys', vmax=np.percentile(data-temp_A_hat, 95), vmin=np.percentile(data-temp_A_hat, 5))
+    plt.colorbar(fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    plt.show()
 
 
 def compute_BT_B(n_terms, M, auxdim=4):

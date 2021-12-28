@@ -473,6 +473,8 @@ class Model:
 			self.temp_amplitude_sigs['sze'] = self.gdat.sz_amp_sig
 		if self.gdat.fc_amp_sig is not None:
 			self.temp_amplitude_sigs['fc'] = self.gdat.fc_amp_sig
+
+
 		
 		# this is for perturbing the relative amplitudes of a fixed fourier comp model across bands
 		self.fourier_amp_sig = gdat.fourier_amp_sig
@@ -496,26 +498,14 @@ class Model:
 				self.dat.data_array[0] -= np.nanmean(self.dat.data_array[0]) # this is done to isolate the fluctuation component
 				self.bkg[0] = 0.
 
-				_, _, _, bt_siginv_b_inv, mp_coeffs = compute_marginalized_templates(self.gdat.MP_order, self.dat.errors[0],\
-														fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
-														data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig, ridge_fac=self.gdat.ridge_fac)
+				# _, _, _, bt_siginv_b_inv, mp_coeffs, temp_A_hat = compute_marginalized_templates(self.gdat.MP_order, self.dat.data_array[0], self.dat.errors[0],\
+				# 										fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
+				# 										  ridge_fac=self.gdat.ridge_fac)
+				print(' MP order is ', self.gdat.MP_order)
+				_, _, _, bt_siginv_b_inv, mp_coeffs, temp_A_hat = compute_marginalized_templates(self.gdat.MP_order, self.dat.data_array[0], self.dat.errors[0],\
+														  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha)
 
 				self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
-
-				# this is for quick marginalization of the Fourier components with the data.
-				# _, _, _, bt_siginv_b_inv, A_hat = compute_Ahat_templates(self.gdat.MP_order, self.dat.errors[0],\
-				# 														fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
-				# 														data = self.dat.data_array[0], mean_sig=self.gdat.mean_sig, ridge_fac=self.gdat.ridge_fac)
-
-				# init_coeffs = np.empty((self.gdat.MP_order,self.gdat.MP_order,4))
-				# count = 0
-				# for i in range(self.gdat.MP_order):
-				# 	for j in range(self.gdat.MP_order):
-				# 		for k in range(4):
-				# 			init_coeffs[i,j,k] = A_hat[count]
-				# 			count += 1
-
-				# self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = A_hat.copy()
 
 			self.n_fourier_terms = self.gdat.n_fourier_terms
 			self.dfc = np.zeros((self.n_fourier_terms, self.n_fourier_terms, 4))
@@ -1073,6 +1063,18 @@ class Model:
 														ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dfc=proposal.dfc, idxvec=[proposal.idx0, proposal.idx1, proposal.idxk], fc_rel_amps=fc_rel_amps)
 		
 
+					# plt.figure(figsize=(12, 5))
+					# plt.subplot(1,2,1)
+					# plt.imshow(mods[0], cmap='Greys')
+					# plt.colorbar()
+					# # plt.subplot(1,3,2)
+					# # plt.imshow(diff2s_nomargin, cmap='Greys')
+					# # plt.colorbar()
+					# plt.subplot(1,2,2)
+					# plt.imshow(dmodels[0], cmap='Greys')
+					# plt.colorbar()
+					# plt.show()
+
 
 				else: # movestar, birth/death, merge/split
 
@@ -1215,16 +1217,19 @@ class Model:
 						self.stars = proposal.starsp
 
 					elif self.gdat.coupled_profile_temp_prop and rtype==4:
-						# print('idx move here is ', proposal.idx_move)
 
 						if accept_or_not: 
 							acceptprop = np.zeros((self.stars.shape[1],))
 							acceptprop[proposal.idx_move] = 1
-
 							starsp = proposal.starsp.compress(acceptprop, axis=1)
-							# print('aaand here starsp has shape', starsp.shape)
+							self.stars[:, proposal.idx_move] = starsp
 
-							# print('stars, starsp:', self.stars[:, proposal.idx_move], starsp)
+					elif self.gdat.coupled_fc_prop and rtype==5:
+
+						if accept_or_not: 
+							acceptprop = np.zeros((self.stars.shape[1],))
+							acceptprop[proposal.idx_move] = 1
+							starsp = proposal.starsp.compress(acceptprop, axis=1)
 							self.stars[:, proposal.idx_move] = starsp
 
 					else:
@@ -1392,7 +1397,7 @@ class Model:
 		# change in point source fluxes. All (or maybe select?) sources across the FOV are perturbed by N_eff*dback. 
 		factor = None
 
-		if self.gdat.coupled_bkg_prop:
+		if self.gdat.coupled_bkg_prop and self.n*self.gdat.couple_nfrac >= 1:
 			# integrated Jy/beam over beam --> average change in flux density for sources
 			dback_int = dback*self.gdat.N_eff 
 
@@ -1445,6 +1450,9 @@ class Model:
 		''' 
 		Proposal to perturb amplitudes of Fourier component templates. The proposal width is determined by Model.temp_amplitude_sigs and can be
 		scaled with the power law exponent of the assumed power law spectrum.
+
+		I think for now I will only do the single band version of this, though the multiband is possible in principle.
+
 		'''
 		
 		proposal = Proposal(self.gdat)
@@ -1465,9 +1473,9 @@ class Model:
 			coeff_pert = np.random.normal(0, fc_sig_fac)
 			proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
 
-			if self.coupled_fc_prop:
+			if self.gdat.coupled_fc_prop and self.gdat.nbands==1 and self.n*self.gdat.couple_nfrac >= 1: # hard coding requirement that nbands=1
 
-				fcomp = self.fourier_templates[b][proposal.idx0, proposal.idx1, proposal.idxk]
+				fcomp = self.fourier_templates[0][proposal.idx0, proposal.idx1, proposal.idxk]
 
 				# choose stars at random 
 				if self.gdat.couple_nfrac is not None:
@@ -1483,14 +1491,34 @@ class Model:
 				starsp[self._Y,:] = stars0[self._Y,:]
 
 				# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
-				xfloors = np.floor(starsp[self._X,idx_move])
-				yfloors = np.floor(starsp[self._Y,idx_move])
-				print('xfloors is ', xfloors)
-				dflux_fc = -coeff_pert*self.gdat.N_eff*np.array([fcomp[xfloors[i],yfloors[i]] for i in range(len(idx_move))])
-				print('dflux is ', dflux_fc)
+				xfloors = np.floor(starsp[self._X,idx_move]).astype(np.int)
+				yfloors = np.floor(starsp[self._Y,idx_move]).astype(np.int)
+
+				fcomp_vals = np.array([fcomp[yfloors[i],xfloors[i]] for i in range(len(idx_move))])
+				fcomp_positive = (fcomp_vals > 0.)
+
+				idx_move_pos = idx_move.compress(fcomp_positive)
+				idx_move_neg = idx_move.compress(~fcomp_positive)
+
+				xfloors_pos = np.floor(starsp[self._X,idx_move_pos]).astype(np.int)
+				yfloors_pos = np.floor(starsp[self._Y,idx_move_pos]).astype(np.int)
+
+				# print('pos fcomp values:', np.array([fcomp[yfloors_pos[i],xfloors_pos[i]] for i in range(len(idx_move_pos))]))
+				# xfloors_pos = xfloors.compress(fcomp_positive)
+				# yfloors_pos = yfloors.compress(fcomp_positive)
+				# xfloors_neg = xfloors.compress(~fcomp_positive)
+				# yfloors_neg = yfloors.compress(~fcomp_positive)
+				# print('positive vals', fcomp_vals.compress(fcomp_positive))
+				# print('negative vals', fcomp_vals.compress(~fcomp_positive))
+
+				dflux_fc = -coeff_pert*self.gdat.N_eff/len(idx_move)
+				# dflux_fc = -coeff_pert*self.gdat.N_eff*np.array([fcomp[xfloors[i],yfloors[i]] for i in range(len(idx_move))])/len(idx_move)
 
 				for band_idx in range(self.gdat.nbands):
-					starsp[self._F+band_idx,idx_move] -= dflux_fc*self.fc_rel_amps[band_idx]/len(idx_move)/np.sqrt(self.gdat.nbands)
+					# starsp[self._F+band_idx,idx_move] -= dflux_fc*self.fc_rel_amps[band_idx]/np.sqrt(self.gdat.nbands)
+
+					starsp[self._F+band_idx,idx_move_pos] += dflux_fc/np.sqrt(self.gdat.nbands)
+					starsp[self._F+band_idx,idx_move_neg] -= dflux_fc/np.sqrt(self.gdat.nbands)
 
 					if band_idx==0:
 						fthr = self.gdat.trueminf
@@ -1498,15 +1526,9 @@ class Model:
 						fthr = 0.00001
 
 					ltfmin_mask = (starsp[self._F+band_idx,:] < fthr)
-					print('sum of ltfmin mask is ', np.sum(ltfmin_mask))
 					starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
 
 				proposal.add_move_stars(idx_move, stars0, starsp)
-
-
-				# flux_couple_factor = self.compute_flux_prior(stars0[self._F,idx_move], starsp[self._F,idx_move])
-				# color_factors_orig, colors_orig = self.compute_color_prior(stars0[self._F:,idx_move])
-				# color_factors_prop, colors_prop = self.compute_color_prior(starsp[self._F:,idx_move])
 
 				flux_couple_factor = self.compute_flux_prior(stars0[self._F,:], starsp[self._F,:])
 				color_factors_orig, colors_orig = self.compute_color_prior(stars0[self._F:,:])
@@ -1522,7 +1544,6 @@ class Model:
 		else:
 
 			proposal.fc_rel_amp_bool=True
-			# band_weights = []
 			band_weights = get_band_weights(self.gdat.fourier_band_idxs)
 			band_idx = int(np.random.choice(self.gdat.fourier_band_idxs, p=band_weights))
 
@@ -1592,7 +1613,7 @@ class Model:
 				xpf = np.floor(xpf).astype(np.int)
 				ypf = np.floor(ypf).astype(np.int)
 
-				temp_vals = np.array([self.dat.template_array[band_idx][template_idx][xpf[i],ypf[i]] for i in range(self.n)])
+				temp_vals = np.array([self.dat.template_array[band_idx][template_idx][ypf[i],xpf[i]] for i in range(self.n)])
 				temp_vals_norm = temp_vals/np.sum(temp_vals)
 				idx_move = np.random.choice(np.arange(self.n), self.gdat.coupled_profile_temp_nsrc, replace=False, p=temp_vals_norm) # want drawing without replacement
 
@@ -2475,6 +2496,9 @@ class lion():
 			# this is for perturbing the relative amplitudes of a fixed Fourier comp model across bands
 			fourier_amp_sig = 0.0005, \
 
+			# perturb multiple FCs at once? 
+			n_fc_perturb = 1, \
+
 			# power law slope of Fourier component proposal distribution. If set to None, constant proposal width used
 			fc_prop_alpha = None, \
 
@@ -2483,14 +2507,25 @@ class lion():
 
 			bkg_moore_penrose_inv = False, \
 
-			MP_order = 4, \
-
-			mean_sig = True, \
+			MP_order = None, \
 
 			ridge_fac = 10., \
 
+			# if specified, ridge factor is proportional to wavenumber when added to diagonal model covariance matrix, effectively a power spectrum prior on diffuse component
+			ridge_fac_alpha = None, \
+
+			# number of times to apply FC marg during burn in
+			n_marg_updates = 0, \
+
+			# number of thinnd samples between each marginalization step
+			fc_marg_period = 10, \
+
 			# if True, PCAT couples Fourier component proposals with change in point source fluxes
-			coupled_fc_prop = True, \
+			coupled_fc_prop = False, \
+
+			# fraction of FC proposals that are coupled with pt src fluxes
+			coupled_fc_prop_frac = 0.5, \
+
 
 			# --------------------------------- DATA CONFIGURATION ----------------------------------------
 
@@ -2678,6 +2713,8 @@ class lion():
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 
 		# power law exponents equal to 1 in double power law will cause a numerical error.
+		if self.gdat.MP_order is None:
+			self.gdat.MP_order = int(self.gdat.n_fourier_terms)
 
 		if self.gdat.alpha_1 == 1.0 and self.flux_prior_type=='double_power_law':
 			self.gdat.alpha_1 += 0.01
@@ -2751,7 +2788,7 @@ class lion():
 				self.gdat.init_fourier_coeffs = np.zeros((self.gdat.n_fourier_terms, self.gdat.n_fourier_terms, 4))
 
 			print('ATTENTION x_max_pivot_list IS', self.gdat.x_max_pivot_list)
-			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, psf_fwhms=self.gdat.psf_fwhms, x_max_pivot_list=self.gdat.x_max_pivot_list)
+			self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, psf_fwhms=self.gdat.psf_fwhms, x_max_pivot_list=self.gdat.x_max_pivot_list, scale_fac=None)
 			# self.gdat.fc_templates = multiband_fourier_templates(self.gdat.imszs, self.gdat.n_fourier_terms, show_templates=self.gdat.show_fc_temps, psf_fwhms=self.gdat.psf_fwhms)
 
 			# fourier comp colors
@@ -2858,18 +2895,50 @@ class lion():
 		verbprint(self.gdat.verbtype, 'Done initializing model..', verbthresh=1)
 		print('background sig facs are ', self.gdat.bkg_sig_fac)
 
+		if self.gdat.n_marg_updates is None:
+			self.gdat.n_marg_updates = 0
+
 		trueminf_schedule_counter = 0
+		fc_marg_counter = 0
 		for j in range(self.gdat.nsamp): # run sampler for gdat.nsamp thinned states
 			print('Sample', j, file=self.gdat.flog)
 
 			if self.gdat.schedule_trueminf:
-
 				if j==self.gdat.trueminf_schedule_samp_idxs[trueminf_schedule_counter]:
 					self.gdat.trueminf = self.gdat.trueminf_schedule_vals[trueminf_schedule_counter]
 					model.trueminf = self.gdat.trueminf_schedule_vals[trueminf_schedule_counter]
 
 					trueminf_schedule_counter += 1
 					print('Changing trueminf.. ', self.gdat.trueminf, model.trueminf)
+
+
+			if self.gdat.bkg_moore_penrose_inv and fc_marg_counter < self.gdat.n_marg_updates and j%self.gdat.fc_marg_period==0 and j > 0:
+
+
+				print('j = ', j, 'while on update ', fc_marg_counter, 'of ', self.gdat.n_marg_updates, 'updates')
+				print('imsz is ', self.gdat.imszs[0])
+				print('fourier templates has shape', model.fourier_templates[0].shape)
+				fc_model = generate_template(model.fourier_coeffs, self.gdat.n_fourier_terms, imsz=self.gdat.imszs[0], fourier_templates=model.fourier_templates[0])
+
+				# plt.figure(figsize=(15,5))
+				# plt.subplot(1,3,1)
+				# plt.imshow(fc_model)
+				# plt.colorbar()
+				# plt.subplot(1,3,2)
+				# plt.imshow(resids[0])
+				# plt.colorbar()
+				# plt.subplot(1,3,3)
+				# plt.imshow(resids[0]+fc_model)
+				# plt.colorbar()
+				# plt.tight_layout()
+				# plt.show()
+				_, _, _, bt_siginv_b_inv, mp_coeffs, temp_A_hat = compute_marginalized_templates(self.gdat.MP_order, resids[0]+fc_model, self.data.errors[0],\
+										  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, show=False)
+				model.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
+
+				fc_marg_counter += 1
+
+
 			
 			# once ready to sample, recompute proposal weights
 			model.update_moveweights(j)
