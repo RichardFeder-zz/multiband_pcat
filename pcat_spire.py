@@ -729,7 +729,7 @@ class Model:
 		return timestat_array, accept_fracs
 
 
-	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None, rtype=None, dfc=None, idxvec=None, precomp_temps=None, fc_rel_amps=None, \
+	def pcat_multiband_eval(self, x, y, f, bkg, nc, cf, weights, ref, lib, beam_fac=1., margin_fac=1, dtemplate=None, rtype=None, dfc=None, idxvec=None, idxvecs=None, precomp_temps=None, fc_rel_amps=None, \
 		perturb_band_idx=None):
 		'''
 		Wrapper for multiband likelihood evaluation given catalog model parameters.
@@ -760,7 +760,6 @@ class Model:
 
 			if precomp_temps is not None:
 				pc_temp = precomp_temps[b]
-
 				# if passing fixed fourier comp template, fc_rel_amps should be model + d_rel_amps, if perturbing
 				# relative amplitude, fc_rel_amps should be one hot vector with change in one of the bands
 				if dtemp is None:
@@ -770,7 +769,26 @@ class Model:
 
 			elif dfc is not None:
 
-				if idxvec is not None:
+				if idxvecs is not None:
+					for i in range(self.gdat.n_fc_perturb):
+						# print(idxvecs[i][0], idxvecs[i][1], idxvecs[i][2])
+						# print('dfc of vec ', i, 'is ', dfc[idxvecs[i][0], idxvecs[i][1], idxvecs[i][2]])
+
+						pc_temp = self.fourier_templates[b][idxvecs[i][0], idxvecs[i][1], idxvecs[i][2]]*dfc[idxvecs[i][0], idxvecs[i][1], idxvecs[i][2]]
+						if dtemp is None:
+							dtemp = fc_rel_amps[b]*pc_temp
+						else:
+							dtemp += fc_rel_amps[b]*pc_temp
+
+						# plt.figure()
+						# plt.title('dtemp '+str(i))
+						# plt.imshow(dtemp)
+						# plt.colorbar()
+						# plt.show()
+
+
+				elif idxvec is not None:
+					print('WHY ARE WE HERE')
 					pc_temp = self.fourier_templates[b][idxvec[0], idxvec[1], idxvec[2]]*dfc[idxvec[0], idxvec[1], idxvec[2]]
 
 					if dtemp is None:
@@ -778,9 +796,10 @@ class Model:
 					else:
 						dtemp += fc_rel_amps[b]*pc_temp
 
-				else:
-					pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
 
+				else:
+					print('why would we be here')
+					pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
 					if dtemp is None:
 						dtemp = fc_rel_amps[b]*pc_temp
 					else:
@@ -800,6 +819,7 @@ class Model:
 												nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
+
 				# diff2s += diff2
 			else:    
 				xp=x
@@ -810,6 +830,13 @@ class Model:
 												ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 												margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 				# diff2s = diff2
+
+				# plt.figure()
+				# plt.title('dmodel')
+				# plt.imshow(dmodel)
+				# plt.colorbar()
+				# plt.show()
+				# print('diff2:', diff2)
 			
 			# if rtype==4:
 			# 	plt.figure()
@@ -1051,6 +1078,7 @@ class Model:
 															beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=dtemplate, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps)
 					
 					logL = -0.5*diff2s_nomargin
+					# print('logL here is ', logL)
 
 					if proposal.fc_rel_amp_bool:
 
@@ -1059,21 +1087,35 @@ class Model:
 		
 					else:
 
+						if self.gdat.n_fc_perturb == 1:
+							idxvecs = [[proposal.idx0, proposal.idx1, proposal.idxk]]
+						else:
+							idxvecs = [[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]] for n in range(self.gdat.n_fc_perturb)]
+
+						# print('idxvecs is ', idxvecs)
+						# print('sum of proposal.dfc here is ', np.sum(proposal.dfc))
+
 						dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
-														ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dfc=proposal.dfc, idxvec=[proposal.idx0, proposal.idx1, proposal.idxk], fc_rel_amps=fc_rel_amps)
+														ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dfc=proposal.dfc, idxvecs=idxvecs, fc_rel_amps=fc_rel_amps)
+		
+						# print('diff2s after dmodel is ', diff2s)
+						# print("sum o fdif2s is ", np.sum(diff2s))
+						# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+						# 								ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dfc=proposal.dfc, idxvec=[proposal.idx0, proposal.idx1, proposal.idxk], idxvecs=idxvecs, fc_rel_amps=fc_rel_amps)
 		
 
-					# plt.figure(figsize=(12, 5))
-					# plt.subplot(1,2,1)
-					# plt.imshow(mods[0], cmap='Greys')
-					# plt.colorbar()
-					# # plt.subplot(1,3,2)
-					# # plt.imshow(diff2s_nomargin, cmap='Greys')
-					# # plt.colorbar()
-					# plt.subplot(1,2,2)
-					# plt.imshow(dmodels[0], cmap='Greys')
-					# plt.colorbar()
-					# plt.show()
+						# plt.figure(figsize=(12, 5))
+						# plt.subplot(1,2,1)
+						# plt.imshow(mods[0], cmap='Greys')
+						# plt.colorbar()
+						# # plt.subplot(1,3,2)
+						# # plt.imshow(diff2s_nomargin, cmap='Greys')
+						# # plt.colorbar()
+						# plt.subplot(1,2,2)
+						# plt.imshow(dmodels[0], cmap='Greys')
+						# plt.colorbar()
+						# plt.show()
+
 
 
 				else: # movestar, birth/death, merge/split
@@ -1134,7 +1176,9 @@ class Model:
 					total_logL = np.sum(logL)
 					total_dlogP = np.sum(dlogP)
 
-					# print('total dlogP is ', total_dlogP)
+					# if rtype==5:
+					# 	print('total logL is ', total_logL)
+					# 	print('total dlogP is ', total_dlogP)
 
 					if proposal.factor is not None:
 						if np.abs(proposal.factor) > 100:
@@ -1190,6 +1234,19 @@ class Model:
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
 
+					# if rtype==5:
+					# 	plt.figure()
+					# 	plt.title('models[b]')
+					# 	plt.imshow(models[b])
+					# 	plt.colorbar()
+					# 	plt.show()
+
+					# 	plt.figure()
+					# 	plt.title('dmodels_acpt[b]')
+					# 	plt.imshow(dmodel_acpt)
+					# 	plt.colorbar()
+					# 	plt.show()
+
 
 					if nb==0:
 						diff2_total1 = diff2_acpt
@@ -1208,6 +1265,9 @@ class Model:
 					# 	diff2_total1 += diff2_acpt
 
 				logL = -0.5*diff2_total1
+
+				# if rtype==5:
+				# 	print('logL here is ', logL)
 
 				#implement accepted moves
 				if proposal.idx_move is not None:
@@ -1233,10 +1293,7 @@ class Model:
 							self.stars[:, proposal.idx_move] = starsp
 
 					else:
-						# print('while acceptprop has shape ', acceptprop.shape)
 						starsp = proposal.starsp.compress(acceptprop, axis=1)
-						# print("starsp has shape", starsp.shape)
-
 						idx_move_a = proposal.idx_move.compress(acceptprop)
 
 						self.stars[:, idx_move_a] = starsp
@@ -1267,15 +1324,30 @@ class Model:
 						self.dtemplate += proposal.dtemplate
 
 				if proposal.change_fourier_comp_bool:
+
 					if np.sum(acceptreg) > 0:
 						if proposal.fc_rel_amp_bool:
 							self.dfc_rel_amps += proposal.dfc_rel_amps
 						else:
+							print('weee were here')
 							self.dfc += proposal.dfc
 
+
 							for b in range(self.nbands):
-								running_temp[b] += self.fourier_templates[b][proposal.idx0, proposal.idx1, proposal.idxk]*proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk]
-	
+
+								for n in range(self.gdat.n_fc_perturb):
+
+									# plt.figure()
+									# plt.imshow(self.fourier_templates[b][proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]*proposal.dfc[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]])
+									# plt.colorbar()
+									# plt.title('n = '+str(n))
+									# plt.show()
+									running_temp[b] += self.fourier_templates[b][proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]*proposal.dfc[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]
+
+								# running_temp[b] += self.fourier_templates[b][proposal.idx0, proposal.idx1, proposal.idxk]*proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk]
+					
+
+
 				dts[2,i] = time.time() - t3
 
 				if rtype < 3:
@@ -1296,9 +1368,14 @@ class Model:
 			for b in range(self.nbands):
 				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 
-			if i > 0:
-				if diff2_list[i]-diff2_list[i-1] > 500: # testcoup
-					print('diff2s_list = ', diff2_list[i]-diff2_list[i-1], rtype, proposal.factor)
+			# if i > 0:
+				# print('diff2_list[0] = ', diff2_list[0])
+				# if diff2_list[i]-diff2_list[i-1] > 1000: # testcoup
+
+				# if rtype==5:
+				# 	print('diff2_list[i]:', diff2_list[i])
+				# 	print('diff2_list[i-1]:', diff2_list[i-1])
+				# 	print('diff2s_list = ', diff2_list[i]-diff2_list[i-1], rtype, proposal.factor)
 
 
 			verbprint(self.verbtype, 'End of loop '+str(i), verbthresh=1)		
@@ -1462,18 +1539,40 @@ class Model:
 		if np.random.uniform() < self.gdat.dfc_prob:
 
 			# choose a component
-			proposal.idx0, proposal.idx1, proposal.idxk = np.random.randint(0, self.n_fourier_terms), np.random.randint(0, self.n_fourier_terms), np.random.randint(0, 4)
+			if self.gdat.n_fc_perturb > 1:
+				proposal.idxs0 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
+				proposal.idxs1 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
+				proposal.idxsk = np.random.randint(0, 4, self.gdat.n_fc_perturb)
+
+				# print('proposal.idxs0:', proposal.idxs0)
+				# print('proposal.idxs1:', proposal.idxs1)
+				# print('proposal.idxsk:', proposal.idxsk)
+
+			else:
+				proposal.idx0, proposal.idx1, proposal.idxk = np.random.randint(0, self.n_fourier_terms), np.random.randint(0, self.n_fourier_terms), np.random.randint(0, 4)
 			
 			fc_sig_fac = self.temp_amplitude_sigs['fc']
 			
 			if self.gdat.fc_prop_alpha is not None: 
-				ellmag = np.sqrt((proposal.idx0+1)**2 + (proposal.idx1+1)**2)/np.sqrt(2.)
-				fc_sig_fac *= ellmag**self.gdat.fc_prop_alpha
+				if self.gdat.n_fc_perturb > 1:
+					ellmag = np.sqrt((proposal.idxs0+1)**2 + (proposal.idxs1+1)**2)/np.sqrt(2.)
+					fc_sig_fac = ellmag**self.gdat.fc_prop_alpha
+				else:				
+					ellmag = np.sqrt((proposal.idx0+1)**2 + (proposal.idx1+1)**2)/np.sqrt(2.)
+					fc_sig_fac *= ellmag**self.gdat.fc_prop_alpha
 
-			coeff_pert = np.random.normal(0, fc_sig_fac)
-			proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
+			if self.gdat.n_fc_perturb > 1:
+				coeff_pert = fc_sig_fac*np.random.normal(0, 1, self.gdat.n_fc_perturb)/self.gdat.n_fc_perturb
+				proposal.dfc[proposal.idxs0, proposal.idxs1, proposal.idxsk] = coeff_pert
+			else:
+				coeff_pert = np.random.normal(0, fc_sig_fac)
 
-			if self.gdat.coupled_fc_prop and self.gdat.nbands==1 and self.n*self.gdat.couple_nfrac >= 1: # hard coding requirement that nbands=1
+				proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
+
+			# print('proposal.dfc:', np.sum(proposal.dfc))
+			# print('coeffs pert:', coeffs_pert)
+
+			if self.gdat.coupled_fc_prop and self.gdat.nbands==1 and self.n*self.gdat.couple_nfrac >= 1 and self.gdat.n_fc_perturb==1: # hard coding requirement that nbands=1
 
 				fcomp = self.fourier_templates[0][proposal.idx0, proposal.idx1, proposal.idxk]
 
@@ -2497,7 +2596,7 @@ class lion():
 			fourier_amp_sig = 0.0005, \
 
 			# perturb multiple FCs at once? 
-			n_fc_perturb = 1, \
+			n_fc_perturb = 6, \
 
 			# power law slope of Fourier component proposal distribution. If set to None, constant proposal width used
 			fc_prop_alpha = None, \
@@ -2515,7 +2614,7 @@ class lion():
 			ridge_fac_alpha = None, \
 
 			# number of times to apply FC marg during burn in
-			n_marg_updates = 0, \
+			n_marg_updates = 10, \
 
 			# number of thinnd samples between each marginalization step
 			fc_marg_period = 10, \
