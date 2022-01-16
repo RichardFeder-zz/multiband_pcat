@@ -10,7 +10,7 @@ from scipy.ndimage import gaussian_filter
 
 def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
                            ravel_temps=None, fourier_templates=None,  psf_fwhm=3., \
-                          ridge_fac = None, ridge_fac_alpha=None, show=True, x_max_pivot=None, verbose=True):
+                          ridge_fac = None, ridge_fac_alpha=None, show=False, x_max_pivot=None, verbose=False):
     
     '''
     NOTE -- this only works for single band at the moment. Is there a way to compute the Moore-Penrose inverse for 
@@ -20,6 +20,43 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
     evaluations. This might already be handled in the code by zeroing out NaNs.
     
     Ridge factor is inversely proportional to fluctuation power in each mode. 
+
+
+    Parameters
+    ----------
+
+    n_terms : `int`.
+    data : 
+    error : 
+    imsz (optional) : `tuple` of length 2. 
+        Default is None.
+    bt_siginv_b, bt_siginv_b_inv : `~np.array~` of type `float`
+        Default is None.
+    ravel_temps : 
+    fourier_templates : 
+    psf_fwhm : `float`.
+        Default is 3.
+    ridge_fac : `float`.
+        Default is None.
+    ridge_fac_alpha (optional) : `float`.
+        Default is None.
+    show : `bool`. 
+        Default is True.
+    x_max_pivot : 
+        Default is None.
+    verbose : `bool`.
+        Default is False. 
+
+
+    Returns
+    -------
+
+    fourier_templates : 
+    ravel_temps :
+    bt_siginv_b : 
+    bt_siginv_b_inv : 
+    mp_coeffs : 
+    temp_A_hat : 
     
     '''
     
@@ -35,9 +72,6 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
         ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
         kx_idx_rav = meshx_idx.ravel()
         ky_idx_rav = meshy_idx.ravel()
-
-        print('kx idx rav:', kx_idx_rav)
-        print('kx idx rav:', ky_idx_rav)
     
     im_cut_rav = data.copy().ravel()
     err_cut_rav = error.copy().ravel()
@@ -48,13 +82,10 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
     im_cut_rav = im_cut_rav.compress(~nanmask)
     err_cut_rav = err_cut_rav.compress(~nanmask)
 
-    print('nan values in ', np.sum(nanmask), ' of ', len(nanmask))
+    if verbose:
+        print('nan values in ', np.sum(nanmask), ' of ', len(nanmask))
 
     if bt_siginv_b_inv is None:
-        if verbose:
-            print('min max err cut rav:', np.min(err_cut_rav), np.max(err_cut_rav))
-            print('min max err cut rav inv2:', np.min(np.diag(err_cut_rav**(-2))), np.max(np.diag(err_cut_rav**(-2))))
-            print('min max ravel temps:', np.min(ravel_temps), np.max(ravel_temps))
 
         bt_siginv_b = np.dot(ravel_temps, np.dot(np.diag(err_cut_rav**(-2)), ravel_temps.transpose()))
             
@@ -70,7 +101,7 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
             if ridge_fac_alpha is not None:
                 kmag = np.sqrt((kx_idx_rav+1)**2 + (ky_idx_rav+1)**2)/np.sqrt(2.) # sqrt of 2 is for kx=1 & ky=1, since its relative to fundamental mode
                 ridge_fac /= kmag**(-ridge_fac_alpha)
-                print('ridge fac is now ', ridge_fac)
+                # print('ridge fac is now ', ridge_fac)
                 
             lambda_I = np.zeros_like(bt_siginv_b)
             np.fill_diagonal(lambda_I, ridge_fac)

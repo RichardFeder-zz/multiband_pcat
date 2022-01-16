@@ -11,6 +11,55 @@ from numpy.fft import fft2 as fft2
 from numpy.fft import ifft2 as ifft2
 import PIL.Image as Image
 
+
+def generate_subregion_cib_templates(dimx, dimy, nregion):
+    ''' 
+
+    This function generates a template set designed to model the unresolved CIB. These templates are 2D tophats in map space 
+
+	Parameters
+	----------
+	
+	dimx : 'int', or 'list' of ints. This and dimy specify image dimensions for potentially several maps
+	dimy : 'int', or 'list' of ints.
+	nregion : 'int'. Number of subregions along each image axis.
+
+	Returns
+	-------
+
+	coarse_template_list : 'list' of `np.array' of type 'float', shape (nregion**2, dimx, dimy) for each band.
+
+    '''
+    if type(dimx)==int or type(dimx)==float:
+        dimx = [dimx]
+        dimy = [dimy]
+        
+    # make sure you can divide properly. not sure how this should be for several bands.. 
+    assert dimx[0]%nregion==0
+    assert dimy[0]%nregion==0
+    
+    nbands = len(dimx)
+
+    subwidths = [dimx[n]//nregion for n in range(nbands)]
+    
+    ntemp = nregion**2
+    print('ntemp is ', ntemp)
+    print('subwidths are ', subwidths)
+    
+    coarse_template_list = []
+    
+    for n in range(nbands):
+        templates = np.zeros((ntemp, dimx[n], dimy[n]))
+        
+        for i in range(nregion):
+            for j in range(nregion):
+                templates[i*nregion + j, i*subwidths[n]:(i+1)*subwidths[n], j*subwidths[n]:(j+1)*subwidths[n]] = 1.0
+                
+        coarse_template_list.append(templates)
+        
+    return coarse_template_list
+
+
 def generate_diffuse_realization(N, M, power_law_idx=-2.7):
 	'''
 	Given image dimensions, generates Gaussian random field diffuse realization, assuming a power law power spectrum.
@@ -376,7 +425,7 @@ def compute_Neff(weights):
 
 
 
-def grab_rms_diffuse_gen_model(timestr_list, dirname):
+def grab_rms_diffuse_gen_model(timestr_list, dirname, nsamp=100):
     
     nfc_terms_list = np.zeros((11,))
     chi2_diffs = np.zeros((11,))
@@ -399,6 +448,7 @@ def grab_rms_diffuse_gen_model(timestr_list, dirname):
         burnin_fourier_coeff = np.median(fourier_coeffs[:50,:,:,:], axis=0)
 
         av_fourier_coeff = np.median(fourier_coeffs[-nsamp:,:,:,:], axis=0)
+        std_fourier_coeff = np.std(fourier_coeffs[-nsamp:,:,:,:], axis=0)
         
         burnin_diffuse_bkg = generate_template(burnin_fourier_coeff, nfc_terms, fourier_templates=fourier_templates, N=dimx, M=dimy)
         burnin_diffuse_bkg *= 1e3
@@ -449,7 +499,7 @@ def grab_rms_diffuse_gen_model(timestr_list, dirname):
     #         plt.savefig('/Users/luminatech/Downloads/conley_dustonly_10arcmin_1band_1mJy_beam_060121_4x_Planck_simidx_301_wptsrcmodl/figures/threepan_nfc='+str(nfc_terms)+'.png', bbox_inches='tight', dpi=200)
             plt.show()
         
-    return chi2_diffs, nfc_terms_list, median_diffuse_bkgs, diffuse_realiz
+    return chi2_diffs, nfc_terms_list, median_diffuse_bkgs, diffuse_realiz, av_fourier_coeff, std_fourier_coeff
 
 
 

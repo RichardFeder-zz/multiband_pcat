@@ -958,6 +958,8 @@ class Model:
 														 dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=self.fc_rel_amps)
 
 		logL = -0.5*diff2s
+
+		print('logL here is ', np.sum(logL))
 	   
 		for b in range(self.nbands):
 			resids[b] -= models[b]
@@ -1029,19 +1031,36 @@ class Model:
 				if rtype == 3: # background
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
 					
+
 					bkg_perturb_band_idxs.append(proposal.perturb_band_idx)
+					# if rtype_array[i-1]==3 and accept[i-1]==1:
+						# print('logL from previous bkg proposal is', logL)
 
 					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 																bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 																beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps, \
 																perturb_band_idx=proposal.perturb_band_idx)
 
+					# mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+					# 						bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, \
+					# 						beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps, \
+					# 						perturb_band_idx=proposal.perturb_band_idx)
+
 					logL = -0.5*diff2s_nomargin
+					# if rtype_array[i-1]==3 and accept[i-1]==1:
+						# print('while recomputed is ', logL)
+
+
 
 					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, perturb_band_idx=proposal.perturb_band_idx)
 	
-				
+					# print('dlogL is ', )
+					# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+					# 							ref=self.dat.data_array, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, perturb_band_idx=proposal.perturb_band_idx)
+
+
+
 					# print('self.stars[self._F:0:self.n],', self.stars[self._F:,0:self.n])
 					# print('proposal.fphon', proposal.fphon)
 
@@ -1130,9 +1149,17 @@ class Model:
 				if rtype < 3:
 					plogL[(1-self.parity_y)::2,:] = float('-inf') # don't accept off-parity regions
 					plogL[:,(1-self.parity_x)::2] = float('-inf')
+
+				# if rtype==3:
+					# print('plogL is ', plogL)
+
 				
 				dlogP = plogL - logL
-				
+
+				# if rtype==3:
+					# print('dlogP is ', dlogP)
+
+
 				assert np.isnan(dlogP).any() == False
 				
 				dts[1,i] = time.time() - t2
@@ -1162,9 +1189,10 @@ class Model:
 						# dlogP += (proposal.factor/(dlogP.shape[0]*dlogP.shape[1])) # dividing by the number of subregions 
 
 				
-				acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
+				# acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 
 				if rtype < 3:
+					acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 
 					acceptprop = acceptreg[regiony, regionx]
 					numaccept = np.count_nonzero(acceptprop)
@@ -1181,6 +1209,7 @@ class Model:
 					# 	print('total dlogP is ', total_dlogP)
 
 					if proposal.factor is not None:
+
 						if np.abs(proposal.factor) > 100:
 							print('whoaaaaa proposal.factor is ', proposal.factor)
 						total_dlogP += proposal.factor
@@ -1219,6 +1248,11 @@ class Model:
 					# 	plt.colorbar()
 					# 	plt.show()
 	
+					# if rtype >= 3 and accept_or_not:
+					# 	resids[b] -= dmodels[b]
+					# 	models[b] += dmodels[b]
+
+					# else:
 
 					if self.gdat.cblas:
 
@@ -1230,6 +1264,14 @@ class Model:
 						self.libmmult.clib_updt_modl(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
 						# using this dmodel containing only accepted moves, update logL
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
+
+
+					if rtype==3 and accept_or_not and total_dlogP < 0:
+						print('total_dlogP:', total_dlogP, 'proposal factor is ', proposal.factor)
+					# 	plt.figure()
+					# 	plt.imshow(dmodel_acpt-dmodels[b])
+					# 	plt.colorbar()
+					# 	plt.show()
 
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
@@ -1329,7 +1371,7 @@ class Model:
 						if proposal.fc_rel_amp_bool:
 							self.dfc_rel_amps += proposal.dfc_rel_amps
 						else:
-							print('weee were here')
+							# print('weee were here')
 							self.dfc += proposal.dfc
 
 
@@ -1387,6 +1429,9 @@ class Model:
 		for b in range(self.nbands):
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 			
+
+		print('chi2 is ', chi2)
+		print('logL is ', -chi2/2)
 		verbprint(self.verbtype, 'End of sample. self.n = '+str(self.n), verbthresh=1)
 
 		if self.gdat.float_templates:
@@ -1502,11 +1547,14 @@ class Model:
 			starsp[self._F+bkg_idx, ltfmin_mask] = stars0[self._F+bkg_idx, ltfmin_mask]
 
 			proposal.add_move_stars(idx_move, stars0, starsp)
-			# flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,idx_move], starsp[self._F+bkg_idx,idx_move])
+
 			flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,:], starsp[self._F+bkg_idx,:])
 			if factor is None:
 				factor = np.nansum(flux_couple_factor)
 				# print('flux couple factor is ', factor)
+			else:
+				factor += np.nansum(flux_couple_factor)
+
 
 		if self.gdat.dc_bkg_prior:
 			bkg_factor = -(self.bkg[bkg_idx]+self.dback[bkg_idx]+proposal.dback[bkg_idx]- self.bkg_prior_mus[bkg_idx])**2/(2*self.bkg_prior_sig**2)
@@ -1739,13 +1787,15 @@ class Model:
 				# gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
 				starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
 
-
-
 				proposal.add_move_stars(idx_move, stars0, starsp)
 
 				flux_couple_factor = self.compute_flux_prior(stars0[self._F+band_idx,idx_move], starsp[self._F+band_idx,idx_move])
+				
 				if factor is None:
 					factor = np.nansum(flux_couple_factor)
+				else:
+					factor += np.nansum(flux_couple_factor)
+
 				proposal.set_factor(factor)
 
 
@@ -1890,21 +1940,6 @@ class Model:
 
 		factor = self.compute_flux_prior(f0[0], pfs[0])
 
-		# if self.gdat.flux_prior_type=='single_power_law':
-		# 	dlogf = np.log(pfs[0]/f0[0])
-		# 	factor = -self.truealpha*dlogf
-		# 	verbprint('factor at move_stars for single power law are ', factor)
-
-		# elif self.gdat.flux_prior_type=='double_power_law':
-		# 	log_prior_dpow_pf = np.log(pdfn_dpow(pfs[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
-		# 	log_prior_dpow_f0 = np.log(pdfn_dpow(f0[0],  self.trueminf, self.trueminf*self.newsrc_minmax_range, self.pivot_dpl, self.alpha_1, self.alpha_2))
-
-		# 	verbprint('log_prior_dpow_pf:', log_prior_dpow_pf)
-		# 	verbprint('log_prior_dpow_f0:', log_prior_dpow_f0)
-
-		# 	factor = log_prior_dpow_pf - log_prior_dpow_f0
-
-		# 	verbprint('factor at move_stars for dpl is ', factor)
 
 		if np.isnan(factor).any():
 			verbprint(self.verbtype,'Factor NaN from flux', verbthresh=1)
@@ -1921,25 +1956,9 @@ class Model:
 		color_factors_prop, colors_prop = self.compute_color_prior(pfs)
 		color_factors = color_factors_prop - color_factors_orig
 
-
 		for b in range(self.nbands-1):
 			modl_eval_colors.append(colors_prop[b])
 
-			# colors = None
-			# if self.linear_flux:
-			# 	colors = pfs[0]/pfs[b+1]
-			# 	orig_colors = f0[0]/f0[b+1]
-			# else:
-			# 	colors = fluxes_to_color(pfs[0], pfs[b+1])
-			# 	orig_colors = fluxes_to_color(f0[0], f0[b+1])
-			
-			# colors[np.isnan(colors)] = self.color_mus[b] # make nan colors not affect color_factors
-			# orig_colors[np.isnan(orig_colors)] = self.color_mus[b]
-
-			# color_factors[b] -= (colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-			# color_factors[b] += (orig_colors - self.color_mus[b])**2/(2*self.color_sigs[b]**2)
-			# modl_eval_colors.append(colors)
-	
 		assert np.isnan(color_factors).any()==False       
 
 		verbprint(self.verbtype,'Average absolute color factors : '+str(np.average(np.abs(color_factors))), verbthresh=1)
@@ -2596,7 +2615,7 @@ class lion():
 			fourier_amp_sig = 0.0005, \
 
 			# perturb multiple FCs at once? 
-			n_fc_perturb = 6, \
+			n_fc_perturb = 3, \
 
 			# power law slope of Fourier component proposal distribution. If set to None, constant proposal width used
 			fc_prop_alpha = None, \
@@ -2611,13 +2630,13 @@ class lion():
 			ridge_fac = 10., \
 
 			# if specified, ridge factor is proportional to wavenumber when added to diagonal model covariance matrix, effectively a power spectrum prior on diffuse component
-			ridge_fac_alpha = None, \
+			ridge_fac_alpha = 1.3, \
 
 			# number of times to apply FC marg during burn in
 			n_marg_updates = 10, \
 
 			# number of thinnd samples between each marginalization step
-			fc_marg_period = 10, \
+			fc_marg_period = 5, \
 
 			# if True, PCAT couples Fourier component proposals with change in point source fluxes
 			coupled_fc_prop = False, \
@@ -2801,6 +2820,7 @@ class lion():
 		if self.gdat.init_seed is not None:
 			np.random.seed(self.gdat.init_seed)
 
+		# point src delay controls when all point source proposals begin
 		if self.gdat.point_src_delay is not None:
 			self.gdat.movestar_sample_delay = self.gdat.point_src_delay
 			self.gdat.birth_death_sample_delay = self.gdat.point_src_delay
@@ -2811,10 +2831,11 @@ class lion():
 		self.gdat.pixsize_dict = dict({'S':6., 'M':8., 'L':12.})
 		self.gdat.timestr = time.strftime("%Y%m%d-%H%M%S")
 
-		# power law exponents equal to 1 in double power law will cause a numerical error.
+		# unless specified, sets order of Fourier model in linear marginalization to that of full model.
 		if self.gdat.MP_order is None:
 			self.gdat.MP_order = int(self.gdat.n_fourier_terms)
-
+		
+		# power law exponents equal to 1 in double power law will cause a numerical error.
 		if self.gdat.alpha_1 == 1.0 and self.flux_prior_type=='double_power_law':
 			self.gdat.alpha_1 += 0.01
 		if self.gdat.alpha_2 == 1.0 and self.flux_prior_type=='double_power_law':
@@ -2867,7 +2888,7 @@ class lion():
 
 		# TODO add something that computes the nominal Nsrc down to min flux density threshold given flux prior and map size/resolution.
 
-
+		# in case of severe crowding, can scale parsimony prior using F statistic 
 		if self.gdat.F_statistic_alph:
 			alph = compute_Fstat_alph(self.gdat.imszs, self.gdat.nbands, self.gdat.nominal_nsrc)
 			# npix = np.sum(np.array([self.gdat.imszs[b][0]*self.gdat.imszs[b][1] for b in range(self.gdat.nbands)]))
@@ -3031,6 +3052,7 @@ class lion():
 				# plt.colorbar()
 				# plt.tight_layout()
 				# plt.show()
+				
 				_, _, _, bt_siginv_b_inv, mp_coeffs, temp_A_hat = compute_marginalized_templates(self.gdat.MP_order, resids[0]+fc_model, self.data.errors[0],\
 										  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, show=False)
 				model.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
