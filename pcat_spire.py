@@ -79,7 +79,7 @@ def create_directories(gdat):
 		
 	frame_dir_name = new_dir_name+'/frames'
 	
-	if not os.path.isdir(frame_dir_name):
+	if not os.path.isdir(frame_dir_name) and gdat.n_frames > 0:
 		os.makedirs(frame_dir_name)
 	
 
@@ -468,7 +468,7 @@ class Model:
 
 		self.n_templates = gdat.n_templates
 
-		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.004})
+		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.001})
 		if self.gdat.sz_amp_sig is not None:
 			self.temp_amplitude_sigs['sze'] = self.gdat.sz_amp_sig
 		if self.gdat.fc_amp_sig is not None:
@@ -502,8 +502,19 @@ class Model:
 				# 										fourier_templates=self.gdat.fc_templates[0][:self.gdat.MP_order,:self.gdat.MP_order,:], \
 				# 										  ridge_fac=self.gdat.ridge_fac)
 				print(' MP order is ', self.gdat.MP_order)
-				_, _, _, bt_siginv_b_inv, mp_coeffs, temp_A_hat = compute_marginalized_templates(self.gdat.MP_order, self.dat.data_array[0], self.dat.errors[0],\
-														  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha)
+				# _, , bt_siginv_b, bt_siginv_b_inv, mp_coeffs, temp_A_hat, nanmask = compute_marginalized_templates(self.gdat.MP_order, self.dat.data_array[0], self.dat.errors[0],\
+				# 										  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, return_temp_A_hat=True)
+
+				_, ravel_temps, bt_siginv_b, bt_siginv_b_inv, mp_coeffs, temp_A_hat, nanmask = compute_marginalized_templates(self.gdat.MP_order, self.dat.data_array[0], self.dat.errors[0],\
+														  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, return_temp_A_hat=False, \
+														  fourier_templates = self.fourier_templates[0])
+
+				# save precomputed cov matrices for fast evaluation later
+
+				self.bt_siginv_b_inv = bt_siginv_b_inv 
+				self.bt_siginv_b = bt_siginv_b
+				self.ravel_temps = ravel_temps
+
 
 				self.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
 
@@ -959,7 +970,7 @@ class Model:
 
 		logL = -0.5*diff2s
 
-		print('logL here is ', np.sum(logL))
+		# print('logL here is ', np.sum(logL))
 	   
 		for b in range(self.nbands):
 			resids[b] -= models[b]
@@ -1105,11 +1116,14 @@ class Model:
 														ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=proposal.dfc_rel_amps)
 		
 					else:
+						
+						# nfcperturb = 1 test
+						idxvecs = [[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]] for n in range(self.gdat.n_fc_perturb)]
 
-						if self.gdat.n_fc_perturb == 1:
-							idxvecs = [[proposal.idx0, proposal.idx1, proposal.idxk]]
-						else:
-							idxvecs = [[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]] for n in range(self.gdat.n_fc_perturb)]
+						# if self.gdat.n_fc_perturb == 1:
+						# 	idxvecs = [[proposal.idx0, proposal.idx1, proposal.idxk]]
+						# else:
+						# 	idxvecs = [[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]] for n in range(self.gdat.n_fc_perturb)]
 
 						# print('idxvecs is ', idxvecs)
 						# print('sum of proposal.dfc here is ', np.sum(proposal.dfc))
@@ -1266,8 +1280,8 @@ class Model:
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
 
-					if rtype==3 and accept_or_not and total_dlogP < 0:
-						print('total_dlogP:', total_dlogP, 'proposal factor is ', proposal.factor)
+					# if rtype==3 and accept_or_not and total_dlogP < 0:
+						# print('total_dlogP:', total_dlogP, 'proposal factor is ', proposal.factor)
 					# 	plt.figure()
 					# 	plt.imshow(dmodel_acpt-dmodels[b])
 					# 	plt.colorbar()
@@ -1586,36 +1600,48 @@ class Model:
 		# set dfc_prob to zero if you only want to perturb the amplitudes
 		if np.random.uniform() < self.gdat.dfc_prob:
 
-			# choose a component
-			if self.gdat.n_fc_perturb > 1:
-				proposal.idxs0 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
-				proposal.idxs1 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
-				proposal.idxsk = np.random.randint(0, 4, self.gdat.n_fc_perturb)
+			# choose a component (or several) nfcperturb = 1 test
 
-				# print('proposal.idxs0:', proposal.idxs0)
-				# print('proposal.idxs1:', proposal.idxs1)
-				# print('proposal.idxsk:', proposal.idxsk)
+			proposal.idxs0 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
+			proposal.idxs1 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
+			proposal.idxsk = np.random.randint(0, 4, self.gdat.n_fc_perturb)
 
-			else:
-				proposal.idx0, proposal.idx1, proposal.idxk = np.random.randint(0, self.n_fourier_terms), np.random.randint(0, self.n_fourier_terms), np.random.randint(0, 4)
+			# if self.gdat.n_fc_perturb > 1:
+			# 	proposal.idxs0 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
+			# 	proposal.idxs1 = np.random.randint(0, self.n_fourier_terms, self.gdat.n_fc_perturb)
+			# 	proposal.idxsk = np.random.randint(0, 4, self.gdat.n_fc_perturb)
+
+			# 	# print('proposal.idxs0:', proposal.idxs0)
+			# 	# print('proposal.idxs1:', proposal.idxs1)
+			# 	# print('proposal.idxsk:', proposal.idxsk)
+
+			# else:
+			# 	proposal.idx0, proposal.idx1, proposal.idxk = np.random.randint(0, self.n_fourier_terms), np.random.randint(0, self.n_fourier_terms), np.random.randint(0, 4)
 			
 			fc_sig_fac = self.temp_amplitude_sigs['fc']
 			
 			if self.gdat.fc_prop_alpha is not None: 
-				if self.gdat.n_fc_perturb > 1:
-					ellmag = np.sqrt((proposal.idxs0+1)**2 + (proposal.idxs1+1)**2)/np.sqrt(2.)
-					fc_sig_fac = ellmag**self.gdat.fc_prop_alpha
-				else:				
-					ellmag = np.sqrt((proposal.idx0+1)**2 + (proposal.idx1+1)**2)/np.sqrt(2.)
-					fc_sig_fac *= ellmag**self.gdat.fc_prop_alpha
+				# nfcperturb = 1 test
+				ellmag = np.sqrt((proposal.idxs0+1)**2 + (proposal.idxs1+1)**2)/np.sqrt(2.)
+				fc_sig_fac = ellmag**self.gdat.fc_prop_alpha				
+				# if self.gdat.n_fc_perturb > 1:
+				# 	ellmag = np.sqrt((proposal.idxs0+1)**2 + (proposal.idxs1+1)**2)/np.sqrt(2.)
+				# 	fc_sig_fac = ellmag**self.gdat.fc_prop_alpha
+				# else:				
+				# 	ellmag = np.sqrt((proposal.idx0+1)**2 + (proposal.idx1+1)**2)/np.sqrt(2.)
+				# 	fc_sig_fac *= ellmag**self.gdat.fc_prop_alpha
 
-			if self.gdat.n_fc_perturb > 1:
-				coeff_pert = fc_sig_fac*np.random.normal(0, 1, self.gdat.n_fc_perturb)/self.gdat.n_fc_perturb
-				proposal.dfc[proposal.idxs0, proposal.idxs1, proposal.idxsk] = coeff_pert
-			else:
-				coeff_pert = np.random.normal(0, fc_sig_fac)
 
-				proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
+			coeff_pert = fc_sig_fac*np.random.normal(0, 1, self.gdat.n_fc_perturb)/self.gdat.n_fc_perturb
+			proposal.dfc[proposal.idxs0, proposal.idxs1, proposal.idxsk] = coeff_pert
+
+			# if self.gdat.n_fc_perturb > 1: # nfcperturb = 1 test
+			# 	coeff_pert = fc_sig_fac*np.random.normal(0, 1, self.gdat.n_fc_perturb)/self.gdat.n_fc_perturb
+			# 	proposal.dfc[proposal.idxs0, proposal.idxs1, proposal.idxsk] = coeff_pert
+			# else:
+			# 	coeff_pert = np.random.normal(0, fc_sig_fac)
+
+			# 	proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk] = coeff_pert
 
 			# print('proposal.dfc:', np.sum(proposal.dfc))
 			# print('coeffs pert:', coeffs_pert)
@@ -2542,7 +2568,7 @@ class lion():
 			dc_bkg_prior = False, \
 
 			# if True, PCAT couples background proposals with change in point source fluxes
-			coupled_bkg_prop = True, \
+			coupled_bkg_prop = False, \
 
 			couple_nfrac = 0.1, \
 
@@ -2618,6 +2644,7 @@ class lion():
 			n_fc_perturb = 3, \
 
 			# power law slope of Fourier component proposal distribution. If set to None, constant proposal width used
+			# this is largely deprecated.
 			fc_prop_alpha = None, \
 
 			# specifies the proposal distribution width for the largest spatial mode of the Fourier component model, or for all of them if fc_prop_alpha=None
@@ -2681,6 +2708,8 @@ class lion():
 			scalar_noise_sigma=None, \
 
 			use_errmap = True, \
+
+			noise_fpath = None, \
 
 			# if true catalog provided, passes on to posterior analysis
 			truth_catalog = None, \
@@ -3040,21 +3069,14 @@ class lion():
 				print('fourier templates has shape', model.fourier_templates[0].shape)
 				fc_model = generate_template(model.fourier_coeffs, self.gdat.n_fourier_terms, imsz=self.gdat.imszs[0], fourier_templates=model.fourier_templates[0])
 
-				# plt.figure(figsize=(15,5))
-				# plt.subplot(1,3,1)
-				# plt.imshow(fc_model)
-				# plt.colorbar()
-				# plt.subplot(1,3,2)
-				# plt.imshow(resids[0])
-				# plt.colorbar()
-				# plt.subplot(1,3,3)
-				# plt.imshow(resids[0]+fc_model)
-				# plt.colorbar()
-				# plt.tight_layout()
-				# plt.show()
-				
-				_, _, _, bt_siginv_b_inv, mp_coeffs, temp_A_hat = compute_marginalized_templates(self.gdat.MP_order, resids[0]+fc_model, self.data.errors[0],\
-										  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, show=False)
+				# self.bt_siginv_b_inv = bt_siginv_b_inv 
+				# self.bt_siginv_b = bt_siginv_b
+				# self.ravel_temps = ravel_temps
+
+				_, _, _, _, mp_coeffs, temp_A_hat, nanmask = compute_marginalized_templates(self.gdat.MP_order, resids[0]+fc_model, self.data.errors[0],\
+										  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, show=False, \
+										  ravel_temps = model.ravel_temps, bt_siginv_b_inv=model.bt_siginv_b_inv, bt_siginv_b=model.bt_siginv_b)
+
 				model.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
 
 				fc_marg_counter += 1

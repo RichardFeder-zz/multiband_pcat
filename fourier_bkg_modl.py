@@ -8,9 +8,11 @@ from image_eval import psf_poly_fit, image_model_eval
 from scipy.ndimage import gaussian_filter
 
 
-def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
-                           ravel_temps=None, fourier_templates=None,  psf_fwhm=3., \
-                          ridge_fac = None, ridge_fac_alpha=None, show=False, x_max_pivot=None, verbose=False):
+def compute_marginalized_templates(n_terms, data, error, imsz=None, \
+                             psf_fwhm=3., ridge_fac = None, ridge_fac_alpha=None,\
+                            show=True, x_max_pivot=None, verbose=False, \
+                            bt_siginv_b=None, bt_siginv_b_inv=None, ravel_temps=None, fourier_templates=None, \
+                                   return_temp_A_hat=False, compute_nanmask=True):
     
     '''
     NOTE -- this only works for single band at the moment. Is there a way to compute the Moore-Penrose inverse for 
@@ -69,6 +71,9 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
     if ravel_temps is None:
         if fourier_templates is None:
             fourier_templates, meshx_idx, meshy_idx = make_fourier_templates(imsz[0], imsz[1], n_terms, psf_fwhm=psf_fwhm, x_max_pivot=x_max_pivot, return_idxs=True)
+        else:
+            meshx_idx, meshy_idx = np.meshgrid(np.arange(n_terms), np.arange(n_terms))
+            
         ravel_temps = ravel_temps_from_ndtemp(fourier_templates, n_terms)
         kx_idx_rav = meshx_idx.ravel()
         ky_idx_rav = meshy_idx.ravel()
@@ -76,17 +81,20 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
     im_cut_rav = data.copy().ravel()
     err_cut_rav = error.copy().ravel()
     
-    # compress system of equations excluding any nan-valued entries
-    nanmask = np.logical_or((err_cut_rav ==0), np.logical_or(np.isnan(err_cut_rav), np.isnan(im_cut_rav)))
-    ravel_temps = ravel_temps.compress(~nanmask, axis=1)
-    im_cut_rav = im_cut_rav.compress(~nanmask)
-    err_cut_rav = err_cut_rav.compress(~nanmask)
+    if compute_nanmask:
+        # compress system of equations excluding any nan-valued entries
+        nanmask = np.logical_or((err_cut_rav ==0), np.logical_or(np.isnan(err_cut_rav), np.isnan(im_cut_rav)))
+        ravel_temps = ravel_temps.compress(~nanmask, axis=1)
+        im_cut_rav = im_cut_rav.compress(~nanmask)
+        err_cut_rav = err_cut_rav.compress(~nanmask)
 
-    if verbose:
-        print('nan values in ', np.sum(nanmask), ' of ', len(nanmask))
+        if verbose:
+            print('nan values in ', np.sum(nanmask), ' of ', len(nanmask))
+    else:
+        nanmask = None
 
     if bt_siginv_b_inv is None:
-
+        print('computing bt siginv b inv')
         bt_siginv_b = np.dot(ravel_temps, np.dot(np.diag(err_cut_rav**(-2)), ravel_temps.transpose()))
             
         assert ~np.isnan(np.linalg.cond(bt_siginv_b))
@@ -113,13 +121,16 @@ def compute_marginalized_templates(n_terms, data, error, imsz=None, bt_siginv_b=
     bt_siginv_K = np.dot(ravel_temps, siginv_K_rav) # B^T Sigma^-1 Y
     A_hat = np.dot(bt_siginv_b_inv, bt_siginv_K) # (B^T Sigma^-1 B^-1 + Lambda I) B^T Sigma^-1 Y
     mp_coeffs = np.reshape(A_hat, (n_terms, n_terms, 4))
-    temp_A_hat = generate_template(mp_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1], x_max_pivot=x_max_pivot)
+    
+    temp_A_hat = None
+    if return_temp_A_hat:
+        temp_A_hat = generate_template(mp_coeffs, n_terms, fourier_templates=fourier_templates, N=imsz[0], M=imsz[1], x_max_pivot=x_max_pivot)
 
     if show:
         plot_mp_fit(temp_A_hat, n_terms, A_hat, data)
         
-        
-    return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, mp_coeffs, temp_A_hat
+    return fourier_templates, ravel_temps, bt_siginv_b, bt_siginv_b_inv, mp_coeffs, temp_A_hat, nanmask
+
 
 
 def compute_Ahat_templates(n_terms, error, imsz=None, bt_siginv_b=None, bt_siginv_b_inv=None,\
