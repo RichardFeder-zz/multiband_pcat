@@ -313,7 +313,7 @@ def multiband_cutout_obs(filenames, n_cut_arcsec, ra, dec, tail_names, bandstrs=
 
 
 
-def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames=['SIGNAL']):
+def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames=['SIGNAL'], err_hdu_idx=1):
 
 	''' 
 	This function does some of the initial data parsing needed in constructing the pcat_data object.
@@ -429,7 +429,7 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 
 		error = np.nan_to_num(spire_dat[gdat.error_extname].data)
 	else:
-		hdu = fits.open(gdat.err_fpath)[0]
+		hdu = fits.open(gdat.err_fpath)[err_hdu_idx]
 		# error = np.nan_to_num(hdu.data/hdu.header['JANSCALE'])
 		error = np.nan_to_num(hdu.data)
 
@@ -467,7 +467,10 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 			else:
 				noise_sig = gdat.scalar_noise_sigma[band]
 
-			noise_realization = np.random.normal(0, noise_sig, (image.shape[0], image.shape[1]))
+			if gdat.noise_fpath is not None:
+				noise_realization = np.load(gdat.noise_fpath)['noise_realization']
+			else:
+				noise_realization = np.random.normal(0, noise_sig, (image.shape[0], image.shape[1]))
 			image += noise_realization
 
 			if not gdat.use_errmap:
@@ -499,15 +502,8 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 				plt.show()
 
 
-
-			# if gdat.show_input_maps:
-			# 	plt.figure()
-			# 	plt.imshow(error, vmin=np.percentile(error, 5), vmax=np.percentile(error, 95))
-			# 	plt.colorbar()
-			# 	plt.title('new error')
-			# 	plt.show()
-
 		else:
+			print('using error map to generate noise realization..')
 			noise_realization = np.zeros_like(error)
 			for rowidx in range(error.shape[0]):
 				for colidx in range(error.shape[1]):
@@ -942,6 +938,7 @@ class pcat_data():
 
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(resized_error.astype(np.float32))
+				resized_image[weight==0] = 0.
 				self.data_array.append(resized_image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
 				self.template_array.append(resized_template_list)
 
@@ -967,7 +964,7 @@ class pcat_data():
 				
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
-				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) # constant offset, will need to change
+				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) # gdat.mean_offsets largely deprecated
 				self.template_array.append(cropped_template_list)
 
 			else:
@@ -978,7 +975,8 @@ class pcat_data():
 
 				self.weights.append(weight.astype(np.float32))
 				self.errors.append(error.astype(np.float32))
-				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) 
+				image[weight==0] = 0.
+				self.data_array.append(image.astype(np.float32)-gdat.mean_offsets[i]) # gdat.mean_offsets largely deprecated
 				self.template_array.append(template_list)
 
 			if i==0:

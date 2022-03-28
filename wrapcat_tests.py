@@ -255,7 +255,7 @@ class pcat_test_suite():
 		residual_samples=50, float_background=True, timestr_list_file=None, \
 		nbands=None, mask_file=None, use_mask=True, image_extnames=['IMAGE'], float_fourier_comps=False, n_fc_terms=10, fc_sample_delay=0, \
 		point_src_delay=0, nsrc_init=None, fc_prop_alpha=None, fourier_comp_moveweight=200., fc_amp_sig=0.001, n_frames=10, color_mus=None, color_sigs=None, im_fpath=None, err_fpath=None, \
-		bkg_moore_penrose_inv=True, MP_order=5, ridge_fac=2., inject_catalog_path=None, save=True, inject_color_means=[1.0, 0.7], inject_color_sigs=[0.25, 0.25], cond_cat_fpath=None):
+		bkg_moore_penrose_inv=True, MP_order=None, ridge_fac=2., inject_catalog_path=None, save=True, inject_color_means=[1.0, 0.7], inject_color_sigs=[0.25, 0.25], cond_cat_fpath=None):
 
 		'''
 		This function injects a population of artificial sources into a given image and provides diagnostics on what artificial sources PCAT recovers and to what accuracy fluxes are estimated.
@@ -694,7 +694,7 @@ class pcat_test_suite():
 
 
 	def real_dat_run(self, band0=0, band1=None, band2=None, fmin=0.007, nsamp=500, template_names=None, data_path=None, dataname='rxj1347_831', tail_name='rxj1347_PSW_nr_1_ext', \
-		bias = [-0.004, -0.007, -0.008], max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, make_post_plots=True, \
+		bias = None, max_nsrc=1000, visual=False, alph=1.0, show_input_maps=False, make_post_plots=True, \
 		inject_sz_frac=0.0, residual_samples=50, float_background=True, timestr_list_file=None, \
 		nbands=None, mask_file=None, weighted_residual=False, float_templates=False, use_mask=False, image_extnames=['SIGNAL'], error_extname='ERROR', \
 		float_fourier_comps=False, n_fc_terms=10, fc_sample_delay=0, fourier_comp_moveweight=200., fourier_amp_sig=0.001,\
@@ -708,7 +708,8 @@ class pcat_test_suite():
 		temp_prop_sig_fudge_facs=None, estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, initial_template_amplitude_dicts=None, init_fourier_coeffs=None, truealpha=3., \
 		temp_prop_df=None, add_noise=False, use_errmap=True, scalar_noise_sigma=None, width=None, height=None, \
 		flux_prior_type='double_power_law', verbtype=0, coupled_bkg_prop = False, couple_nfrac = 0.1, coupled_profile_temp_prop=False, coupled_profile_temp_nsrc = 1, coupled_fc_prop=False, \
-		init_seed=None):
+		init_seed=None, n_fc_perturb=1, \
+		float_cib_templates=False, cib_nregion=5, binned_cib_amp_sig = None, binned_cib_moveweight=40., binned_cib_sample_delay = 0., binned_cib_relamps = [1.0, 1.4, 1.17]):
 
 		''' General function for running PCAT on real (or mock, despite the name) data. '''
 		if nbands is None:
@@ -739,7 +740,6 @@ class pcat_test_suite():
 
 		if estimate_dust_first:
 
-			
 			pan_list = ['data0', 'model0', 'residual0', 'fourier_bkg0', 'residual_zoom0', 'dNdS0']
 
 			# start with 250 micron image only
@@ -752,12 +752,11 @@ class pcat_test_suite():
 			  movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, \
 			  float_fourier_comps=True, n_fourier_terms=n_fc_terms, fc_sample_delay=0, fourier_comp_moveweight=200., \
 			  dfc_prob=1.0, point_src_delay=point_src_delay, nsrc_init=0, fc_amp_sig=fc_amp_sig, truealpha=truealpha, alph=alph, add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma, \
-			  width=width, height=height, flux_prior_type=flux_prior_type, verbtype=verbtype, fourier_amp_sig=fourier_amp_sig, coupled_bkg_prop=coupled_bkg_prop, couple_nfrac=couple_nfrac, coupled_fc_prop=coupled_fc_prop, init_seed=init_seed)
+			  width=width, height=height, flux_prior_type=flux_prior_type, verbtype=verbtype, fourier_amp_sig=fourier_amp_sig, coupled_bkg_prop=coupled_bkg_prop, couple_nfrac=couple_nfrac, coupled_fc_prop=coupled_fc_prop, n_fc_perturb=n_fc_perturb, init_seed=init_seed)
 
 			ob.main()
 			_, filepath, _ = load_param_dict(ob.gdat.timestr, result_path=self.result_path)
 			timestr = ob.gdat.timestr
-
 
 			# use filepath from the last iteration to load estimate of median background estimate
 			chain = np.load(filepath+'/chain.npz')
@@ -782,7 +781,8 @@ class pcat_test_suite():
 	 				 F_statistic_alph=F_statistic_alph, movestar_moveweight=movestar_moveweight, nominal_nsrc=nominal_nsrc, birth_death_moveweight=birth_death_moveweight, merge_split_moveweight=merge_split_moveweight, raw_counts=raw_counts, generate_condensed_catalog=generate_condensed_catalog, err_f_divfac=err_f_divfac, \
 	 				 bkg_sig_fac=bkg_sig_fac, n_condensed_samp=n_condensed_samp, prevalence_cut=prevalence_cut, init_template_amplitude_dicts=initial_template_amplitude_dicts, timestr_list_file=timestr_list_file, flux_prior_type=flux_prior_type, truealpha=truealpha, temp_prop_sig_fudge_facs=temp_prop_sig_fudge_facs, temp_prop_df=temp_prop_df, \
 	 				 add_noise=add_noise, use_errmap=use_errmap, scalar_noise_sigma=scalar_noise_sigma, width=width, height=height, verbtype=verbtype, fourier_amp_sig=fourier_amp_sig, coupled_bkg_prop=coupled_bkg_prop, coupled_fc_prop=coupled_fc_prop, couple_nfrac=couple_nfrac, coupled_profile_temp_prop=coupled_profile_temp_prop, coupled_profile_temp_nsrc = coupled_profile_temp_nsrc, \
-	 				 init_seed=init_seed)
+	 				 init_seed=init_seed, n_fc_perturb=n_fc_perturb, \
+	 				 float_cib_templates=float_cib_templates, cib_nregion=cib_nregion, binned_cib_amp_sig = binned_cib_amp_sig, binned_cib_moveweight=binned_cib_moveweight, binned_cib_sample_delay = binned_cib_sample_delay, binned_cib_relamps = binned_cib_relamps)
 
 		ob.main()
 

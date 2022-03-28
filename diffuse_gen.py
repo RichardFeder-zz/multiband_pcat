@@ -11,8 +11,9 @@ from numpy.fft import fft2 as fft2
 from numpy.fft import ifft2 as ifft2
 import PIL.Image as Image
 
-
-def generate_subregion_cib_templates(dimx, dimy, nregion):
+def generate_subregion_cib_templates(dimx, dimy, nregion, cib_rel_amps = [1.0, 1.41, 1.17], \
+                                    bands=None, conv_facs=None, verbose=False):
+    
     ''' 
 
     This function generates a template set designed to model the unresolved CIB. These templates are 2D tophats in map space 
@@ -29,6 +30,13 @@ def generate_subregion_cib_templates(dimx, dimy, nregion):
 
 	coarse_template_list : 'list' of `np.array' of type 'float', shape (nregion**2, dimx, dimy) for each band.
 
+
+    Notes
+    -----
+
+    This works for 100/72/50 (i.e., SPIRE 10x10 arcmin maps), but with 51 two of the pixels are errant, fine for now but in future need to 
+    get this right. 
+    
     '''
     if type(dimx)==int or type(dimx)==float:
         dimx = [dimx]
@@ -39,25 +47,92 @@ def generate_subregion_cib_templates(dimx, dimy, nregion):
     assert dimy[0]%nregion==0
     
     nbands = len(dimx)
+    
+    if cib_rel_amps is None:
+        cib_rel_amps = np.array([1. for x in range(nbands)])
+    
+    if conv_facs is not None:
+        cib_rel_amps *= conv_facs # MJy/sr to mJy/beam
 
     subwidths = [dimx[n]//nregion for n in range(nbands)]
     
+    # I should make these overlapping for non-integer positions, weighted by decimal contribution to given pixel
+    subwidths_exact = [float(dimx[n])/nregion for n in range(nbands)]
     ntemp = nregion**2
-    print('ntemp is ', ntemp)
-    print('subwidths are ', subwidths)
+
+    if verbose:
+        print('subwidths exact:', subwidths_exact)
+        print('ntemp is ', ntemp)
+        print('subwidths are ', subwidths)
     
     coarse_template_list = []
     
     for n in range(nbands):
+        is_divisible = (subwidths[n]==subwidths_exact[n])
+        
+        if verbose:
+            print(subwidths[n], subwidths_exact[n])
+            print('is divisible is ', is_divisible)
+        
+        init_x = 0.
+        running_x = 0.
+        
         templates = np.zeros((ntemp, dimx[n], dimy[n]))
         
         for i in range(nregion):
+            init_y = 0.
+            running_y = 0.
+            
+            running_x += subwidths_exact[n]
+            x_remainder = running_x - np.floor(running_x)
+            init_x_remainder = init_x - np.floor(init_x)
+            
             for j in range(nregion):
-                templates[i*nregion + j, i*subwidths[n]:(i+1)*subwidths[n], j*subwidths[n]:(j+1)*subwidths[n]] = 1.0
+                                
+                running_y += subwidths_exact[n]
+                y_remainder = running_y - np.floor(running_y)
+                init_y_remainder = init_y - np.floor(init_y)
+
+                if verbose:
+                    print(running_x, running_y, int(np.floor(init_x)), int(np.floor(running_x)), int(np.ceil(init_y)), int(np.floor(running_y)))
                 
-        coarse_template_list.append(templates)
+                templates[i*nregion + j, int(np.ceil(init_x)):int(np.floor(running_x)), int(np.ceil(init_y)):int(np.floor(running_y))] = 1.0
+                                
+                if not is_divisible:
+                
+                    if np.ceil(running_x) > np.floor(running_x): # right edge
+                        templates[i*nregion + j, int(np.floor(running_x)),  int(np.ceil(init_y)):int(np.floor(running_y))] = x_remainder
+                        if np.floor(running_x) < dimx[n] and np.floor(running_y) < dimy[n]: # top right corner
+                            templates[i*nregion + j, int(np.floor(running_x)), int(np.floor(running_y))] = (y_remainder+x_remainder)/4.
+
+                    if np.ceil(running_y) > np.floor(running_y): # top edge
+                        templates[i*nregion + j, int(np.ceil(init_x)):int(np.floor(running_x)), int(np.floor(running_y))] = y_remainder
+                        if init_x > 0 and np.floor(running_y) < dimy[n]: # top left corner
+                            templates[i*nregion + j, int(np.floor(init_x)), int(np.floor(running_y))] = (y_remainder+np.ceil(init_x)-init_x)/4.
+
+                    if init_x > np.floor(init_x): # left edge
+                        templates[i*nregion + j, int(np.floor(init_x)),  int(np.ceil(init_y)):int(np.floor(running_y))] = np.ceil(init_x)-init_x
+                        if init_x > 0 and init_y > 0: # bottom left corner
+                            templates[i*nregion + j, int(np.floor(init_x)), int(np.floor(init_y))] = (np.ceil(init_x)-init_x+np.ceil(init_y)-init_y)/4.
+
+                    if init_y > np.floor(init_y): # bottom edge
+                        templates[i*nregion + j, int(np.ceil(init_x)):int(np.floor(running_x)), int(np.floor(init_y))] = np.ceil(init_y)-init_y
+                        
+                        if init_y > 0 and np.floor(running_x) < dimx[n]: # bottom right corner
+                            templates[i*nregion + j, int(np.floor(running_x)), int(np.floor(init_y))] = (x_remainder+np.ceil(init_y)-init_y)/4.
+
+
+                init_y = running_y
+                
+                
+            init_x = running_x
+
+ 
+        coarse_template_list.append(cib_rel_amps[n]*templates)
         
     return coarse_template_list
+
+
 
 
 def generate_diffuse_realization(N, M, power_law_idx=-2.7):
