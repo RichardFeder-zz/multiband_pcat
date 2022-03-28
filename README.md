@@ -1,5 +1,5 @@
 # pcat-lion
-Probabilistic cataloging of astronomical sources from SDSS exposures. Extension of Stephen Portillo's code for simultaneous fit of multiple band photometric data.
+Probabilistic cataloging of astronomical sources from SDSS exposures. Extension of Stephen Portillo's code for simultaneous fit of multiple band photometric data. Herschel-SPIRE data is now supported within pcat_spire.py
 
 Update: A dedicated version of multiband PCAT for handling diffuse emission, PCAT-DE, will be available in a few months in a separate repository with documentation/examples. This will consist of most of the code from pcat_spire.py. 
 
