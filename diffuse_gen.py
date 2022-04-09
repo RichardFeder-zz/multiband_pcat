@@ -11,12 +11,14 @@ from numpy.fft import fft2 as fft2
 from numpy.fft import ifft2 as ifft2
 import PIL.Image as Image
 
+
 def generate_subregion_cib_templates(dimx, dimy, nregion, cib_rel_amps = [1.0, 1.41, 1.17], \
-                                    bands=None, conv_facs=None, verbose=False):
-    
+                                    bands=None, verbose=False, \
+                                    dimxs_resize=None, dimys_resize=None):
     ''' 
 
-    This function generates a template set designed to model the unresolved CIB. These templates are 2D tophats in map space 
+    This function generates a template set designed to model the unresolved CIB. For maps divisible by nregion, each template is a 2D tophat, and for non-divisible maps
+    the border pixels are weighted by the overlap of each sub-region over the pixel solid angle. 
 
 	Parameters
 	----------
@@ -24,6 +26,11 @@ def generate_subregion_cib_templates(dimx, dimy, nregion, cib_rel_amps = [1.0, 1
 	dimx : 'int', or 'list' of ints. This and dimy specify image dimensions for potentially several maps
 	dimy : 'int', or 'list' of ints.
 	nregion : 'int'. Number of subregions along each image axis.
+	cib_rel_amps : 
+	bands : 
+	verbose : 
+	dimxs_resize : 
+	dimys_resize : 
 
 	Returns
 	-------
@@ -36,12 +43,18 @@ def generate_subregion_cib_templates(dimx, dimy, nregion, cib_rel_amps = [1.0, 1
 
     This works for 100/72/50 (i.e., SPIRE 10x10 arcmin maps), but with 51 two of the pixels are errant, fine for now but in future need to 
     get this right. 
-    
+
+    I also added dimxs_resize/dimys_resize for PCAT specifically, where the sub-region likelihood evaluation is dealt with by padding maps with non-divisible counts.
+
     '''
     if type(dimx)==int or type(dimx)==float:
         dimx = [dimx]
         dimy = [dimy]
-        
+    
+    if dimxs_resize is not None:
+        if type(dimxs_resize)==int:
+            dimxs_resize = [dimxs_resize]
+            dimys_resize = [dimys_resize]
     # make sure you can divide properly. not sure how this should be for several bands.. 
     assert dimx[0]%nregion==0
     assert dimy[0]%nregion==0
@@ -50,9 +63,6 @@ def generate_subregion_cib_templates(dimx, dimy, nregion, cib_rel_amps = [1.0, 1
     
     if cib_rel_amps is None:
         cib_rel_amps = np.array([1. for x in range(nbands)])
-    
-    if conv_facs is not None:
-        cib_rel_amps *= conv_facs # MJy/sr to mJy/beam
 
     subwidths = [dimx[n]//nregion for n in range(nbands)]
     
@@ -78,6 +88,9 @@ def generate_subregion_cib_templates(dimx, dimy, nregion, cib_rel_amps = [1.0, 1
         running_x = 0.
         
         templates = np.zeros((ntemp, dimx[n], dimy[n]))
+        
+        if dimxs_resize is not None:
+            templates_resize = np.zeros((ntemp, dimxs_resize[n], dimys_resize[n]))
         
         for i in range(nregion):
             init_y = 0.
@@ -127,12 +140,17 @@ def generate_subregion_cib_templates(dimx, dimy, nregion, cib_rel_amps = [1.0, 1
                 
             init_x = running_x
 
- 
-        coarse_template_list.append(cib_rel_amps[n]*templates)
+     
+        if dimxs_resize is not None:
+            templates_resize[:,:dimx[n], :dimy[n]] = templates.copy()
+            coarse_template_list.append(cib_rel_amps[n]*templates_resize)
+
+            
+        else:
+            
+            coarse_template_list.append(cib_rel_amps[n]*templates)
         
     return coarse_template_list
-
-
 
 
 def generate_diffuse_realization(N, M, power_law_idx=-2.7):

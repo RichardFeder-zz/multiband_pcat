@@ -416,6 +416,7 @@ class Proposal:
 		if perturb_band_idx is not None:
 			self.perturb_band_idx = perturb_band_idx
 
+
 	def change_fourier_comp(self):
 		self.goodmove = True
 		self.change_fourier_comp_bool = True
@@ -467,20 +468,13 @@ class Model:
 
 		print('at initialization of model, self.bkg is ', self.bkg)
 
-		# the last weight, used for background amplitude sampling, is initialized to zero and set to be non-zero by lion after some preset number of samples, 
-		# so don't change its value up here. There is a bkg_sample_weight parameter in the lion() class
-		
-		# binned cib
-		# self.moveweights = np.array([0., 0., 0., 0., 0., 0.]) # fourier comp, movestar. weights are specified in lion __init__()
-		# self.movetypes = ['P *', 'BD *', 'MS *', 'BKG', 'TEMPLATE', 'FC']
-
 		self.moveweights = np.array([0., 0., 0., 0., 0., 0., 0.]) # fourier comp, movestar. weights are specified in lion __init__()
 		self.movetypes = ['P *', 'BD *', 'MS *', 'BKG', 'TEMPLATE', 'FC', 'BINCIB']
 
 
 		self.n_templates = gdat.n_templates
 
-		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.001, 'binned_cib':0.001}) # binned cib
+		self.temp_amplitude_sigs = dict({'sze':0.001, 'dust':0.1, 'planck':0.05, 'fc':0.001, 'binned_cib':0.0005}) # binned cib
 		if self.gdat.sz_amp_sig is not None:
 			self.temp_amplitude_sigs['sze'] = self.gdat.sz_amp_sig
 		if self.gdat.fc_amp_sig is not None:
@@ -498,6 +492,11 @@ class Model:
 			for b, band in enumerate(gdat.bands):
 				self.template_amplitudes[i][b] = self.init_template_amplitude_dicts[key][gdat.band_dict[band]]
 		
+		if self.gdat.float_cib_templates:
+			self.coarse_cib_templates = self.gdat.coarse_cib_templates
+			self.dbcc = np.zeros((gdat.cib_nregion**2))
+			self.binned_cib_coeffs = np.zeros_like(self.dbcc)
+
 		if self.gdat.float_fourier_comps:
 			if self.gdat.init_fourier_coeffs is not None:
 				self.fourier_coeffs = self.gdat.init_fourier_coeffs.copy()
@@ -828,12 +827,18 @@ class Model:
 
 			if precomp_temps is not None:
 				pc_temp = precomp_temps[b]
+
+				if fc_rel_amps is not None:
+					pc_temp *= fc_rel_amps[b]
+
 				# if passing fixed fourier comp template, fc_rel_amps should be model + d_rel_amps, if perturbing
 				# relative amplitude, fc_rel_amps should be one hot vector with change in one of the bands
+				
 				if dtemp is None:
-					dtemp = fc_rel_amps[b]*pc_temp
+					dtemp = pc_temp
 				else:
-					dtemp += fc_rel_amps[b]*pc_temp
+					dtemp += pc_temp
+
 
 			elif dfc is not None:
 
@@ -1008,11 +1013,34 @@ class Model:
 
 		if self.gdat.float_templates:
 			dtemplate = self.template_amplitudes
-		if self.gdat.float_fourier_comps:
+
+		if self.gdat.float_fourier_comps or self.gdat.float_cib_templates:
 			running_temp = []
 			for b in range(self.nbands):
-				running_temp.append(np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0))
-			running_temp = np.array(running_temp) # ? 
+				running_temp.append(np.zeros(self.imszs[b]))
+				if self.gdat.float_fourier_comps:
+					running_temp[b] += np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
+
+				if self.gdat.float_cib_templates:
+					running_temp[b] += np.sum([self.binned_cib_coeffs[i]*self.coarse_cib_templates[b][i] for i in range(self.gdat.cib_nregion**2)], axis=0)
+
+				# plt.figure()
+				# plt.title('b = '+str(b))
+				# plt.imshow(running_temp[b])
+				# plt.colorbar()
+				# plt.show()
+
+
+			# for b in range(self.nbands):
+			# 	if self.gdat.float_fourier_comps:
+			# 		running_temp.append(np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0))
+				
+			# 	if self.gdat.float_cib_templates:
+			# 		running_cib_temp = 
+
+
+			# running_temp = np.array(running_temp) # ? 
+
 
 		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam, \
 														 dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=self.fc_rel_amps)
@@ -1195,6 +1223,18 @@ class Model:
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dbcc=proposal.dbcc, bcib_idx = proposal.bcib_idx)
 	
 
+					# plt.figure(figsize=(12, 5))
+					# plt.subplot(1,2,1)
+					# plt.imshow(mods[0], cmap='Greys')
+					# plt.colorbar()
+					# # plt.subplot(1,3,2)
+					# # plt.imshow(diff2s_nomargin, cmap='Greys')
+					# # plt.colorbar()
+					# plt.subplot(1,2,2)
+					# plt.imshow(dmodels[0], cmap='Greys')
+					# plt.colorbar()
+					# plt.show()
+
 
 				else: # movestar, birth/death, merge/split
 
@@ -1263,7 +1303,7 @@ class Model:
 					total_logL = np.sum(logL)
 					total_dlogP = np.sum(dlogP)
 
-					# if rtype==5:
+					# if rtype==6:
 					# 	print('total logL is ', total_logL)
 					# 	print('total dlogP is ', total_dlogP)
 
@@ -1421,8 +1461,17 @@ class Model:
 						self.dback += proposal.dback
 
 				if proposal.change_template_amp_bool:
+
 					if np.sum(acceptreg) > 0:
-						self.dtemplate += proposal.dtemplate
+						
+						if proposal.change_binned_cib_bool:
+							self.dbcc += proposal.dbcc
+							# print(proposal.bcib_idx, proposal.dbcc[proposal.bcib_idx])
+							# print(self.coarse_cib_templates[b][proposal.bcib_idx])
+							for b in range(self.nbands):
+								running_temp[b] += self.coarse_cib_templates[b][proposal.bcib_idx]*proposal.dbcc[proposal.bcib_idx]
+						else:
+							self.dtemplate += proposal.dtemplate
 
 				if proposal.change_fourier_comp_bool:
 
@@ -1446,12 +1495,12 @@ class Model:
 
 								# running_temp[b] += self.fourier_templates[b][proposal.idx0, proposal.idx1, proposal.idxk]*proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk]
 					
-				if proposal.change_binned_cib_bool:
-					if np.sum(acceptreg) > 0:
-						self.dbcc += proposal.dbcc
+				# if proposal.change_binned_cib_bool:
+				# 	if np.sum(acceptreg) > 0:
+				# 		self.dbcc += proposal.dbcc
 
-						for b in range(self.nbands):
-							running_temp[b] += self.coarse_cib_templates[b][proposal.bcib_idx]*proposal.dbcc[proposal.bcib_idx]
+				# 		for b in range(self.nbands):
+				# 			running_temp[b] += self.coarse_cib_templates[b][proposal.bcib_idx]*proposal.dbcc[proposal.bcib_idx]
 
 				dts[2,i] = time.time() - t3
 
@@ -1532,13 +1581,19 @@ class Model:
 
 
 			fourier_any_bool = any(['fourier_bkg' in panel_name for panel_name in self.gdat.panel_list])
-			fourier_bkg = None
+			bcib_any_bool = any(['bcib' in panel_name for panel_name in self.gdat.panel_list])
+
+			fourier_bkg, bcib_bkg = None, None
 
 			if self.gdat.float_fourier_comps and fourier_any_bool:
 				fourier_bkg = [self.fc_rel_amps[b]*running_temp[b] for b in range(self.gdat.nbands)]
+			if self.gdat.float_cib_templates and bcib_any_bool:
+				bcib_bkg = [running_temp[b] for b in range(self.gdat.nbands)]
+
 
 			if sample_idx < 50 or sample_idx%self.gdat.plot_sample_period==0:
-				plot_custom_multiband_frame(self, resids, models, panels = self.gdat.panel_list, frame_dir_path = frame_dir_path, fourier_bkg = fourier_bkg)
+				plot_custom_multiband_frame(self, resids, models, panels = self.gdat.panel_list, frame_dir_path = frame_dir_path, fourier_bkg = fourier_bkg, \
+					bcib_bkg=bcib_bkg)
 
 		return self.n, chi2, timestat_array, accept_fracs, diff2_list, rtype_array, accept, resids, models
 
@@ -1763,9 +1818,21 @@ class Model:
 
 		factor = None 
 
-		d_amp = np.random.normal(0., scale=self.temp_amplitude_sigs['binned_cib'])
-
+		dbcc = np.random.normal(0., scale=self.temp_amplitude_sigs['binned_cib'])
+		# print('dbcc is ', dbcc)
 		proposal.dbcc[proposal.bcib_idx] = dbcc
+
+		# print('prroposal.dbcc is ', proposal.dbcc)
+
+		old_bcib_amp = self.binned_cib_coeffs[proposal.bcib_idx] +self.dbcc[proposal.bcib_idx]
+		new_bcib_amp = old_bcib_amp+dbcc		
+		if new_bcib_amp < 0:
+			# print('new temp amp is ', new_bcib_amp, ', proposal will fail')
+			proposal.goodmove = False
+
+			return proposal
+
+
 
 		proposal.change_template_amplitude()
 		proposal.change_binned_cib_bool = True
@@ -2446,6 +2513,7 @@ class Samples():
 			self.bkg_sample = np.zeros((gdat.nsamp, gdat.nbands)) # thinned mean background levels
 		
 		if gdat.float_templates:
+			print('GDAT.ntemplates is ', gdat.n_templates)
 			self.template_amplitudes = np.zeros((gdat.nsamp, gdat.n_templates, gdat.nbands)) # amplitudes of templates used in fit 
 		
 		if gdat.float_fourier_comps:
@@ -2453,7 +2521,7 @@ class Samples():
 			self.fc_rel_amps = np.zeros((gdat.nsamp, gdat.nbands)) # relative amplitudes of diffuse Fourier component model across observing bands.
 			
 		if gdat.float_cib_templates:
-			self.binned_cib_coeffs = np.zeros((gdat.nsamp, gdat.cib_nregion, gdat.cib_nregion)) # amplitudes of Fourier templates
+			self.binned_cib_coeffs = np.zeros((gdat.nsamp, gdat.cib_nregion**2)) # amplitudes of Fourier templates
 
 
 		self.colorsample = [[] for x in range(gdat.nbands-1)]
@@ -2500,9 +2568,8 @@ class Samples():
 		if self.gdat.float_fourier_comps:
 			self.fourier_coeffs[j,:,:,:] = model.fourier_coeffs 
 			self.fc_rel_amps[j,:] = model.fc_rel_amps
-
 		if self.gdat.float_cib_templates:
-			self.binned_cib_coeffs[j,:,:] = model.binned_cib_coeffs
+			self.binned_cib_coeffs[j] = model.binned_cib_coeffs
 
 		for b in range(self.nbands):
 			self.fsample[b][j,:] = model.stars[Model._F+b,:]
@@ -2996,15 +3063,22 @@ class lion():
 		# initialize CIB templates if used
 		if self.gdat.float_cib_templates:
 			print('Initializing binned CIB templates..')
-			dimxs = [self.gdat.imszs[b][0] for b in range(self.gdat.nbands)]
-			dimys = [self.gdat.imszs[b][1] for b in range(self.gdat.nbands)]
-			self.coarse_cib_templates = generate_subregion_cib_templates(dimxs, dimys, self.gdat.cib_nregion)
+			dimxs_resize = [self.gdat.imszs[b][0] for b in range(self.gdat.nbands)]
+			dimys_resize = [self.gdat.imszs[b][1] for b in range(self.gdat.nbands)]
+
+			dimxs = [self.gdat.imszs_orig[b][0] for b in range(self.gdat.nbands)]
+			dimys = [self.gdat.imszs_orig[b][1] for b in range(self.gdat.nbands)]
+
+			print('dimxs resize is ', dimxs_resize)
+			print('while original dimensions are ', dimxs)
+
+			self.gdat.coarse_cib_templates = generate_subregion_cib_templates(dimxs, dimys, self.gdat.cib_nregion, dimxs_resize=dimxs_resize, dimys_resize=dimys_resize)
 
 			if self.gdat.show_input_maps:
 				for b in range(self.gdat.nbands):
 					plt.figure()
 					plt.title('b = '+str(b), fontsize=18)
-					plt.imshow(coarse_cib_templates[b][0], origin='lower')
+					plt.imshow(self.gdat.coarse_cib_templates[b][0], origin='lower')
 					plt.colorbar()
 					plt.show()
 

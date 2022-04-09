@@ -11,6 +11,7 @@ import sys
 import pandas as pd
 from pcat_spire import *
 from spire_roc_condensed_cat import *
+from diffuse_gen import *
 
 if sys.version_info[0] == 3:
 	from celluloid import Camera
@@ -220,7 +221,8 @@ def plot_atcr_multichain(listsamp, title=None, alpha=1.0):
 
 def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', 'residual0','residual1','residual2','residual2zoom'], \
 							zoomlims=[[[0, 40], [0, 40]],[[70, 110], [70, 110]], [[50, 70], [50, 70]]], \
-							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None, fourier_bkg=None, sz=None, frame_dir_path=None, smooth_fac=4):
+							ndeg=0.11, panel0=None, panel1=None, panel2=None, panel3=None, panel4=None, panel5=None, fourier_bkg=None, bcib_bkg=None, sz=None, frame_dir_path=None,\
+							smooth_fac=4):
 
 	
 	if panel0 is not None:
@@ -312,6 +314,17 @@ def plot_custom_multiband_frame(obj, resids, models, panels=['data0','model0', '
 			plt.colorbar(fraction=0.046, pad=0.04)
 		
 			plt.title('Sum of FCs (band '+str(band_idx)+')')
+			plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
+			plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
+
+		elif 'bcib' in panels[i]:
+			bcib = bcib_bkg[band_idx]
+			bcib[obj.dat.weights[band_idx]==0] = 0.
+
+			plt.imshow(bcib, origin='lower', interpolation='none', cmap='Greys', vmin = np.percentile(bcib, 5), vmax=np.percentile(bcib, 95))
+			plt.colorbar(fraction=0.046, pad=0.04)
+		
+			plt.title('Binned CIB (band '+str(band_idx)+')')
 			plt.xlim(-0.5, obj.imszs[band_idx][0]-0.5)
 			plt.ylim(-0.5, obj.imszs[band_idx][1]-0.5)
 
@@ -645,6 +658,71 @@ def plot_template_median_std(template, template_samples, band='250 micron', temp
 		plt.show()
 	return f
 
+
+def plot_bcib_median_std(binned_cib_coeffs, coarse_cib_templates, ref_img=None, title=True, show=False):
+	''' Plot median/standard deviation across samples for binned CIB model. 
+
+	Inputs
+	------
+
+
+	Returns
+	-------
+
+
+	'''
+	cib_nregion = int(np.sqrt(binned_cib_coeffs.shape[-1]))
+
+	bcib_modls = []
+
+	for i, bcib_coeff_state in enumerate(binned_cib_coeffs):
+		bcib_modls.append(np.sum([bcib_coeff_state[j]*coarse_cib_templates[j] for j in range(binned_cib_coeffs.shape[-1])], axis=0))
+	bcib_modls = np.array(bcib_modls)
+
+	mean_bcib_temp = np.median(bcib_modls, axis=0)
+	std_bcib_temp = np.std(bcib_modls, axis=0)
+
+	xlabel_unit = 'Jy/beam'
+
+	if ref_img is not None:
+		f = plt.figure(figsize=(15, 5))
+
+		plt.subplot(1,3,1)
+		plt.title('Data', fontsize=14)
+		plt.imshow(ref_img, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 99))
+		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
+		cb.set_label(xlabel_unit)
+		plt.subplot(1,3,2)
+		plt.title('Median binned CIB model', fontsize=14)
+		plt.imshow(mean_bcib_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_bcib_temp, 5), vmax=np.percentile(mean_bcib_temp, 99))
+		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
+		cb.set_label(xlabel_unit)		
+		plt.subplot(1,3,3)
+		plt.title('Data - median binned CIB model', fontsize=14)
+		plt.imshow(ref_img - mean_bcib_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(ref_img, 5), vmax=np.percentile(ref_img, 97))
+		cb = plt.colorbar(orientation='vertical', pad=0.04, fraction=0.046)
+		cb.set_label(xlabel_unit)
+
+	else:
+		f = plt.figure(figsize=(11, 5))
+
+		plt.subplot(1,2,1)
+		plt.title('Median'+xlabel_unit)
+		plt.imshow(mean_bcib_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(mean_bcib_temp, 5), vmax=np.percentile(mean_bcib_temp, 95))
+		plt.colorbar(pad=0.04)
+		plt.subplot(1,2,2)
+		plt.title('Standard deviation'+xlabel_unit)
+		plt.imshow(std_bcib_temp, origin='lower', cmap='Greys', interpolation=None, vmin=np.percentile(std_bcib_temp, 5), vmax=np.percentile(std_bcib_temp, 95))
+		plt.colorbar(pad=0.04)
+
+	plt.tight_layout()
+	if show:
+		plt.show()
+	
+	return f
+
+
+
 # fourier comps
 
 def plot_fc_median_std(fourier_coeffs, imsz, ref_img=None, bkg_samples=None, fourier_templates=None, title=True, show=False, convert_to_MJy_sr_fac=None, psf_fwhm=None):
@@ -830,6 +908,21 @@ def plot_fourier_coeffs_covariance_matrix(fourier_coeffs, show=False):
 
 
 	return f
+
+def plot_bcib_sample_chains(binned_cib_coeffs, show=False):
+	f = plt.figure(figsize=(8,6))
+
+	xvals = np.arange(binned_cib_coeffs.shape[0])
+	for cib_coeff_idx in range(binned_cib_coeffs.shape[1]):
+		plt.plot(xvals, binned_cib_coeffs[:,cib_coeff_idx], alpha=0.5, linewidth=2, color='k')
+	plt.xlabel('Thinned samples', fontsize=18)
+	plt.ylabel('Binned CIB template amplitude [Jy/beam]', fontsize=18)
+	plt.tight_layout()
+	if show:
+		plt.show()
+	return f
+
+
 
 def plot_fourier_coeffs_sample_chains(fourier_coeffs, show=False):
 	
@@ -1748,7 +1841,6 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 
 		condensed_cat_dir = add_directory(gdat.filepath+'/condensed_catalog')
 
-
 		if generate_condensed_cat:
 			print('Generating condensed catalog from last '+str(gdat.n_condensed_samp)+' samples of catalog ensemble..')
 			print('prevalence_cut = '+str(gdat.prevalence_cut))
@@ -1822,14 +1914,23 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 	bands = gdat.bands
 	print('Bands are ', bands)
 
-	if gdat.float_background is not None:
+	if gdat.float_background:
 		bkgs = chain['bkg']
 
-	if gdat.float_templates is not None:
-		template_amplitudes = chain['template_amplitudes']
+	if gdat.float_templates:
+		# print()
+		if gdat.n_templates > 0:
+			template_amplitudes = chain['template_amplitudes']
 
-	if gdat.float_fourier_comps is not None: # fourier comps
+	if gdat.float_cib_templates:
+		binned_cib_coeffs = chain['binned_cib_coeffs']
+		print('binned cib coofefs has shape', binned_cib_coeffs.shape)
+
+	if gdat.float_fourier_comps: # fourier comps
 		fourier_coeffs = chain['fourier_coeffs']
+
+	# if gdat.float_cib_templates:
+	# 	binned_cib_coeffs = chain['binned_cib_coeffs']
 
 	# ------------------- mean residual ---------------------------
 
@@ -1922,6 +2023,29 @@ def result_plots(timestr=None, burn_in_frac=0.8, boolplotsave=True, boolplotshow
 			f_bkg_post.savefig(bkg_dir+'/bkg_amp_posterior_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
 
 			plt.close()
+
+	# ------------------------- BINNED CIB TEMPLATES --------------------
+
+	if gdat.float_cib_templates:
+
+		bcib_dir = add_directory(gdat.filepath+'/binned_cib')
+
+		print('Computing binned CIB posterior..')
+
+		dimxs = [gdat.imszs[b][0] for b in range(gdat.nbands)]
+		dimys = [gdat.imszs[b][1] for b in range(gdat.nbands)]
+
+		coarse_cib_templates = generate_subregion_cib_templates(dimxs, dimys, gdat.cib_nregion, cib_rel_amps=gdat.binned_cib_relamps)
+
+		for b in range(gdat.nbands):
+
+			f_bcib_median_std = plot_bcib_median_std(binned_cib_coeffs[burn_in:], coarse_cib_templates[b])
+			f_bcib_median_std.savefig(bcib_dir+'/bcib_model_median_std_band'+str(b)+'.'+plttype, bbox_inches='tight', dpi=dpi)
+
+		print('BINNED CIB COEFFS HAS SHAPE', binned_cib_coeffs.shape)
+		f_bcib_chain = plot_bcib_sample_chains(binned_cib_coeffs[burn_in:])
+		f_bcib_chain.savefig(bcib_dir+'/bcib_sample_chains.'+plttype, bbox_inches='tight', dpi=dpi)
+
 
 	# ------------------------- FOURIER COMPONENTS ----------------------
 

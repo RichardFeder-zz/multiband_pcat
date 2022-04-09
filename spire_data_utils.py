@@ -667,7 +667,7 @@ class pcat_data():
 
 		relative_dust_sed_dict = dict({'S':sed_cirrus[250]/sed_cirrus[100], 'M':sed_cirrus[350]/sed_cirrus[100], 'L':sed_cirrus[500]/sed_cirrus[100]}) # relative to 100 micron
 
-		gdat.imszs, gdat.regsizes, gdat.margins, gdat.bounds, gdat.x_max_pivot_list, gdat.y_max_pivot_list = [[] for x in range(6)]
+		gdat.imszs, gdat.regsizes, gdat.margins, gdat.bounds, gdat.x_max_pivot_list, gdat.y_max_pivot_list, gdat.imszs_orig = [[] for x in range(7)]
 
 		for i, band in enumerate(gdat.bands):
 
@@ -675,6 +675,8 @@ class pcat_data():
 
 				image, error, mask, file_name, x0, y0 = load_in_map(gdat, band, astrom=self.fast_astrom, show_input_maps=show_input_maps, image_extnames=gdat.image_extnames)
 
+				gdat.imszs_orig.append([image.shape[0], image.shape[1]])
+				print(gdat.imszs_orig)
 				# bounds = get_rect_mask_bounds(mask) if gdat.bolocam_mask else None
 				bounds = get_rect_mask_bounds(mask)
 
