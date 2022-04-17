@@ -67,8 +67,6 @@ def create_directories(gdat):
 
 	'''
 
-	print('gdat.result_path = ', gdat.result_path)
-	print('gdat.timestr = ', gdat.timestr)
 	new_dir_name = gdat.result_path+'/'+gdat.timestr
 	timestr = gdat.timestr
 	if os.path.isdir(gdat.result_path+'/'+gdat.timestr):
@@ -2712,6 +2710,8 @@ class lion():
 			init_template_amplitude_dicts = None, \
 			# if template file name is not None then it will grab the template from this path and replace PSW with appropriate band
 			template_filename = None, \
+			# template amplitudes to inject
+			temp_mock_amps_dict = None, \
 			# same idea here as bkg_moveweight
 			template_moveweight = 40., \
 			# heavy-tailed proposal distribution for templates, df=number of degrees of freedom, doesn't make a big difference
@@ -3058,7 +3058,7 @@ class lion():
 
 
 		self.data = pcat_data(self.gdat.auto_resize, self.gdat.nregion)
-		self.data.load_in_data(self.gdat, map_object=map_object, show_input_maps=self.gdat.show_input_maps)
+		self.data.load_in_data(self.gdat, map_object=map_object, show_input_maps=self.gdat.show_input_maps, temp_mock_amps_dict=temp_mock_amps_dict)
 
 		# initialize CIB templates if used
 		if self.gdat.float_cib_templates:
@@ -3072,8 +3072,8 @@ class lion():
 			print('dimxs resize is ', dimxs_resize)
 			print('while original dimensions are ', dimxs)
 
-			self.gdat.coarse_cib_templates = generate_subregion_cib_templates(dimxs, dimys, self.gdat.cib_nregion, dimxs_resize=dimxs_resize, dimys_resize=dimys_resize)
-
+			self.gdat.coarse_cib_templates = generate_subregion_cib_templates(dimxs, dimys, self.gdat.cib_nregion, dimxs_resize=dimxs_resize, dimys_resize=dimys_resize, cib_rel_amps=self.gdat.binned_cib_relamps) # bug
+ 
 			if self.gdat.show_input_maps:
 				for b in range(self.gdat.nbands):
 					plt.figure()

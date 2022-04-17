@@ -621,7 +621,7 @@ class pcat_data():
 	- load_in_data() loads in data, generates the PSF template and computes weights from the noise model
 	'''
 
-	template_bands = dict({'sze':['S', 'M', 'L'], 'szetemp':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L'], 'planck':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
+	template_bands = dict({'sze':['M', 'L'], 'szetemp':['S', 'M', 'L'], 'lensing':['S', 'M', 'L'], 'dust':['S', 'M', 'L'], 'planck':['S', 'M', 'L']}) # should just integrate with the same thing in Lion main
 
 	def __init__(self, auto_resize=False, nregion=1):
 		self.ncs, self.nbins, self.psfs, self.cfs, self.biases, self.data_array, self.weights, self.masks, self.errors, \
@@ -658,9 +658,9 @@ class pcat_data():
 			flux_density_conversion_dict = dict({'S': 86.29e-4, 'M':16.65e-3, 'L':34.52e-3})
 
 		if temp_mock_amps_dict is None:
-			temp_mock_amps_dict = dict({'S':0.4, 'M': 0.2, 'L': 0.8}) # MJy/sr, this was to test how adding a signal at 250 um (like dust) would affect the fit if not modeled
+			# temp_mock_amps_dict = dict({'S':0.4, 'M': 0.2, 'L': 0.8}) # MJy/sr, this was to test how adding a signal at 250 um (like dust) would affect the fit if not modeled
 
-			# temp_mock_amps_dict = dict({'S':0.03, 'M': 0.2, 'L': 0.8}) # MJy/sr
+			temp_mock_amps_dict = dict({'S':0.03, 'M': 0.2, 'L': 0.8}) # MJy/sr
 
 		if sed_cirrus is None:
 			sed_cirrus = dict({100:1.7, 250:3.5, 350:1.6, 500:0.85}) # MJy/sr
@@ -693,7 +693,7 @@ class pcat_data():
 
 				template_list = [] 
 
-
+				print('gdat.template_name is ', gdat.template_filename)
 				if gdat.n_templates > 0:
 
 					for t, template_name in enumerate(gdat.template_names):
@@ -709,11 +709,24 @@ class pcat_data():
 								print('we want to load in a template!!')
 								
 								temp_name = gdat.template_filename[template_name]
-								template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
+
+								# template_file_name = temp_name.replace()
+								print('template file name ehere is ', temp_name)
+								for loopband in ['S', 'M', 'L']:
+								    if 'P'+loopband+'W' in temp_name:
+								    	print('P'+loopband+'W'+' is in '+temp_name)
+								    	print('gdat.band_dict[band] is', gdat.band_dict[band])
+								        template_file_name = temp_name.replace('P'+loopband+'W',  'P'+str(gdat.band_dict[band])+'W')
+
+								# template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
 
 								print('template file name is ', template_file_name)
 
-								template = fits.open(template_file_name)[0].data
+								template = fits.open(template_file_name)[1].data 
+
+								# for new templates, divide by conversion factor
+								# template /= flux_density_conversion_dict[gdat.band_dict[band]]
+								# template /= temp_mock_amps_dict[gdat.band_dict[band]]
 
 								if show_input_maps:
 									plt.figure()

@@ -705,7 +705,7 @@ class pcat_test_suite():
 		bkg_moore_penrose_inv=False, MP_order=None, ridge_fac=10, point_src_delay=0, nregion=5, fc_rel_amps=None, correct_misaligned_shift=False, \
 		inject_diffuse_comp=False, diffuse_comp_path=None, panel_list = None, F_statistic_alph=False, raw_counts=False, generate_condensed_catalog=False, \
 		err_f_divfac=1., bkg_sig_fac=5.0, bkg_moveweight=20., n_condensed_samp=50, prevalence_cut=0.5, burn_in_frac=0.7, \
-		temp_prop_sig_fudge_facs=None, estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, initial_template_amplitude_dicts=None, init_fourier_coeffs=None, truealpha=3., \
+		temp_prop_sig_fudge_facs=None, estimate_dust_first=False, nominal_nsrc=1000, nsamp_dustestimate=100, temp_mock_amps_dict = None, initial_template_amplitude_dicts=None, init_fourier_coeffs=None, truealpha=3., \
 		temp_prop_df=None, add_noise=False, use_errmap=True, scalar_noise_sigma=None, width=None, height=None, \
 		flux_prior_type='double_power_law', verbtype=0, coupled_bkg_prop = False, couple_nfrac = 0.1, coupled_profile_temp_prop=False, coupled_profile_temp_nsrc = 1, coupled_fc_prop=False, \
 		init_seed=None, n_fc_perturb=1, \
@@ -770,7 +770,7 @@ class pcat_test_suite():
 		ob = lion(band0=band0, band1=band1, band2=band2, data_path=data_path, base_path=self.base_path, result_path=self.result_path, \
 					float_background=float_background, bkg_moveweight=bkg_moveweight, burn_in_frac=burn_in_frac, bkg_sample_delay=bkg_sample_delay, float_templates=float_templates, template_moveweight=template_moveweight, \
 	 				cblas=self.cblas, openblas=self.openblas, visual=visual, show_input_maps=show_input_maps, \
-	 				template_names=template_names, temp_sample_delay=temp_sample_delay, inject_sz_frac=inject_sz_frac, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=bias, load_state_timestr=load_state_timestr, max_nsrc=max_nsrc,\
+	 				template_names=template_names, temp_sample_delay=temp_sample_delay, temp_mock_amps_dict=temp_mock_amps_dict, inject_sz_frac=inject_sz_frac, template_filename=template_filename, tail_name=tail_name, dataname=dataname, bias=bias, load_state_timestr=load_state_timestr, max_nsrc=max_nsrc,\
 	 				trueminf=fmin, nregion=nregion, make_post_plots=make_post_plots, nsamp=nsamp, use_mask=use_mask,\
 	 				residual_samples=residual_samples, float_fourier_comps=float_fourier_comps, fc_rel_amps=fc_rel_amps,\
 	 				n_fourier_terms=n_fc_terms, fc_sample_delay=fc_sample_delay, fourier_comp_moveweight=fourier_comp_moveweight_main,\
