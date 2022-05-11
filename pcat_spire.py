@@ -800,9 +800,13 @@ class Model:
 
 		'''
 
+		diff2_bands = []
 		dmodels = []
 		dt_transf = 0
 		nb = 0
+
+		# if fc_rel_amps is None:
+			# fc_rel_amps = np.array([1. for p in range(self.nbands)])
 
 		for b in range(self.nbands):
 			dtemp = None
@@ -815,7 +819,6 @@ class Model:
 			if dtemplate is not None:
 				dtemp = []
 				for i, temp in enumerate(self.dat.template_array[b]):
-					verbprint(self.gdat.verbtype, 'dtemplate in multiband eval is '+str(dtemplate.shape), verbthresh=1)
 					if temp is not None and dtemplate[i][b] != 0.:
 						dtemp.append(dtemplate[i][b]*temp)
 				if len(dtemp) > 0:
@@ -824,10 +827,12 @@ class Model:
 					dtemp = None
 
 			if precomp_temps is not None:
-				pc_temp = precomp_temps[b]
 
-				if fc_rel_amps is not None:
-					pc_temp *= fc_rel_amps[b]
+				pc_temp = np.array(fc_rel_amps[b]*precomp_temps[b]).astype(np.float32)
+				# pc_temp = precomp_temps[b]
+
+				# if fc_rel_amps is not None:
+					# pc_temp *= fc_rel_amps[b]
 
 				# if passing fixed fourier comp template, fc_rel_amps should be model + d_rel_amps, if perturbing
 				# relative amplitude, fc_rel_amps should be one hot vector with change in one of the bands
@@ -842,27 +847,26 @@ class Model:
 
 				if idxvecs is not None:
 					for i in range(self.gdat.n_fc_perturb):
-						# print(idxvecs[i][0], idxvecs[i][1], idxvecs[i][2])
-						# print('dfc of vec ', i, 'is ', dfc[idxvecs[i][0], idxvecs[i][1], idxvecs[i][2]])
 
 						pc_temp = self.fourier_templates[b][idxvecs[i][0], idxvecs[i][1], idxvecs[i][2]]*dfc[idxvecs[i][0], idxvecs[i][1], idxvecs[i][2]]
+						
 						if dtemp is None:
-							dtemp = fc_rel_amps[b]*pc_temp
+							dtemp = fc_rel_amps[b]*pc_temp 
 						else:
 							dtemp += fc_rel_amps[b]*pc_temp
 
 
-				elif idxvec is not None:
-					print('WHY ARE WE HERE')
-					pc_temp = self.fourier_templates[b][idxvec[0], idxvec[1], idxvec[2]]*dfc[idxvec[0], idxvec[1], idxvec[2]]
+				# elif idxvec is not None:
+				# 	print('WHY ARE WE HERE this is deprecated')
+				# 	pc_temp = self.fourier_templates[b][idxvec[0], idxvec[1], idxvec[2]]*dfc[idxvec[0], idxvec[1], idxvec[2]]
 
-					if dtemp is None:
-						dtemp = fc_rel_amps[b]*pc_temp
-					else:
-						dtemp += fc_rel_amps[b]*pc_temp
-
+				# 	if dtemp is None:
+				# 		dtemp = fc_rel_amps[b]*pc_temp
+				# 	else:
+				# 		dtemp += fc_rel_amps[b]*pc_temp
 
 				else:
+					print('uhhhh are we here?????')
 					pc_temp = np.sum([dfc[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
 					if dtemp is None:
 						dtemp = fc_rel_amps[b]*pc_temp
@@ -876,12 +880,6 @@ class Model:
 					pc_bcib_temp = self.coarse_cib_templates[b][bcib_idx]*dbcc[bcib_idx]
 				else:
 					pc_bcib_temp = np.dot(dbcc, self.coarse_cib_templates[b])
-
-					plt.figure()
-					plt.title('summed cib temp, b = '+str(b), fontsize=18)
-					plt.imshow(pc_bcib_temp, origin='lower')
-					plt.colorbar()
-					plt.show()
 
 				if dtemp is None:
 					dtemp = pc_bcib_temp 
@@ -900,28 +898,25 @@ class Model:
 				xp=x
 				yp=y
 
+			# dtemp = np.array(dtemp).astype(np.float32)
+
 			dmodel, diff2 = image_model_eval(xp, yp, beam_fac[b]*nc[b]*f[b], bkg[b], self.imszs[b], \
 											nc[b], np.array(cf[b]).astype(np.float32()), weights=self.dat.weights[b], \
 											ref=ref[b], lib=lib, regsize=self.regsizes[b], \
 											margin=self.margins[b]*margin_fac, offsetx=self.offsetxs[b], offsety=self.offsetys[b], template=dtemp)
 			
-			# if rtype==4:
-			# 	plt.figure()
-			# 	plt.title('bandidx = '+str(b))
-			# 	plt.imshow(dmodel)
-			# 	plt.colorbar()
-			# 	plt.show()
-
-
+			
 			if nb==0:
 				diff2s = diff2
 				nb += 1
 			else:
 				diff2s += diff2
 
+			diff2_bands.append(np.sum(diff2))
+
 			dmodels.append(dmodel)
 
-		return dmodels, diff2s, dt_transf 
+		return dmodels, diff2s, dt_transf, diff2_bands
 
 
 	def run_sampler(self, sample_idx):
@@ -985,12 +980,9 @@ class Model:
 		self.nregy = int(self.imsz0[1] / self.regsizes[0] + 1)
 
 		resids = []
-
 		for b in range(self.nbands):
-
 			resid = self.dat.data_array[b].copy() # residual for zero image is data
 			verbprint(self.gdat.verbtype, 'resid has shape '+str(resid.shape), verbthresh=1)
-
 			resids.append(resid)
 
 		evalx = self.stars[self._X,0:self.n]
@@ -1014,39 +1006,39 @@ class Model:
 
 		if self.gdat.float_fourier_comps or self.gdat.float_cib_templates:
 			running_temp = []
+
+			# new code
 			for b in range(self.nbands):
 				running_temp.append(np.zeros(self.imszs[b]))
 				if self.gdat.float_fourier_comps:
 					running_temp[b] += np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0)
 
+					# plt.figure()
+					# plt.title('b = '+str(b))
+					# plt.imshow(running_temp[b])
+					# plt.colorbar()
+					# plt.show()
+
 				if self.gdat.float_cib_templates:
 					running_temp[b] += np.sum([self.binned_cib_coeffs[i]*self.coarse_cib_templates[b][i] for i in range(self.gdat.cib_nregion**2)], axis=0)
 
-				# plt.figure()
-				# plt.title('b = '+str(b))
-				# plt.imshow(running_temp[b])
-				# plt.colorbar()
-				# plt.show()
 
-
-			# for b in range(self.nbands):
-			# 	if self.gdat.float_fourier_comps:
-			# 		running_temp.append(np.sum([self.fourier_coeffs[i,j,k]*self.fourier_templates[b][i,j,k] for i in range(self.n_fourier_terms) for j in range(self.n_fourier_terms) for k in range(4)], axis=0))
-				
-			# 	if self.gdat.float_cib_templates:
-			# 		running_cib_temp = 
-
-
-			# running_temp = np.array(running_temp) # ? 
-
-
-		models, diff2s, dt_transf = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam, \
+		models, diff2s, dt_transf, diff2_bands = self.pcat_multiband_eval(evalx, evaly, evalf, self.bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=resids, lib=lib, beam_fac=self.pixel_per_beam, \
 														 dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=self.fc_rel_amps)
 
-		logL = -0.5*diff2s
 
-		# print('logL here is ', np.sum(logL))
-	   
+		logL = -0.5*diff2s
+		print('logL at beginning of sampler is ', np.sum(logL))
+		print('diff2 by band is ', diff2_bands)
+
+
+		chi2 = np.zeros(self.nbands)
+		for b in range(self.nbands):
+			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
+			
+		print('chi2 at beginning is ', chi2)
+		print('logL from chi2 at beginning is is ', -chi2/2)
+
 		for b in range(self.nbands):
 			resids[b] -= models[b]
 
@@ -1066,6 +1058,12 @@ class Model:
 		movetype = rtype_array
 
 		bkg_perturb_band_idxs, temp_perturb_band_idxs = [], [] # used for per-band acceptance fractions
+
+		if self.gdat.cblas:
+			lib = self.libmmult.pcat_model_eval
+		else:
+			lib = self.libmmult.clib_eval_modl
+
 
 		for i in range(self.nloop):
 			t1 = time.time()
@@ -1088,11 +1086,6 @@ class Model:
 			if proposal.goodmove:
 				t2 = time.time()
 
-				if self.gdat.cblas:
-					lib = self.libmmult.pcat_model_eval
-				else:
-					lib = self.libmmult.clib_eval_modl
-
 				dtemplate, fcoeff, bkg, fc_rel_amps = None, None, None, None
 
 				if self.gdat.float_templates:
@@ -1100,17 +1093,17 @@ class Model:
 				if self.gdat.float_fourier_comps:
 					fcoeff = self.fourier_coeffs+self.dfc
 					fc_rel_amps=self.fc_rel_amps+self.dfc_rel_amps
-
 				if self.gdat.float_background:
 					bkg = self.bkg + self.dback
 				else:
 					bkg = self.bkg
 
+
 				margin_fac = 1
 				if rtype > 2:
 					margin_fac = 0
 
-				# test this
+				# test this at some point, more compact
 				# if rtype>=3: # mean normalization/template proposals
 
 				# 	if rtype==5 or rtype==6: # fourier components or binned cib templates
@@ -1127,70 +1120,110 @@ class Model:
 				if rtype == 3: # background
 					# recompute model likelihood with margins set to zero, use current values of star parameters and use background level equal to self.bkg (+self.dback up to this point)
 
+					# print('bkg = ', bkg)
 					bkg_perturb_band_idxs.append(proposal.perturb_band_idx)
-					# if rtype_array[i-1]==3 and accept[i-1]==1:
-						# print('logL from previous bkg proposal is', logL)
 
-					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+					# plt.figure() # this looks consistent across samples
+					# plt.title('running temp in rtype=3')
+					# plt.imshow(running_temp[proposal.perturb_band_idx], origin='lower')
+					# plt.colorbar()
+					# plt.show()
+
+					# print('fc rel amps going into initial bkg proposal:', fc_rel_amps)
+					mods, diff2s_nomargin, dt_transf, diff2_bands0 = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 																bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 																beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dtemplate=dtemplate, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps, \
 																perturb_band_idx=proposal.perturb_band_idx)
 
-					logL = -0.5*diff2s_nomargin
+					# print('sum diff2_bands0:', diff2_bands0)
 					# if rtype_array[i-1]==3 and accept[i-1]==1:
-						# print('while recomputed is ', logL)
+						# print('total logL after re-eval:', np.sum(logL))
 
-					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+					logL = -0.5*diff2s_nomargin
+
+					# if rtype_array[i-1]==3 and accept[i-1]==1:
+					# 	# print('total logL after re-eval:', np.sum(logL))
+					# 	print('while recomputed is ', np.sum(logL))
+
+					dmodels, diff2s, dt_transf, diff2_bands1 = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, perturb_band_idx=proposal.perturb_band_idx)
 	
+
+					# print('sum diff2_bands1:', diff2_bands1)
+
 					# plt.figure(figsize=(12, 5))
 					# plt.subplot(1,2,1)
-					# plt.imshow(mods[0], cmap='Greys')
+					# plt.imshow(running_temp[proposal.perturb_band_idx], cmap='Greys', origin='lower')
+					# # plt.imshow(mods[proposal.perturb_band_idx], cmap='Greys', origin='lower')
 					# plt.colorbar()
 					# # plt.subplot(1,3,2)
 					# # plt.imshow(diff2s_nomargin, cmap='Greys')
 					# # plt.colorbar()
 					# plt.subplot(1,2,2)
-					# plt.imshow(dmodels[0], cmap='Greys')
+					# plt.imshow(dmodels[proposal.perturb_band_idx], cmap='Greys', origin='lower')
 					# plt.colorbar()
 					# plt.show()
 
 				elif rtype == 4: # template
 
 					temp_perturb_band_idxs.append(proposal.perturb_band_idx)
-					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+					mods, diff2s_nomargin, dt_transf, diff2_bands = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 															bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 															beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=dtemplate, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps, \
 															perturb_band_idx=proposal.perturb_band_idx)
+					
+
+					# print(mods)
 					logL = -0.5*diff2s_nomargin
 
-					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+
+					dmodels, diff2s, dt_transf, diff2_bands = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=proposal.dtemplate, rtype=rtype, \
 													perturb_band_idx=proposal.perturb_band_idx)
+
+					# print(len(mods))
+					# plt.figure(figsize=(12, 5))
+					# plt.subplot(1,2,1)
+					# plt.imshow(mods[proposal.perturb_band_idx], cmap='Greys')
+					# plt.colorbar()
+					# # plt.subplot(1,3,2)
+					# # plt.imshow(diff2s_nomargin, cmap='Greys')
+					# # plt.colorbar()
+					# plt.subplot(1,2,2)
+					# plt.imshow(dmodels[proposal.perturb_band_idx], cmap='Greys')
+					# plt.colorbar()
+					# plt.show()
 	
 
 				elif rtype == 5: # fourier comp
 
-					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+					mods, diff2s_nomargin, dt_transf, diff2_bands0 = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 															bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
-															beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=dtemplate, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps)
+															beam_fac=self.pixel_per_beam, dtemplate=dtemplate, margin_fac=margin_fac, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps)
 					
 					logL = -0.5*diff2s_nomargin
 					# print('logL here is ', logL)
+					# print('diff2_bands0 for FC :', diff2_bands0)
 
 					if proposal.fc_rel_amp_bool:
 
-						dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+						dmodels, diff2s, dt_transf, diff2_bands1_fcrela = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 														ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=proposal.dfc_rel_amps)
 		
+						# print('diff2_bands1 for FC rel amps:', diff2_bands1_fcrela)
+
+
 					else:
 						
 						# nfcperturb = 1 test
 						idxvecs = [[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]] for n in range(self.gdat.n_fc_perturb)]
-
-						dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+						# 
+						dmodels, diff2s, dt_transf, diff2_bands1_fc = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 														ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dfc=proposal.dfc, idxvecs=idxvecs, fc_rel_amps=fc_rel_amps)
 		
+
+						# print('diff2_bands1 for non FC rel amps', diff2_bands1_fc)
+
 						# print('diff2s after dmodel is ', diff2s)
 						# print("sum o fdif2s is ", np.sum(diff2s))
 						# dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
@@ -1209,7 +1242,9 @@ class Model:
 
 				elif rtype == 6: # binned cib
 
-					mods, diff2s_nomargin, dt_transf = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
+
+
+					mods, diff2s_nomargin, dt_transf, diff2_bands = self.pcat_multiband_eval(self.stars[self._X,0:self.n], self.stars[self._Y,0:self.n], self.stars[self._F:,0:self.n], \
 																				bkg, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, ref=self.dat.data_array, lib=lib, \
 																				beam_fac=self.pixel_per_beam, margin_fac=margin_fac, dtemplate=dtemplate, rtype=rtype, precomp_temps=running_temp, fc_rel_amps=fc_rel_amps)
 										
@@ -1217,7 +1252,7 @@ class Model:
 	
 
 
-					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+					dmodels, diff2s, dt_transf, diff2_bands = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, dbcc=proposal.dbcc, bcib_idx = proposal.bcib_idx)
 	
 
@@ -1236,10 +1271,10 @@ class Model:
 
 				else: # movestar, birth/death, merge/split
 
-					dmodels, diff2s, dt_transf = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
+					dmodels, diff2s, dt_transf, diff2_bands = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype)
 	
-				
+					
 
 				plogL = -0.5*diff2s  
 
@@ -1250,12 +1285,7 @@ class Model:
 				# if rtype==3:
 					# print('plogL is ', plogL)
 
-				
 				dlogP = plogL - logL
-
-				# if rtype==3:
-					# print('dlogP is ', dlogP)
-
 
 				assert np.isnan(dlogP).any() == False
 				
@@ -1276,21 +1306,11 @@ class Model:
 					else:
 						print('proposal factor is None')
 
-				# else:
-					# is this taking the prior factor to the power nregion ^ 2 ? I think it might, TODO
-					# if proposal.factor is not None:
-
-						# if rtype == 3 and self.gdat.coupled_bkg_prop:
-							# print('dlogP = ', dlogP)
-							# print('proposal.factor is ', proposal.factor)
-						# dlogP += (proposal.factor/(dlogP.shape[0]*dlogP.shape[1])) # dividing by the number of subregions 
-
 				
 				# acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
 
 				if rtype < 3:
 					acceptreg = (np.log(np.random.uniform(size=(self.nregy, self.nregx))) < dlogP).astype(np.int32)
-
 					acceptprop = acceptreg[regiony, regionx]
 					numaccept = np.count_nonzero(acceptprop)
 
@@ -1301,12 +1321,12 @@ class Model:
 					total_logL = np.sum(logL)
 					total_dlogP = np.sum(dlogP)
 
-					# if rtype==6:
-					# 	print('total logL is ', total_logL)
-					# 	print('total dlogP is ', total_dlogP)
+					# if rtype==3 or rtype==5:
+						# print('rtype=', rtype, 'band=', proposal.perturb_band_idx, 'rtype[i-1]=', rtype_array[i-1], 'totallogL is ', np.round(total_logL, 2), 'dlogP = ', np.round(total_dlogP, 2), 'plogL:', np.round(np.sum(plogL), 2))
+						# print('plogL:', np.sum(plogL))
+						# print('total dlogP is ', total_dlogP)
 
 					if proposal.factor is not None:
-
 						if np.abs(proposal.factor) > 100:
 							print('whoaaaaa proposal.factor is ', proposal.factor)
 						total_dlogP += proposal.factor
@@ -1316,13 +1336,13 @@ class Model:
 					accept_or_not = (np.log(np.random.uniform()) < total_dlogP).astype(np.int32)
 
 					if accept_or_not:
+						# print('proposal accepted')
 						# set all acceptreg for subregions to 1
 						acceptreg = np.ones(shape=(self.nregy, self.nregx)).astype(np.int32)
 
 						if total_dlogP < -10.:
 							print('the chi squared degraded significantly in this proposal')
-						# 	print('delta log likelihood:', total_dlogP-proposal.factor)
-						# 	print('proposal.factor:', proposal.factor)
+
 					else:
 						acceptreg = np.zeros(shape=(self.nregy, self.nregx)).astype(np.int32)
 
@@ -1335,6 +1355,9 @@ class Model:
 					if proposal.perturb_band_idx is not None:
 						if b != proposal.perturb_band_idx:
 							continue
+
+					# if rtype==3:
+						# print('here on perturb_band_idx = '+str(proposal.perturb_band_idx))
 
 					dmodel_acpt = np.zeros_like(dmodels[b])
 					diff2_acpt = np.zeros_like(diff2s)
@@ -1349,8 +1372,6 @@ class Model:
 					# 	resids[b] -= dmodels[b]
 					# 	models[b] += dmodels[b]
 
-					# else:
-
 					if self.gdat.cblas:
 
 						self.libmmult.pcat_imag_acpt(self.imszs[b][0], self.imszs[b][1], dmodels[b], dmodel_acpt, acceptreg, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])
@@ -1362,30 +1383,15 @@ class Model:
 						# using this dmodel containing only accepted moves, update logL
 						self.libmmult.clib_eval_llik(self.imszs[b][0], self.imszs[b][1], dmodel_acpt, resids[b], self.dat.weights[b], diff2_acpt, self.regsizes[b], self.margins[b], self.offsetxs[b], self.offsetys[b])   
 
-
-					# if rtype==3 and accept_or_not and total_dlogP < 0:
+					# if rtype==3 and accept_or_not:
 						# print('total_dlogP:', total_dlogP, 'proposal factor is ', proposal.factor)
-					# 	plt.figure()
-					# 	plt.imshow(dmodel_acpt-dmodels[b])
-					# 	plt.colorbar()
-					# 	plt.show()
+						# plt.figure()
+						# plt.imshow(dmodel_acpt)
+						# plt.colorbar()
+						# plt.show()
 
 					resids[b] -= dmodel_acpt
 					models[b] += dmodel_acpt
-
-					# if rtype==5:
-					# 	plt.figure()
-					# 	plt.title('models[b]')
-					# 	plt.imshow(models[b])
-					# 	plt.colorbar()
-					# 	plt.show()
-
-					# 	plt.figure()
-					# 	plt.title('dmodels_acpt[b]')
-					# 	plt.imshow(dmodel_acpt)
-					# 	plt.colorbar()
-					# 	plt.show()
-
 
 					if nb==0:
 						diff2_total1 = diff2_acpt
@@ -1393,49 +1399,44 @@ class Model:
 					else:
 						diff2_total1 += diff2_acpt
 
-					# if rtype == 3:
-					# 	print(diff2_total1)
-					# 	if diff2_total1 > 500:
-					# 		print('oooo diff2_total1 is ', diff2_total1, rtype, accept_or_not)
-
-					# if b==0:
-					# 	diff2_total1 = diff2_acpt
-					# else:
-					# 	diff2_total1 += diff2_acpt
 
 				logL = -0.5*diff2_total1
 
-				# if rtype==5:
-				# 	print('logL here is ', logL)
+				# if rtype==3:
+					# print('total logL after update: ', np.sum(logL))
 
 				#implement accepted moves
 				if proposal.idx_move is not None:
+					starsp = proposal.starsp.compress(acceptprop, axis=1)
+					idx_move_a = proposal.idx_move.compress(acceptprop)
+					self.stars[:, idx_move_a] = starsp
 
-					if rtype==3:
+					# this code is for coupled proposals, which arent currently working
+					# if rtype==3:
 
-						self.stars = proposal.starsp
+					# 	self.stars = proposal.starsp
 
-					elif self.gdat.coupled_profile_temp_prop and rtype==4:
+					# elif self.gdat.coupled_profile_temp_prop and rtype==4:
 
-						if accept_or_not: 
-							acceptprop = np.zeros((self.stars.shape[1],))
-							acceptprop[proposal.idx_move] = 1
-							starsp = proposal.starsp.compress(acceptprop, axis=1)
-							self.stars[:, proposal.idx_move] = starsp
+					# 	if accept_or_not: 
+					# 		acceptprop = np.zeros((self.stars.shape[1],))
+					# 		acceptprop[proposal.idx_move] = 1
+					# 		starsp = proposal.starsp.compress(acceptprop, axis=1)
+					# 		self.stars[:, proposal.idx_move] = starsp
 
-					elif self.gdat.coupled_fc_prop and rtype==5:
+					# elif self.gdat.coupled_fc_prop and rtype==5:
 
-						if accept_or_not: 
-							acceptprop = np.zeros((self.stars.shape[1],))
-							acceptprop[proposal.idx_move] = 1
-							starsp = proposal.starsp.compress(acceptprop, axis=1)
-							self.stars[:, proposal.idx_move] = starsp
+					# 	if accept_or_not: 
+					# 		acceptprop = np.zeros((self.stars.shape[1],))
+					# 		acceptprop[proposal.idx_move] = 1
+					# 		starsp = proposal.starsp.compress(acceptprop, axis=1)
+					# 		self.stars[:, proposal.idx_move] = starsp
 
-					else:
-						starsp = proposal.starsp.compress(acceptprop, axis=1)
-						idx_move_a = proposal.idx_move.compress(acceptprop)
+					# else:
+					# 	starsp = proposal.starsp.compress(acceptprop, axis=1)
+					# 	idx_move_a = proposal.idx_move.compress(acceptprop)
 
-						self.stars[:, idx_move_a] = starsp
+					# 	self.stars[:, idx_move_a] = starsp
 
 				
 				if proposal.do_birth:
@@ -1458,47 +1459,40 @@ class Model:
 					if np.sum(acceptreg) > 0:
 						self.dback += proposal.dback
 
-				if proposal.change_template_amp_bool:
 
-					if np.sum(acceptreg) > 0:
-						
+				if proposal.change_template_amp_bool:
+					if accept_or_not:						
 						if proposal.change_binned_cib_bool:
 							self.dbcc += proposal.dbcc
-							# print(proposal.bcib_idx, proposal.dbcc[proposal.bcib_idx])
-							# print(self.coarse_cib_templates[b][proposal.bcib_idx])
 							for b in range(self.nbands):
 								running_temp[b] += self.coarse_cib_templates[b][proposal.bcib_idx]*proposal.dbcc[proposal.bcib_idx]
 						else:
 							self.dtemplate += proposal.dtemplate
 
 				if proposal.change_fourier_comp_bool:
-
-					if np.sum(acceptreg) > 0:
+					# break
+					if accept_or_not:
 						if proposal.fc_rel_amp_bool:
 							self.dfc_rel_amps += proposal.dfc_rel_amps
+
+							# similar for loop for running_temp ! actually not
 						else:
-							# print('weee were here')
 							self.dfc += proposal.dfc
 
 							for b in range(self.nbands):
-
 								for n in range(self.gdat.n_fc_perturb):
-
-									# plt.figure()
-									# plt.imshow(self.fourier_templates[b][proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]*proposal.dfc[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]])
-									# plt.colorbar()
-									# plt.title('n = '+str(n))
-									# plt.show()
+									
 									running_temp[b] += self.fourier_templates[b][proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]*proposal.dfc[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]
 
-								# running_temp[b] += self.fourier_templates[b][proposal.idx0, proposal.idx1, proposal.idxk]*proposal.dfc[proposal.idx0, proposal.idx1, proposal.idxk]
+									# running_temp[b] += self.fourier_templates[b][proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]*proposal.dfc[proposal.idxs0[n], proposal.idxs1[n], proposal.idxsk[n]]
 					
-				# if proposal.change_binned_cib_bool:
-				# 	if np.sum(acceptreg) > 0:
-				# 		self.dbcc += proposal.dbcc
 
-				# 		for b in range(self.nbands):
-				# 			running_temp[b] += self.coarse_cib_templates[b][proposal.bcib_idx]*proposal.dbcc[proposal.bcib_idx]
+				if proposal.change_binned_cib_bool:
+					if np.sum(acceptreg) > 0:
+						self.dbcc += proposal.dbcc
+
+						for b in range(self.nbands):
+							running_temp[b] += self.coarse_cib_templates[b][proposal.bcib_idx]*proposal.dbcc[proposal.bcib_idx]
 
 				dts[2,i] = time.time() - t3
 
@@ -1508,6 +1502,7 @@ class Model:
 					else:
 						accept[i] = 0
 				else:
+					# if accept_or_not:
 					if np.sum(acceptreg)>0:
 						accept[i] = 1
 					else:
@@ -1520,28 +1515,19 @@ class Model:
 			for b in range(self.nbands):
 				diff2_list[i] += np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 
-			# if i > 0:
-				# print('diff2_list[0] = ', diff2_list[0])
-				# if diff2_list[i]-diff2_list[i-1] > 1000: # testcoup
-
-				# if rtype==5:
-				# 	print('diff2_list[i]:', diff2_list[i])
-				# 	print('diff2_list[i-1]:', diff2_list[i-1])
-				# 	print('diff2s_list = ', diff2_list[i]-diff2_list[i-1], rtype, proposal.factor)
-
-
 			verbprint(self.verbtype, 'End of loop '+str(i), verbthresh=1)		
 			verbprint(self.verbtype, 'self.n = '+str(self.n), verbthresh=1)					
 			verbprint(self.verbtype, 'Diff2 = '+str(diff2_list[i]), verbthresh=1)					
 			
 		# this is after nloop iterations
 		chi2 = np.zeros(self.nbands)
-		for b in range(self.nbands):
+		for b in range(self.nbands):			
 			chi2[b] = np.sum(self.dat.weights[b]*(self.dat.data_array[b]-models[b])*(self.dat.data_array[b]-models[b]))
 			
 
 		print('chi2 is ', chi2)
 		print('logL is ', -chi2/2)
+		print('total logL is ', np.sum(-chi2/2))
 		verbprint(self.verbtype, 'End of sample. self.n = '+str(self.n), verbthresh=1)
 
 		# save last of nloop samples to chain and initialize delta(parameters) to zero
@@ -1554,8 +1540,6 @@ class Model:
 		if self.gdat.float_fourier_comps:
 			self.fourier_coeffs += self.dfc 
 			self.fc_rel_amps += self.dfc_rel_amps
-			# print('At the end of nloop, self.dfc_rel_amps is ', self.dfc_rel_amps)
-			# print('so self.fc_rel_amps is ', self.fc_rel_amps)
 			self.dfc = np.zeros_like(self.fourier_coeffs)
 			self.dfc_rel_amps = np.zeros_like(self.fc_rel_amps)
 
@@ -1639,41 +1623,40 @@ class Model:
 		# change in point source fluxes. All (or maybe select?) sources across the FOV are perturbed by N_eff*dback. 
 		factor = None
 
-		if self.gdat.coupled_bkg_prop and self.n*self.gdat.couple_nfrac >= 1:
-			# integrated Jy/beam over beam --> average change in flux density for sources
-			dback_int = dback*self.gdat.N_eff 
+		# if self.gdat.coupled_bkg_prop and self.n*self.gdat.couple_nfrac >= 1:
+		# 	# integrated Jy/beam over beam --> average change in flux density for sources
+		# 	dback_int = dback*self.gdat.N_eff 
 
-			# choose stars at random 
+		# 	# choose stars at random 
  
-			if self.gdat.couple_nfrac is not None:
-				idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
-			else:
-				idx_move = np.arange(self.n)
+		# 	if self.gdat.couple_nfrac is not None:
+		# 		idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
+		# 	else:
+		# 		idx_move = np.arange(self.n)
 
-			stars0 = self.stars.copy()
-			# change fluxes of stars in opposite direction to dback_int
-			starsp = stars0.copy()
-			starsp[self._X,:] = stars0[self._X,:]
-			starsp[self._Y,:] = stars0[self._Y,:]
-			starsp[self._F+bkg_idx,idx_move] -= dback_int/len(idx_move)
+		# 	stars0 = self.stars.copy()
+		# 	# change fluxes of stars in opposite direction to dback_int
+		# 	starsp = stars0.copy()
+		# 	starsp[self._X,:] = stars0[self._X,:]
+		# 	starsp[self._Y,:] = stars0[self._Y,:]
+		# 	starsp[self._F+bkg_idx,idx_move] -= dback_int/len(idx_move)
 
-			if bkg_idx==0:
-				fthr = self.gdat.trueminf
-			else:
-				fthr = 0.00001
+		# 	if bkg_idx==0:
+		# 		fthr = self.gdat.trueminf
+		# 	else:
+		# 		fthr = 0.00001
 
-			ltfmin_mask = (starsp[self._F+bkg_idx,:] < fthr)
-			gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
-			starsp[self._F+bkg_idx, ltfmin_mask] = stars0[self._F+bkg_idx, ltfmin_mask]
+		# 	ltfmin_mask = (starsp[self._F+bkg_idx,:] < fthr)
+		# 	gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
+		# 	starsp[self._F+bkg_idx, ltfmin_mask] = stars0[self._F+bkg_idx, ltfmin_mask]
 
-			proposal.add_move_stars(idx_move, stars0, starsp)
+		# 	proposal.add_move_stars(idx_move, stars0, starsp)
 
-			flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,:], starsp[self._F+bkg_idx,:])
-			if factor is None:
-				factor = np.nansum(flux_couple_factor)
-				# print('flux couple factor is ', factor)
-			else:
-				factor += np.nansum(flux_couple_factor)
+		# 	flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,:], starsp[self._F+bkg_idx,:])
+		# 	if factor is None:
+		# 		factor = np.nansum(flux_couple_factor)
+		# 	else:
+		# 		factor += np.nansum(flux_couple_factor)
 
 
 		if self.gdat.dc_bkg_prior:
@@ -1726,76 +1709,77 @@ class Model:
 			# print('proposal.dfc:', np.sum(proposal.dfc))
 			# print('coeffs pert:', coeffs_pert)
 
-			if self.gdat.coupled_fc_prop and self.gdat.nbands==1 and self.n*self.gdat.couple_nfrac >= 1 and self.gdat.n_fc_perturb==1: # hard coding requirement that nbands=1
+			# if self.gdat.coupled_fc_prop and self.gdat.nbands==1 and self.n*self.gdat.couple_nfrac >= 1 and self.gdat.n_fc_perturb==1: # hard coding requirement that nbands=1
 
-				fcomp = self.fourier_templates[0][proposal.idx0, proposal.idx1, proposal.idxk]
+			# 	fcomp = self.fourier_templates[0][proposal.idx0, proposal.idx1, proposal.idxk]
 
-				# choose stars at random 
-				if self.gdat.couple_nfrac is not None:
-					idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
-				else:
-					idx_move = np.arange(self.n)
+			# 	# choose stars at random 
+			# 	if self.gdat.couple_nfrac is not None:
+			# 		idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
+			# 	else:
+			# 		idx_move = np.arange(self.n)
 
-				stars0 = self.stars.copy()
+			# 	stars0 = self.stars.copy()
 
-				# change fluxes of stars in opposite direction to dback_int
-				starsp = stars0.copy()
-				starsp[self._X,:] = stars0[self._X,:]
-				starsp[self._Y,:] = stars0[self._Y,:]
+			# 	# change fluxes of stars in opposite direction to dback_int
+			# 	starsp = stars0.copy()
+			# 	starsp[self._X,:] = stars0[self._X,:]
+			# 	starsp[self._Y,:] = stars0[self._Y,:]
 
-				# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
-				xfloors = np.floor(starsp[self._X,idx_move]).astype(np.int)
-				yfloors = np.floor(starsp[self._Y,idx_move]).astype(np.int)
+			# 	# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
+			# 	xfloors = np.floor(starsp[self._X,idx_move]).astype(np.int)
+			# 	yfloors = np.floor(starsp[self._Y,idx_move]).astype(np.int)
 
-				fcomp_vals = np.array([fcomp[yfloors[i],xfloors[i]] for i in range(len(idx_move))])
-				fcomp_positive = (fcomp_vals > 0.)
+			# 	fcomp_vals = np.array([fcomp[yfloors[i],xfloors[i]] for i in range(len(idx_move))])
+			# 	fcomp_positive = (fcomp_vals > 0.)
 
-				idx_move_pos = idx_move.compress(fcomp_positive)
-				idx_move_neg = idx_move.compress(~fcomp_positive)
+			# 	idx_move_pos = idx_move.compress(fcomp_positive)
+			# 	idx_move_neg = idx_move.compress(~fcomp_positive)
 
-				xfloors_pos = np.floor(starsp[self._X,idx_move_pos]).astype(np.int)
-				yfloors_pos = np.floor(starsp[self._Y,idx_move_pos]).astype(np.int)
+			# 	xfloors_pos = np.floor(starsp[self._X,idx_move_pos]).astype(np.int)
+			# 	yfloors_pos = np.floor(starsp[self._Y,idx_move_pos]).astype(np.int)
 
-				# print('pos fcomp values:', np.array([fcomp[yfloors_pos[i],xfloors_pos[i]] for i in range(len(idx_move_pos))]))
-				# xfloors_pos = xfloors.compress(fcomp_positive)
-				# yfloors_pos = yfloors.compress(fcomp_positive)
-				# xfloors_neg = xfloors.compress(~fcomp_positive)
-				# yfloors_neg = yfloors.compress(~fcomp_positive)
-				# print('positive vals', fcomp_vals.compress(fcomp_positive))
-				# print('negative vals', fcomp_vals.compress(~fcomp_positive))
+			# 	# print('pos fcomp values:', np.array([fcomp[yfloors_pos[i],xfloors_pos[i]] for i in range(len(idx_move_pos))]))
+			# 	# xfloors_pos = xfloors.compress(fcomp_positive)
+			# 	# yfloors_pos = yfloors.compress(fcomp_positive)
+			# 	# xfloors_neg = xfloors.compress(~fcomp_positive)
+			# 	# yfloors_neg = yfloors.compress(~fcomp_positive)
+			# 	# print('positive vals', fcomp_vals.compress(fcomp_positive))
+			# 	# print('negative vals', fcomp_vals.compress(~fcomp_positive))
 
-				dflux_fc = -coeff_pert*self.gdat.N_eff/len(idx_move)
-				# dflux_fc = -coeff_pert*self.gdat.N_eff*np.array([fcomp[xfloors[i],yfloors[i]] for i in range(len(idx_move))])/len(idx_move)
+			# 	dflux_fc = -coeff_pert*self.gdat.N_eff/len(idx_move)
+			# 	# dflux_fc = -coeff_pert*self.gdat.N_eff*np.array([fcomp[xfloors[i],yfloors[i]] for i in range(len(idx_move))])/len(idx_move)
 
-				for band_idx in range(self.gdat.nbands):
-					# starsp[self._F+band_idx,idx_move] -= dflux_fc*self.fc_rel_amps[band_idx]/np.sqrt(self.gdat.nbands)
+			# 	for band_idx in range(self.gdat.nbands):
+			# 		# starsp[self._F+band_idx,idx_move] -= dflux_fc*self.fc_rel_amps[band_idx]/np.sqrt(self.gdat.nbands)
 
-					starsp[self._F+band_idx,idx_move_pos] += dflux_fc/np.sqrt(self.gdat.nbands)
-					starsp[self._F+band_idx,idx_move_neg] -= dflux_fc/np.sqrt(self.gdat.nbands)
+			# 		starsp[self._F+band_idx,idx_move_pos] += dflux_fc/np.sqrt(self.gdat.nbands)
+			# 		starsp[self._F+band_idx,idx_move_neg] -= dflux_fc/np.sqrt(self.gdat.nbands)
 
-					if band_idx==0:
-						fthr = self.gdat.trueminf
-					else:
-						fthr = 0.00001
+			# 		if band_idx==0:
+			# 			fthr = self.gdat.trueminf
+			# 		else:
+			# 			fthr = 0.00001
 
-					ltfmin_mask = (starsp[self._F+band_idx,:] < fthr)
-					starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
+			# 		ltfmin_mask = (starsp[self._F+band_idx,:] < fthr)
+			# 		starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
 
-				proposal.add_move_stars(idx_move, stars0, starsp)
+			# 	proposal.add_move_stars(idx_move, stars0, starsp)
 
-				flux_couple_factor = self.compute_flux_prior(stars0[self._F,:], starsp[self._F,:])
-				color_factors_orig, colors_orig = self.compute_color_prior(stars0[self._F:,:])
-				color_factors_prop, colors_prop = self.compute_color_prior(starsp[self._F:,:])
-				color_factors = color_factors_prop - color_factors_orig
+			# 	flux_couple_factor = self.compute_flux_prior(stars0[self._F,:], starsp[self._F,:])
+			# 	color_factors_orig, colors_orig = self.compute_color_prior(stars0[self._F:,:])
+			# 	color_factors_prop, colors_prop = self.compute_color_prior(starsp[self._F:,:])
+			# 	color_factors = color_factors_prop - color_factors_orig
 
-				if factor is None:
-					factor = np.nansum(flux_couple_factor)
-				factor += np.sum(color_factors)
-				proposal.set_factor(factor)
+			# 	if factor is None:
+			# 		factor = np.nansum(flux_couple_factor)
+			# 	factor += np.sum(color_factors)
+			# 	proposal.set_factor(factor)
 
 
 		else:
 
+			print('WERE HERE WHYYYY')
 			proposal.fc_rel_amp_bool=True
 			band_weights = get_band_weights(self.gdat.fourier_band_idxs)
 			band_idx = int(np.random.choice(self.gdat.fourier_band_idxs, p=band_weights))
@@ -1820,17 +1804,12 @@ class Model:
 		# print('dbcc is ', dbcc)
 		proposal.dbcc[proposal.bcib_idx] = dbcc
 
-		# print('prroposal.dbcc is ', proposal.dbcc)
-
 		old_bcib_amp = self.binned_cib_coeffs[proposal.bcib_idx] +self.dbcc[proposal.bcib_idx]
 		new_bcib_amp = old_bcib_amp+dbcc		
-		if new_bcib_amp < 0:
-			# print('new temp amp is ', new_bcib_amp, ', proposal will fail')
+		
+		if new_bcib_amp < 0: # reject if negative amplitude
 			proposal.goodmove = False
-
 			return proposal
-
-
 
 		proposal.change_template_amplitude()
 		proposal.change_binned_cib_bool = True
@@ -1882,57 +1861,63 @@ class Model:
 
 			proposal.dtemplate[template_idx, band_idx] = d_amp*self.gdat.temp_prop_sig_fudge_facs[band_idx] # added fudge factor for more efficient sampling
 
-			proposal.perturb_band_idx = band_idx
+			# proposal.perturb_band_idx = band_idx
 
-			if self.gdat.coupled_profile_temp_prop:
-				stars0 = self.stars.copy()
+			proposal.change_template_amplitude(perturb_band_idx=band_idx)
 
-				# change fluxes of stars in opposite direction to dback_int
-				starsp = stars0.copy()
-				starsp[self._X,:] = stars0[self._X,:]
-				starsp[self._Y,:] = stars0[self._Y,:]
 
-				xpf, ypf = self.dat.fast_astrom.transform_q(starsp[self._X,:], starsp[self._Y,:], band_idx-1)
-				xpf = np.floor(xpf).astype(np.int)
-				ypf = np.floor(ypf).astype(np.int)
+			# if self.gdat.template_order[template_idx] == 'sze':
+				# print(proposal.perturb_band_idx, d_amp)
 
-				temp_vals = np.array([self.dat.template_array[band_idx][template_idx][ypf[i],xpf[i]] for i in range(self.n)])
-				temp_vals_norm = temp_vals/np.sum(temp_vals)
-				idx_move = np.random.choice(np.arange(self.n), self.gdat.coupled_profile_temp_nsrc, replace=False, p=temp_vals_norm) # want drawing without replacement
+			# if self.gdat.coupled_profile_temp_prop:
+			# 	stars0 = self.stars.copy()
 
-				# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
-				# xp, yp = self.dat.fast_astrom.transform_q(starsp[self._X,idx_move], starsp[self._Y,idx_move], band_idx-1)
-				# xp = np.floor(xp).astype(np.int)
-				# yp = np.floor(yp).astype(np.int)
+			# 	# change fluxes of stars in opposite direction to dback_int
+			# 	starsp = stars0.copy()
+			# 	starsp[self._X,:] = stars0[self._X,:]
+			# 	starsp[self._Y,:] = stars0[self._Y,:]
 
-				# change in fluxes
-				# print('proposal.dtemplate[template_idx,band_idx]:', proposal.dtemplate[template_idx,band_idx])
-				# print('idx move is ', idx_move)
-				# dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.gdat.N_eff*np.array([self.dat.template_array[band_idx][template_idx][xpf[idx_move][i],ypf[idx_move][i]] for i in range(len(idx_move))])
+			# 	xpf, ypf = self.dat.fast_astrom.transform_q(starsp[self._X,:], starsp[self._Y,:], band_idx-1)
+			# 	xpf = np.floor(xpf).astype(np.int)
+			# 	ypf = np.floor(ypf).astype(np.int)
 
-				dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.gdat.N_eff*temp_vals[idx_move]
+			# 	temp_vals = np.array([self.dat.template_array[band_idx][template_idx][ypf[i],xpf[i]] for i in range(self.n)])
+			# 	temp_vals_norm = temp_vals/np.sum(temp_vals)
+			# 	idx_move = np.random.choice(np.arange(self.n), self.gdat.coupled_profile_temp_nsrc, replace=False, p=temp_vals_norm) # want drawing without replacement
 
-				starsp[self._F+band_idx,idx_move] -= dflux_fc/len(idx_move)/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))
-				# starsp[self._F+band_idx,idx_move] -= dflux_fc/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))?
+			# 	# query the values of the fourier component template at the positions of selected sources, compute the integrated effective change in flux density
+			# 	# xp, yp = self.dat.fast_astrom.transform_q(starsp[self._X,idx_move], starsp[self._Y,idx_move], band_idx-1)
+			# 	# xp = np.floor(xp).astype(np.int)
+			# 	# yp = np.floor(yp).astype(np.int)
+
+			# 	# change in fluxes
+			# 	# print('proposal.dtemplate[template_idx,band_idx]:', proposal.dtemplate[template_idx,band_idx])
+			# 	# print('idx move is ', idx_move)
+			# 	# dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.gdat.N_eff*np.array([self.dat.template_array[band_idx][template_idx][xpf[idx_move][i],ypf[idx_move][i]] for i in range(len(idx_move))])
+
+			# 	dflux_fc = proposal.dtemplate[template_idx,band_idx]*self.gdat.N_eff*temp_vals[idx_move]
+
+			# 	starsp[self._F+band_idx,idx_move] -= dflux_fc/len(idx_move)/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))
+			# 	# starsp[self._F+band_idx,idx_move] -= dflux_fc/np.sqrt(self.gdat.nbands) # divide instead by sqrt(len(idx_move))?
 				
-				if band_idx==0:
-					fthr = self.gdat.trueminf
-				else:
-					fthr = 0.00001
-				ltfmin_mask = (starsp[self._F+band_idx,:] < fthr)
-				# gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
-				starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
+			# 	if band_idx==0:
+			# 		fthr = self.gdat.trueminf
+			# 	else:
+			# 		fthr = 0.00001
+			# 	ltfmin_mask = (starsp[self._F+band_idx,:] < fthr)
+			# 	# gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
+			# 	starsp[self._F+band_idx, ltfmin_mask] = stars0[self._F+band_idx, ltfmin_mask]
 
-				proposal.add_move_stars(idx_move, stars0, starsp)
+			# 	proposal.add_move_stars(idx_move, stars0, starsp)
 
-				flux_couple_factor = self.compute_flux_prior(stars0[self._F+band_idx,idx_move], starsp[self._F+band_idx,idx_move])
+			# 	flux_couple_factor = self.compute_flux_prior(stars0[self._F+band_idx,idx_move], starsp[self._F+band_idx,idx_move])
 				
-				if factor is None:
-					factor = np.nansum(flux_couple_factor)
-				else:
-					factor += np.nansum(flux_couple_factor)
+			# 	if factor is None:
+			# 		factor = np.nansum(flux_couple_factor)
+			# 	else:
+			# 		factor += np.nansum(flux_couple_factor)
 
-				proposal.set_factor(factor)
+			# 	proposal.set_factor(factor)
 
 
 		# the lines below are implementing a step function prior where the ln(prior) = -np.inf when the amplitude is negative
@@ -1947,7 +1932,7 @@ class Model:
 
 				return proposal
 
-		proposal.change_template_amplitude()
+		# proposal.change_template_amplitude()
 
 		return proposal
 
@@ -2985,6 +2970,8 @@ class lion():
 				setattr(self.gdat, attr, valu)
 
 
+		print('DFC PROB is ', self.gdat.dfc_prob)
+
 		print('float background is ', self.gdat.float_background)
 
 		#if specified, use seed for random initialization
@@ -3214,26 +3201,27 @@ class lion():
 		for j in range(self.gdat.nsamp): # run sampler for gdat.nsamp thinned states
 			print('Sample', j, file=self.gdat.flog)
 
-			if self.gdat.schedule_trueminf:
-				if j==self.gdat.trueminf_schedule_samp_idxs[trueminf_schedule_counter]:
-					self.gdat.trueminf = self.gdat.trueminf_schedule_vals[trueminf_schedule_counter]
-					model.trueminf = self.gdat.trueminf_schedule_vals[trueminf_schedule_counter]
-					trueminf_schedule_counter += 1
-					print('Changing trueminf.. ', self.gdat.trueminf, model.trueminf)
+			# if self.gdat.schedule_trueminf:
+			# 	if j==self.gdat.trueminf_schedule_samp_idxs[trueminf_schedule_counter]:
+			# 		self.gdat.trueminf = self.gdat.trueminf_schedule_vals[trueminf_schedule_counter]
+			# 		model.trueminf = self.gdat.trueminf_schedule_vals[trueminf_schedule_counter]
+			# 		trueminf_schedule_counter += 1
+			# 		print('Changing trueminf.. ', self.gdat.trueminf, model.trueminf)
 
 
-			if self.gdat.bkg_moore_penrose_inv and fc_marg_counter < self.gdat.n_marg_updates and j%self.gdat.fc_marg_period==0 and j > 0:
+			if self.gdat.float_fourier_comps and self.gdat.bkg_moore_penrose_inv:
+				if fc_marg_counter < self.gdat.n_marg_updates and j%self.gdat.fc_marg_period==0 and j > 0:
 
-				print('j = ', j, 'while on update ', fc_marg_counter, 'of ', self.gdat.n_marg_updates, 'updates')
-				fc_model = generate_template(model.fourier_coeffs, self.gdat.n_fourier_terms, imsz=self.gdat.imszs[0], fourier_templates=model.fourier_templates[0])
+					print('j = ', j, 'while on update ', fc_marg_counter, 'of ', self.gdat.n_marg_updates, 'updates')
+					fc_model = generate_template(model.fourier_coeffs, self.gdat.n_fourier_terms, imsz=self.gdat.imszs[0], fourier_templates=model.fourier_templates[0])
 
-				_, _, _, _, mp_coeffs, temp_A_hat, nanmask = compute_marginalized_templates(self.gdat.MP_order, resids[0]+fc_model, self.data.errors[0],\
-										  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, show=False, \
-										  ravel_temps = model.ravel_temps, bt_siginv_b_inv=model.bt_siginv_b_inv, bt_siginv_b=model.bt_siginv_b)
+					_, _, _, _, mp_coeffs, temp_A_hat, nanmask = compute_marginalized_templates(self.gdat.MP_order, resids[0]+fc_model, self.data.errors[0],\
+											  ridge_fac=self.gdat.ridge_fac, ridge_fac_alpha=self.gdat.ridge_fac_alpha, show=False, \
+											  ravel_temps = model.ravel_temps, bt_siginv_b_inv=model.bt_siginv_b_inv, bt_siginv_b=model.bt_siginv_b)
 
-				model.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
+					model.fourier_coeffs[:self.gdat.MP_order, :self.gdat.MP_order, :] = mp_coeffs.copy()
 
-				fc_marg_counter += 1
+					fc_marg_counter += 1
 
 
 			
