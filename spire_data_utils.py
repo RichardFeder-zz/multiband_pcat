@@ -70,7 +70,7 @@ def get_gaussian_psf_template(pixel_fwhm=3., nbin=5, normalization='max'):
 	return psfnew, cf, nc, nbin
 
 def make_pcat_fits_file_simp(images, card_names, new_wcs=None, header=None, janscalefac=None):
-    ''' Simple function for making FITS file from set of images and desired HDU card names. 
+	''' Simple function for making FITS file from set of images and desired HDU card names. 
 
 	Parameters
 	----------
@@ -88,228 +88,228 @@ def make_pcat_fits_file_simp(images, card_names, new_wcs=None, header=None, jans
 	-------
 
 	hdulist : 'list' of 'astropy.fits.HDU' objects. FITS file just absolutely ready to be saved
-    '''
-    hdu = fits.PrimaryHDU(None)
-    
-    if header is not None:
-        hdu.header = header
-    temphdu = None
+	'''
+	hdu = fits.PrimaryHDU(None)
+	
+	if header is not None:
+		hdu.header = header
+	temphdu = None
 
-    cards = [hdu]
-    for e, card_name in enumerate(card_names):
-        card_hdu = fits.ImageHDU(images[e], name=card_name)
-        
-        if janscalefac is not None:
-        	card_hdu.header['JANSCALE'] = janscalefac
+	cards = [hdu]
+	for e, card_name in enumerate(card_names):
+		card_hdu = fits.ImageHDU(images[e], name=card_name)
+		
+		if janscalefac is not None:
+			card_hdu.header['JANSCALE'] = janscalefac
 
-        cards.append(card_hdu)
+		cards.append(card_hdu)
 
-    if new_wcs is not None:
-        
-        for card_hdu in cards:
-            card_hdu.header.update(new_wcs.to_header())
+	if new_wcs is not None:
+		
+		for card_hdu in cards:
+			card_hdu.header.update(new_wcs.to_header())
 
-    hdulist = fits.HDUList(cards)
-    
-    return hdulist
+	hdulist = fits.HDUList(cards)
+	
+	return hdulist
 
 
 def make_pcat_fits_file_janscale(sig_image, unc_image, image_name='IMAGE', unc_name='ERROR', extra_images=None, extra_card_names=None, template_image=None, template_name='SZE', new_wcs=None, header=None, x0=None, y0=None, janscalefac=None):
-    
-    hdu = fits.PrimaryHDU(None)
-    
-    if header is not None:
-        hdu.header = header
-    temphdu = None
-    sighdu = fits.ImageHDU(sig_image, name=image_name)
-    unchdu = fits.ImageHDU(unc_image, name=unc_name)
-    if template_image is not None:
-        temphdu = fits.ImageHDU(template_image, name=template_name)
-    if extra_card_names is not None:
-        extra_cards = []
-        for e, extra_card_name in enumerate(extra_card_names):
-            card_hdu = fits.ImageHDU(extra_images[e], name=extra_card_name)
-            extra_cards.append(card_hdu)
-            
-    if new_wcs is not None:
-        sighdu.header.update(new_wcs.to_header())
-        unchdu.header.update(new_wcs.to_header())
-        if template_image is not None:
-            temphdu.header.update(new_wcs.to_header())
-        if extra_card_names is not None:
-            for card_hdu in extra_cards:
-                card_hdu.header.update(new_wcs.to_header())
-                
-        
-    if x0 is not None and y0 is not None:
-        
-        sighdu.header['x0'] = x0
-        sighdu.header['y0'] = y0
-        unchdu.header['x0'] = x0
-        unchdu.header['y0'] = y0
-        
-    if janscalefac is not None:
-        sighdu.header['JANSCALE'] = janscalefac
-        unchdu.header['JANSCALE'] = janscalefac
+	
+	hdu = fits.PrimaryHDU(None)
+	
+	if header is not None:
+		hdu.header = header
+	temphdu = None
+	sighdu = fits.ImageHDU(sig_image, name=image_name)
+	unchdu = fits.ImageHDU(unc_image, name=unc_name)
+	if template_image is not None:
+		temphdu = fits.ImageHDU(template_image, name=template_name)
+	if extra_card_names is not None:
+		extra_cards = []
+		for e, extra_card_name in enumerate(extra_card_names):
+			card_hdu = fits.ImageHDU(extra_images[e], name=extra_card_name)
+			extra_cards.append(card_hdu)
+			
+	if new_wcs is not None:
+		sighdu.header.update(new_wcs.to_header())
+		unchdu.header.update(new_wcs.to_header())
+		if template_image is not None:
+			temphdu.header.update(new_wcs.to_header())
+		if extra_card_names is not None:
+			for card_hdu in extra_cards:
+				card_hdu.header.update(new_wcs.to_header())
+				
+		
+	if x0 is not None and y0 is not None:
+		
+		sighdu.header['x0'] = x0
+		sighdu.header['y0'] = y0
+		unchdu.header['x0'] = x0
+		unchdu.header['y0'] = y0
+		
+	if janscalefac is not None:
+		sighdu.header['JANSCALE'] = janscalefac
+		unchdu.header['JANSCALE'] = janscalefac
 
-    hdul = [hdu, sighdu, unchdu]
-    
+	hdul = [hdu, sighdu, unchdu]
+	
 
-    if temphdu is not None:
-        hdul.append(temphdu)
-    
-    if extra_card_names is not None:
-        for card_hdu in extra_cards:
-            hdul.append(card_hdu)
-            
-    hdulist = fits.HDUList(hdul)
-    
-    return hdulist
+	if temphdu is not None:
+		hdul.append(temphdu)
+	
+	if extra_card_names is not None:
+		for card_hdu in extra_cards:
+			hdul.append(card_hdu)
+			
+	hdulist = fits.HDUList(hdul)
+	
+	return hdulist
 
 def multiband_cut_up_image(psw_path, psw_unc_path, psw_xbound, psw_ybound=None, pmw_path=None, pmw_unc_path=None, plw_path=None, plw_unc_path=None,\
-                            imkey='IMAGE', unckey='ERROR'):
-    
-    # assumes we want PSW, this was for looking at LMC/HELMS data, might update
+							imkey='IMAGE', unckey='ERROR'):
+	
+	# assumes we want PSW, this was for looking at LMC/HELMS data, might update
 
-    if psw_ybound is None:
-        psw_ybound = psw_xbound
+	if psw_ybound is None:
+		psw_ybound = psw_xbound
 
-    big_psw = fits.open(psw_path)[imkey]
-    unc_psw = fits.open(psw_unc_path)[unckey]
-    
-    wcs_psw = WCS(big_psw.header)
-    cut_psw = big_psw.data[psw_xbound[0]:psw_xbound[1], psw_ybound[0]:psw_ybound[1]]/big_psw.header['JANSCALE']
-    cut_unc_psw = unc_psw.data[psw_xbound[0]:psw_xbound[1], psw_ybound[0]:psw_ybound[1]]/big_psw.header['JANSCALE']
+	big_psw = fits.open(psw_path)[imkey]
+	unc_psw = fits.open(psw_unc_path)[unckey]
+	
+	wcs_psw = WCS(big_psw.header)
+	cut_psw = big_psw.data[psw_xbound[0]:psw_xbound[1], psw_ybound[0]:psw_ybound[1]]/big_psw.header['JANSCALE']
+	cut_unc_psw = unc_psw.data[psw_xbound[0]:psw_xbound[1], psw_ybound[0]:psw_ybound[1]]/big_psw.header['JANSCALE']
 
-    hdul_psw = make_pcat_fits_file(cut_psw, cut_unc_psw, header=big_psw.header, x0=psw_xbound[0], y0=psw_ybound[0], janscalefac=big_psw.header['JANSCALE'])
-    hdul_psw.writeto('Data/spire/LMC_HERITAGE/cutouts/test_lmc_PSW_100_2.fits', clobber=True)
-    
-    show_im(cut_psw, title='PSW')
-    print('cut_psw has shape ', cut_psw.shape)
+	hdul_psw = make_pcat_fits_file(cut_psw, cut_unc_psw, header=big_psw.header, x0=psw_xbound[0], y0=psw_ybound[0], janscalefac=big_psw.header['JANSCALE'])
+	hdul_psw.writeto('Data/spire/LMC_HERITAGE/cutouts/test_lmc_PSW_100_2.fits', clobber=True)
+	
+	show_im(cut_psw, title='PSW')
+	print('cut_psw has shape ', cut_psw.shape)
 
-    if pmw_path is not None:
-        big_pmw = fits.open(pmw_path)[imkey]
-        unc_pmw = fits.open(pmw_unc_path)[unckey]
-        
-        wcs_pmw = WCS(big_pmw.header)
+	if pmw_path is not None:
+		big_pmw = fits.open(pmw_path)[imkey]
+		unc_pmw = fits.open(pmw_unc_path)[unckey]
+		
+		wcs_pmw = WCS(big_pmw.header)
 
-    if plw_path is not None:
-        big_plw = fits.open(plw_path)[imkey]
-        unc_plw = fits.open(plw_unc_path)[unckey]
+	if plw_path is not None:
+		big_plw = fits.open(plw_path)[imkey]
+		unc_plw = fits.open(plw_unc_path)[unckey]
 
-        wcs_plw = WCS(big_plw.header)
-    
-    ra, dec = wcs_psw.all_pix2world(psw_xbound[0], psw_ybound[0], 0)
-    rahi, dechi = wcs_psw.all_pix2world(psw_xbound[1], psw_ybound[1], 0)
+		wcs_plw = WCS(big_plw.header)
+	
+	ra, dec = wcs_psw.all_pix2world(psw_xbound[0], psw_ybound[0], 0)
+	rahi, dechi = wcs_psw.all_pix2world(psw_xbound[1], psw_ybound[1], 0)
 
-    if pmw_path is not None:
-        pmw_lowx, pmw_lowy = wcs_pmw.all_world2pix(ra, dec, 0)
-        pmw_hix, pmw_hiy = wcs_pmw.all_world2pix(rahi, dechi, 0)
-        pmw_xbound = [int(np.floor(pmw_lowx)), int(np.floor(pmw_hix))]
-        pmw_ybound = [int(np.floor(pmw_lowy)), int(np.floor(pmw_hiy))]
-        
-        cut_pmw = big_pmw.data[pmw_xbound[0]:pmw_xbound[1], pmw_ybound[0]:pmw_ybound[1]]/big_pmw.header['JANSCALE']
-        print('cut_pmw has shape ', cut_pmw.shape)
-        cut_unc_pmw = unc_pmw.data[pmw_xbound[0]:pmw_xbound[1], pmw_ybound[0]:pmw_ybound[1]]/big_pmw.header['JANSCALE']
+	if pmw_path is not None:
+		pmw_lowx, pmw_lowy = wcs_pmw.all_world2pix(ra, dec, 0)
+		pmw_hix, pmw_hiy = wcs_pmw.all_world2pix(rahi, dechi, 0)
+		pmw_xbound = [int(np.floor(pmw_lowx)), int(np.floor(pmw_hix))]
+		pmw_ybound = [int(np.floor(pmw_lowy)), int(np.floor(pmw_hiy))]
+		
+		cut_pmw = big_pmw.data[pmw_xbound[0]:pmw_xbound[1], pmw_ybound[0]:pmw_ybound[1]]/big_pmw.header['JANSCALE']
+		print('cut_pmw has shape ', cut_pmw.shape)
+		cut_unc_pmw = unc_pmw.data[pmw_xbound[0]:pmw_xbound[1], pmw_ybound[0]:pmw_ybound[1]]/big_pmw.header['JANSCALE']
 
-        hdul_pmw = make_pcat_fits_file(cut_pmw, cut_unc_pmw, header=big_pmw.header, x0=pmw_xbound[0], y0=pmw_ybound[0], janscalefac=big_pmw.header['JANSCALE'])
-        hdul_pmw.writeto('Data/spire/LMC_HERITAGE/cutouts/test_lmc_PMW_100_2.fits', clobber=True)
+		hdul_pmw = make_pcat_fits_file(cut_pmw, cut_unc_pmw, header=big_pmw.header, x0=pmw_xbound[0], y0=pmw_ybound[0], janscalefac=big_pmw.header['JANSCALE'])
+		hdul_pmw.writeto('Data/spire/LMC_HERITAGE/cutouts/test_lmc_PMW_100_2.fits', clobber=True)
 
-        show_im(cut_pmw, title='PMW')
+		show_im(cut_pmw, title='PMW')
 
-    if plw_path is not None:
-        plw_lowx, plw_lowy = wcs_plw.all_world2pix(ra, dec, 0)
-        plw_hix, plw_hiy = wcs_plw.all_world2pix(rahi, dechi, 0)
-        plw_xbound = [int(np.floor(plw_lowx)), int(np.floor(plw_hix))]
-        plw_ybound = [int(np.floor(plw_lowy)), int(np.floor(plw_hiy))]
+	if plw_path is not None:
+		plw_lowx, plw_lowy = wcs_plw.all_world2pix(ra, dec, 0)
+		plw_hix, plw_hiy = wcs_plw.all_world2pix(rahi, dechi, 0)
+		plw_xbound = [int(np.floor(plw_lowx)), int(np.floor(plw_hix))]
+		plw_ybound = [int(np.floor(plw_lowy)), int(np.floor(plw_hiy))]
 
-        cut_plw = big_plw.data[plw_xbound[0]:plw_xbound[1], plw_ybound[0]:plw_ybound[1]]/big_plw.header['JANSCALE']
-        print('cut_plw has shape ', cut_plw.shape)
-        cut_unc_plw = unc_plw.data[plw_xbound[0]:plw_xbound[1], plw_ybound[0]:plw_ybound[1]]/big_plw.header['JANSCALE']
+		cut_plw = big_plw.data[plw_xbound[0]:plw_xbound[1], plw_ybound[0]:plw_ybound[1]]/big_plw.header['JANSCALE']
+		print('cut_plw has shape ', cut_plw.shape)
+		cut_unc_plw = unc_plw.data[plw_xbound[0]:plw_xbound[1], plw_ybound[0]:plw_ybound[1]]/big_plw.header['JANSCALE']
 
 
-        hdul_plw = make_pcat_fits_file(cut_plw, cut_unc_plw, header=big_plw.header, x0=plw_xbound[0], y0=plw_ybound[0], janscalefac=big_plw.header['JANSCALE'])
-        hdul_plw.writeto('Data/spire/LMC_HERITAGE/cutouts/test_lmc_PLW_100_2.fits', clobber=True)
+		hdul_plw = make_pcat_fits_file(cut_plw, cut_unc_plw, header=big_plw.header, x0=plw_xbound[0], y0=plw_ybound[0], janscalefac=big_plw.header['JANSCALE'])
+		hdul_plw.writeto('Data/spire/LMC_HERITAGE/cutouts/test_lmc_PLW_100_2.fits', clobber=True)
 
-        show_im(cut_plw, title='PLW')
-    
-    return None
+		show_im(cut_plw, title='PLW')
+	
+	return None
 
 def multiband_cutout_obs(filenames, n_cut_arcsec, ra, dec, tail_names, bandstrs=['PSW', 'PMW', 'PLW'], sigkey='SIGNAL', \
-                        diff_comp_path=None, show=False, savedir='Data/spire/', save=True, \
-                        im_headers = ['SIGNAL', 'ERROR', 'SZE']):
-    sznormfacs = [0.00026, 0.003, 0.018]
-    for b, bandstr in enumerate(bandstrs):
-        
-        obs = fits.open(filenames[b])
-        
-        wcs_obs = WCS(obs[sigkey].header)
-        
-        if diff_comp_path is not None:
-            diff_comp = np.load(diff_comp_path)[bandstr[1]]
-        
-        if b==0 and show:
-            plt.figure()
-            plt.imshow(obs[sigkey].data, vmax=0.05)
-            plt.colorbar()
-            plt.show()
-            
-        xpix, ypix = wcs_obs.all_world2pix(ra, dec, 0)
-        print(xpix, ypix)
-        
-        cutouts = []
-        
-        hduheaders = []
-        
-        for h, headkey in enumerate(im_headers):
-            
-            print('h = ', h, 'headkey = ', headkey)
-            if h==0:
-                cutout_obj = Cutout2D(obs[headkey].data, (xpix, ypix), (n_cut_arcsec*u.arcsec, n_cut_arcsec*u.arcsec), wcs=wcs_obs, mode='partial', fill_value=np.nan, copy=True)
-                cutout = cutout_obj.data
-            else:
-                cutout = Cutout2D(obs[headkey].data, (xpix, ypix), (n_cut_arcsec*u.arcsec, n_cut_arcsec*u.arcsec), wcs=wcs_obs, mode='partial', fill_value=np.nan, copy=True).data
-            
-            
-            if headkey=='SZETEMP':
-                print('weere here')
-                cutout[np.isnan(cutout)] = 0.
-                cutout /= sznormfacs[b]
-                hduheaders.append('SZE')
-            else:
-                hduheaders.append(headkey)
-            
-            cutouts.append(cutout)
-            
-            if show:
+						diff_comp_path=None, show=False, savedir='Data/spire/', save=True, \
+						im_headers = ['SIGNAL', 'ERROR', 'SZE']):
+	sznormfacs = [0.00026, 0.003, 0.018]
+	for b, bandstr in enumerate(bandstrs):
+		
+		obs = fits.open(filenames[b])
+		
+		wcs_obs = WCS(obs[sigkey].header)
+		
+		if diff_comp_path is not None:
+			diff_comp = np.load(diff_comp_path)[bandstr[1]]
+		
+		if b==0 and show:
+			plt.figure()
+			plt.imshow(obs[sigkey].data, vmax=0.05)
+			plt.colorbar()
+			plt.show()
+			
+		xpix, ypix = wcs_obs.all_world2pix(ra, dec, 0)
+		print(xpix, ypix)
+		
+		cutouts = []
+		
+		hduheaders = []
+		
+		for h, headkey in enumerate(im_headers):
+			
+			print('h = ', h, 'headkey = ', headkey)
+			if h==0:
+				cutout_obj = Cutout2D(obs[headkey].data, (xpix, ypix), (n_cut_arcsec*u.arcsec, n_cut_arcsec*u.arcsec), wcs=wcs_obs, mode='partial', fill_value=np.nan, copy=True)
+				cutout = cutout_obj.data
+			else:
+				cutout = Cutout2D(obs[headkey].data, (xpix, ypix), (n_cut_arcsec*u.arcsec, n_cut_arcsec*u.arcsec), wcs=wcs_obs, mode='partial', fill_value=np.nan, copy=True).data
+			
+			
+			if headkey=='SZETEMP':
+				print('weere here')
+				cutout[np.isnan(cutout)] = 0.
+				cutout /= sznormfacs[b]
+				hduheaders.append('SZE')
+			else:
+				hduheaders.append(headkey)
+			
+			cutouts.append(cutout)
+			
+			if show:
 
-                plt.figure()
-                plt.title(headkey, fontsize=16)
-                plt.imshow(cutout, origin='lower', vmin=np.nanpercentile(cutout, 5), vmax=np.nanpercentile(cutout, 95))
-                plt.colorbar()
-                plt.show()
-                
-        if diff_comp_path is not None:
-            dcomp_cutout = diff_comp[:im_cutout.shape[0],:im_cutout.shape[1]]
-            
-            cutouts.append(dcomp_cutout)
-            im_headers.append('DUST')
-            
-            if show:
+				plt.figure()
+				plt.title(headkey, fontsize=16)
+				plt.imshow(cutout, origin='lower', vmin=np.nanpercentile(cutout, 5), vmax=np.nanpercentile(cutout, 95))
+				plt.colorbar()
+				plt.show()
+				
+		if diff_comp_path is not None:
+			dcomp_cutout = diff_comp[:im_cutout.shape[0],:im_cutout.shape[1]]
+			
+			cutouts.append(dcomp_cutout)
+			im_headers.append('DUST')
+			
+			if show:
 
-                plt.figure()
-                plt.title('diffuse comp', fontsize=16)
-                plt.imshow(dcomp_cutout, origin='lower', vmin=np.nanpercentile(dcomp_cutout, 5), vmax=np.nanpercentile(dcomp_cutout, 95))
-                plt.colorbar()
-                plt.show()
-                
-        hdul = make_pcat_fits_file_simp(images=cutouts, card_names=hduheaders, new_wcs=cutout_obj.wcs)
+				plt.figure()
+				plt.title('diffuse comp', fontsize=16)
+				plt.imshow(dcomp_cutout, origin='lower', vmin=np.nanpercentile(dcomp_cutout, 5), vmax=np.nanpercentile(dcomp_cutout, 95))
+				plt.colorbar()
+				plt.show()
+				
+		hdul = make_pcat_fits_file_simp(images=cutouts, card_names=hduheaders, new_wcs=cutout_obj.wcs)
 
-                
-        if save:
-            print('writing to ', savedir+'/'+tail_names[b]+'.fits')
-            hdul.writeto(savedir+'/'+tail_names[b]+'.fits', clobber=True)
-        
+				
+		if save:
+			print('writing to ', savedir+'/'+tail_names[b]+'.fits')
+			hdul.writeto(savedir+'/'+tail_names[b]+'.fits', clobber=True)
+		
 
 
 
@@ -394,30 +394,6 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 			plt.colorbar()
 			plt.show()
 
-	# if gdat.im_fpath is None:
-	# 	spire_dat = fits.open(file_path)
-
-	# 	for e, extname in enumerate(image_extnames):
-	# 		if e==0:
-	# 			image = np.nan_to_num(spire_dat[extname].data)
-	# 		else:
-	# 			image += np.nan_to_num(spire_dat[extname].data)
-	# 		if gdat.show_input_maps:
-	# 			plt.figure()
-	# 			plt.title(extname)
-	# 			plt.imshow(image, origin='lower')
-	# 			plt.colorbar()
-	# 			plt.show()
-	# else:
-	# 	spire_dat = fits.open(gdat.im_fpath)
-	# 	# hduim = spire_dat[0]
-	# 	# image = np.nan_to_num(hduim.data/hduim.header['JANSCALE'])
-
-	# 	for e, extname in enumerate(image_extnames):
-	# 		if e==0:
-	# 			image = np.nan_to_num(spire_dat[extname].data)
-	# 		else:
-	# 			image += np.nan_to_num(spire_dat[extname].data)
 
 	x0 = None
 	y0 = None
@@ -449,15 +425,6 @@ def load_in_map(gdat, band=0, astrom=None, show_input_maps=False, image_extnames
 		print('Not using mask..')
 		mask = np.ones_like(image)
 
-
-	# this is for Ben's masks which are interpolated oddly
-	# mask[mask > 0.4] = 1
-	# mask[mask <= 0.4] = 0
-
-
-	# this is for gen_2_sims, which don't have same FITS structure as new sims
-	# image = np.nan_to_num(spire_dat[1].data)
-	# error = np.nan_to_num(spire_dat[2].data)
 
 	if gdat.add_noise:
 
@@ -713,10 +680,10 @@ class pcat_data():
 								# template_file_name = temp_name.replace()
 								print('template file name ehere is ', temp_name)
 								for loopband in ['S', 'M', 'L']:
-								    if 'P'+loopband+'W' in temp_name:
-								    	print('P'+loopband+'W'+' is in '+temp_name)
-								    	print('gdat.band_dict[band] is', gdat.band_dict[band])
-								        template_file_name = temp_name.replace('P'+loopband+'W',  'P'+str(gdat.band_dict[band])+'W')
+									if 'P'+loopband+'W' in temp_name:
+										print('P'+loopband+'W'+' is in '+temp_name)
+										print('gdat.band_dict[band] is', gdat.band_dict[band])
+										template_file_name = temp_name.replace('P'+loopband+'W',  'P'+str(gdat.band_dict[band])+'W')
 
 								# template_file_name = temp_name.replace('PSW', 'P'+str(gdat.band_dict[band])+'W')
 
@@ -821,13 +788,14 @@ class pcat_data():
 
 				print('image size is ', image_size)
 
-				resized_image = np.zeros(shape=(gdat.width, gdat.height))
-				resized_error = np.zeros(shape=(gdat.width, gdat.height))
-				resized_mask = np.zeros(shape=(gdat.width, gdat.height))
+				resized_image = np.zeros(shape=image_size)
+				resized_error = np.zeros(shape=image_size)
+				resized_mask = np.zeros(shape=image_size)
 
 				crop_size_x = np.minimum(gdat.width, image.shape[0])
 				crop_size_y = np.minimum(gdat.height, image.shape[1])
 
+				print('for band '+str(i)+', gdat.x0 and gdat.y0 are ', gdat.x0, gdat.y0)
 				resized_image[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = image[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 				resized_error[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = error[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
 				resized_mask[:image.shape[0]-gdat.x0, : image.shape[1]-gdat.y0] = mask[gdat.x0:crop_size_x, gdat.y0:crop_size_y]
@@ -849,7 +817,7 @@ class pcat_data():
 
 					if template is not None:
 
-						resized_template = np.zeros(shape=(gdat.width, gdat.height))
+						resized_template = np.zeros(shape=image_size)
 						# template = template[bounds[0,0]:bounds[0,1], bounds[1,0]:bounds[1,1]]
 						template = template[bounds[0,0]:bounds[0,1]+1, bounds[1,0]:bounds[1,1]+1]
 
@@ -923,16 +891,19 @@ class pcat_data():
 						plt.colorbar()
 						plt.show()
 
-					cropped_diffuse_comp = diffuse_comp[:gdat.width, :gdat.height]
+					cropped_diffuse_comp_full = np.zeros_like(resized_image)
+					cropped_diffuse_comp_full[gdat.x0:gdat.x0+crop_size_x, gdat.y0:gdat.y0+crop_size_y] = diffuse_comp
+
+					# cropped_diffuse_comp = diffuse_comp[:gdat.width, :gdat.height]
 
 					if show_input_maps:
 						plt.figure()
-						plt.title(cropped_diffuse_comp.shape)
-						plt.imshow(cropped_diffuse_comp)
+						plt.title(cropped_diffuse_comp_full.shape)
+						plt.imshow(cropped_diffuse_comp_full)
 						plt.colorbar()
 						plt.show()
 
-					resized_image += cropped_diffuse_comp
+					resized_image += cropped_diffuse_comp_full
 
 					if show_input_maps:
 						plt.figure()
@@ -941,7 +912,7 @@ class pcat_data():
 						plt.colorbar()
 						plt.show()
 
-					self.injected_diffuse_comp.append(cropped_diffuse_comp.astype(np.float32))
+					self.injected_diffuse_comp.append(cropped_diffuse_comp_full.astype(np.float32))
 
 
 				variance = resized_error**2
