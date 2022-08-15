@@ -255,6 +255,8 @@ def generate_spire_cirrus_realizations(n_realizations, planck_template, imdims, 
 	else:
 		return all_realizations
 
+
+
 def get_spire_diffuse_norms(planck_template, bands=[250., 350., 500.], rms_scale_fac=2.2):
 
 	'''
@@ -358,6 +360,7 @@ def multiband_diffuse_realization(N_vals, M_vals=None, power_law_idx=-2.7, psf_s
 		f = show_diffuse_temps(templates)
 		
 	return templates
+	
 
 def psf_smooth_templates(templates, psf_sigmas=[1.27, 1.27, 1.27]):
 	smoothed_ts = []

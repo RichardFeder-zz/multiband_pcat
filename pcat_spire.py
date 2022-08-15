@@ -581,7 +581,8 @@ class Model:
 		if self.gdat.color_sigs is not None:
 			self.sigs = self.gdat.color_sigs
 		else:
-			self.sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5}) #very broad color prior
+			# self.sigs = dict({'S-M':1.5, 'M-L':1.5, 'L-S':1.5, 'M-S':1.5, 'S-L':1.5, 'L-M':1.5}) #very broad color prior
+			self.sigs = dict({'S-M':0.5, 'M-L':0.5, 'L-S':0.5, 'M-S':0.5, 'S-L':0.5, 'L-M':0.5}) #less broad color prior, used throughout results
 
 		for b in range(self.nbands-1):
 
@@ -1143,7 +1144,7 @@ class Model:
 
 					# if rtype_array[i-1]==3 and accept[i-1]==1:
 					# 	# print('total logL after re-eval:', np.sum(logL))
-					# 	print('while recomputed is ', np.sum(logL))
+						# print('while recomputed is ', np.sum(logL))
 
 					dmodels, diff2s, dt_transf, diff2_bands1 = self.pcat_multiband_eval(proposal.xphon, proposal.yphon, proposal.fphon, proposal.dback, self.dat.ncs, self.dat.cfs, weights=self.dat.weights, \
 													ref=resids, lib=lib, beam_fac=self.pixel_per_beam, margin_fac=margin_fac, rtype=rtype, perturb_band_idx=proposal.perturb_band_idx)
@@ -1407,14 +1408,21 @@ class Model:
 
 				#implement accepted moves
 				if proposal.idx_move is not None:
-					starsp = proposal.starsp.compress(acceptprop, axis=1)
-					idx_move_a = proposal.idx_move.compress(acceptprop)
-					self.stars[:, idx_move_a] = starsp
+					# starsp = proposal.starsp.compress(acceptprop, axis=1)
+					# idx_move_a = proposal.idx_move.compress(acceptprop)
+					# self.stars[:, idx_move_a] = starsp
 
 					# this code is for coupled proposals, which arent currently working
-					# if rtype==3:
-
-					# 	self.stars = proposal.starsp
+					
+					if rtype==3:
+						if accept_or_not:
+							# print('we are here')
+							print('delta log likelihood is ', total_dlogP-proposal.factor, 'factor is ', proposal.factor)
+							self.stars[:, proposal.idx_move] = proposal.starsp
+					else:
+						starsp = proposal.starsp.compress(acceptprop, axis=1)
+						idx_move_a = proposal.idx_move.compress(acceptprop)
+						self.stars[:, idx_move_a] = starsp
 
 					# elif self.gdat.coupled_profile_temp_prop and rtype==4:
 
@@ -1623,40 +1631,43 @@ class Model:
 		# change in point source fluxes. All (or maybe select?) sources across the FOV are perturbed by N_eff*dback. 
 		factor = None
 
-		# if self.gdat.coupled_bkg_prop and self.n*self.gdat.couple_nfrac >= 1:
-		# 	# integrated Jy/beam over beam --> average change in flux density for sources
-		# 	dback_int = dback*self.gdat.N_eff 
+		if self.gdat.coupled_bkg_prop and self.n*self.gdat.couple_nfrac >= 1:
+			# integrated Jy/beam over beam --> average change in flux density for sources
+			dback_int = dback*self.gdat.N_eff 
 
-		# 	# choose stars at random 
- 
-		# 	if self.gdat.couple_nfrac is not None:
-		# 		idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
-		# 	else:
-		# 		idx_move = np.arange(self.n)
 
-		# 	stars0 = self.stars.copy()
-		# 	# change fluxes of stars in opposite direction to dback_int
-		# 	starsp = stars0.copy()
-		# 	starsp[self._X,:] = stars0[self._X,:]
-		# 	starsp[self._Y,:] = stars0[self._Y,:]
-		# 	starsp[self._F+bkg_idx,idx_move] -= dback_int/len(idx_move)
+			# choose stars at random 
 
-		# 	if bkg_idx==0:
-		# 		fthr = self.gdat.trueminf
-		# 	else:
-		# 		fthr = 0.00001
+			if self.gdat.couple_nfrac is not None:
+				idx_move = np.random.choice(np.arange(self.n), int(self.n*self.gdat.couple_nfrac), replace=False) # want drawing without replacement
+			else:
+				idx_move = np.arange(self.n)
 
-		# 	ltfmin_mask = (starsp[self._F+bkg_idx,:] < fthr)
-		# 	gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
-		# 	starsp[self._F+bkg_idx, ltfmin_mask] = stars0[self._F+bkg_idx, ltfmin_mask]
+			stars0 = self.stars.take(idx_move, axis=1)
+			starsp = stars0.copy()
+			starsp[self._F+bkg_idx,:] -= dback_int/len(idx_move) # opposite in sign to bkg + dback
 
-		# 	proposal.add_move_stars(idx_move, stars0, starsp)
+			# print(dback_int, dback_int/len(idx_move))
 
-		# 	flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,:], starsp[self._F+bkg_idx,:])
-		# 	if factor is None:
-		# 		factor = np.nansum(flux_couple_factor)
-		# 	else:
-		# 		factor += np.nansum(flux_couple_factor)
+
+			if bkg_idx==0:
+				fthr = self.gdat.trueminf
+			else:
+				fthr = 0.00001 # TODO: make shared variable with the minimum flux in non pivot bands
+
+			ltfmin_mask = (starsp[self._F+bkg_idx,:] < fthr)
+			gtrfmin_mask = (starsp[self._F+bkg_idx,:] > fthr)
+
+			starsp[self._F+bkg_idx, ltfmin_mask] = stars0[self._F+bkg_idx, ltfmin_mask]
+
+			proposal.add_move_stars(idx_move, stars0, starsp)
+
+			flux_couple_factor = self.compute_flux_prior(stars0[self._F+bkg_idx,:], starsp[self._F+bkg_idx,:])
+
+			if factor is None:
+				factor = np.nansum(flux_couple_factor)
+			else:
+				factor += np.nansum(flux_couple_factor)
 
 
 		if self.gdat.dc_bkg_prior:
@@ -1880,7 +1891,7 @@ class Model:
 			# 	xpf, ypf = self.dat.fast_astrom.transform_q(starsp[self._X,:], starsp[self._Y,:], band_idx-1)
 			# 	xpf = np.floor(xpf).astype(np.int)
 			# 	ypf = np.floor(ypf).astype(np.int)
-
+ 
 			# 	temp_vals = np.array([self.dat.template_array[band_idx][template_idx][ypf[i],xpf[i]] for i in range(self.n)])
 			# 	temp_vals_norm = temp_vals/np.sum(temp_vals)
 			# 	idx_move = np.random.choice(np.arange(self.n), self.gdat.coupled_profile_temp_nsrc, replace=False, p=temp_vals_norm) # want drawing without replacement
@@ -3249,11 +3260,11 @@ class lion():
 				timestr_list = [self.gdat.timestr]
 			np.savez(self.gdat.timestr_list_file, timestr_list=timestr_list)
 
-		# if self.gdat.generate_condensed_catalog:
-		# 	xmatch_roc = cross_match_roc(timestr=self.gdat.timestr, nsamp=self.gdat.n_condensed_samp)
-		# 	xmatch_roc.load_gdat_params(gdat=self.gdat)
-		# 	condensed_cat, seed_cat = xmatch_roc.condense_catalogs(prevalence_cut=self.gdat.prevalence_cut, save_cats=True, make_seed_bool=True,\
-		# 															 mask_hwhm=self.gdat.mask_hwhm, search_radius=self.gdat.search_radius, matching_dist=self.gdat.matching_dist)
+		if self.gdat.generate_condensed_catalog:
+			xmatch_roc = cross_match_roc(timestr=self.gdat.timestr, nsamp=self.gdat.n_condensed_samp)
+			xmatch_roc.load_gdat_params(gdat=self.gdat)
+			condensed_cat, seed_cat = xmatch_roc.condense_catalogs(prevalence_cut=self.gdat.prevalence_cut, save_cats=True, make_seed_bool=True,\
+																	 mask_hwhm=self.gdat.mask_hwhm, search_radius=self.gdat.search_radius, matching_dist=self.gdat.matching_dist)
 
 		if self.gdat.make_post_plots:
 			result_plots(gdat = self.gdat, generate_condensed_cat=self.gdat.generate_condensed_catalog, n_condensed_samp=self.gdat.n_condensed_samp, prevalence_cut=self.gdat.prevalence_cut, mask_hwhm=self.gdat.mask_hwhm, condensed_catalog_plots=self.gdat.generate_condensed_catalog)
